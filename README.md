@@ -41,6 +41,38 @@ your **org policy**, cloud/deep scans, AI fixes, and the Model Security Index.
 
 Without either, every backend-only feature degrades cleanly to the on-machine result.
 
+## Agent identity
+
+Give each agent its own identity so every call is held to its own least-privilege
+policy, owner and purpose.
+
+- **Dev machine** - one command, nothing to copy:
+  ```bash
+  shomra agent-identity register --name "Dana's Claude Code" --type coding-agent \
+    --purpose "Writes and reviews code in the payments repos" --owner dana@acme.com --for claude
+  ```
+  The `shm_agt_` credential is saved to `~/.shomra/config.json` (owner-only) and the
+  runtime firewall presents it from the next call - no `export`, no restart.
+  `--no-save` prints it once instead; `SHOMRA_AGENT` always overrides it.
+- **CI / Kubernetes** - the agent holds no secret. The workload registers *itself*
+  with its own identity token (the pipeline's CI key only authorizes the
+  registration), and running it on every build returns the same agent:
+  ```yaml
+  permissions:
+    id-token: write
+  steps:
+    - run: npx @shomra/agent agent-identity register --name release-bot --type ci --purpose "Publishes the API release"
+      env:
+        SHOMRA_API_KEY: ${{ secrets.SHOMRA_API_KEY }}
+        SHOMRA_URL: https://your-shomra-backend
+  ```
+  GitHub Actions and GitLab (`id_tokens: SHOMRA_ID_TOKEN`) are detected
+  automatically; elsewhere pass `--workload kubernetes|entra|okta`. Later steps
+  sign in through `SHOMRA_WORKLOAD` / `SHOMRA_AUDIENCE` (written to `$GITHUB_ENV`
+  for you). A stored credential from CI needs `--static`.
+
+`shomra status` shows which identity this machine presents and where it comes from.
+
 ## Quickstart
 
 ```bash
@@ -601,7 +633,7 @@ add an exception in the platform instead:
 | `SHOMRA_API_KEY` | Org API key (overrides config) |
 | `SHOMRA_URL` | Backend URL (overrides config) |
 | `SHOMRA_API_TIMEOUT_MS` | Per-request backend timeout (default 30000) |
-| `SHOMRA_AGENT` | Agent credential (`shm_agt_…`) presented to `llm-proxy` + firewall. A bare handle still works but is only a claim anyone can type. Unset, `llm-proxy` forwards a client's own `x-shomra-agent` only when it is a `shm_agt_` credential |
+| `SHOMRA_AGENT` | Agent credential (`shm_agt_…`) presented to `llm-proxy` + firewall; overrides the one `agent-identity register` saved. A bare handle still works but is only a claim anyone can type. Unset, `llm-proxy` forwards a client's own `x-shomra-agent` only when it is a `shm_agt_` credential |
 | `SHOMRA_GATE_CONCURRENCY` | Parallel backend calls in batch gate / model lookups (default 8, 1-32) |
 | `SHOMRA_GH_TOKEN` | GitHub token for `shomra pr` (falls back to `GITHUB_TOKEN`) |
 | `SHOMRA_ENVIRONMENT` | Declare where this runs: `LOCAL` \| `CI` \| `REMOTE`. Set `REMOTE` on a cloud agent runtime whose markers Shomra does not yet detect (Codex cloud, Jules, Cursor background agents, Devin…), so its sessions are not counted as developer machines. ⚠ It may only ever RAISE — it can never relabel a detected cloud container as a laptop. |

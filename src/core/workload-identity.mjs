@@ -20,10 +20,46 @@ export function workloadCachePath(dir = CONFIG_DIR) {
   return path.join(dir, 'workload-credential.json');
 }
 
-export function readCachedCredential(file, { url, source, audience, now = Date.now() }) {
+function jwtWorkload(token) {
+  try {
+    const payload = JSON.parse(Buffer.from(String(token).split('.')[1] ?? '', 'base64url').toString('utf8'));
+    return typeof payload?.sub === 'string' && payload.sub ? `${payload.iss ?? ''}|${payload.sub}` : null;
+  } catch {
+    return null;
+  }
+}
+
+export function localWorkloadToken(source, env = process.env) {
+  try {
+    if (source === 'gitlab') return String(env.SHOMRA_ID_TOKEN ?? '').trim() || null;
+    if (source === 'entra' || source === 'okta') {
+      const given = String(env.SHOMRA_ID_TOKEN ?? '').trim();
+      if (given) return given;
+      const file = String(env.SHOMRA_TOKEN_FILE ?? '').trim();
+      return file ? fs.readFileSync(file, 'utf8').trim() : null;
+    }
+    if (source === 'kubernetes') return fs.readFileSync(String(env.SHOMRA_TOKEN_FILE ?? '').trim() || DEFAULT_K8S_TOKEN, 'utf8').trim();
+  } catch {}
+  return null;
+}
+
+export function workloadKey(source, env = process.env, token = localWorkloadToken(source, env)) {
+  if (source === 'github') return ['github', env.GITHUB_REPOSITORY_ID || env.GITHUB_REPOSITORY || '', env.GITHUB_RUN_ID || '', env.GITHUB_RUN_ATTEMPT || '', env.GITHUB_JOB || ''].join('|');
+  const named = token ? jwtWorkload(token) : null;
+  if (named) return `${source}|${named}`;
+  return [source, env.AZURE_TENANT_ID || '', env.AZURE_CLIENT_ID || ''].join('|');
+}
+
+export function clearCachedCredential(file = workloadCachePath()) {
+  try {
+    fs.unlinkSync(file);
+  } catch {}
+}
+
+export function readCachedCredential(file, { url, source, audience, workload, now = Date.now() }) {
   try {
     const c = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (c?.url !== url || c?.source !== source || c?.audience !== audience) return null;
+    if (c?.url !== url || c?.source !== source || c?.audience !== audience || c?.workload !== workload) return null;
     if (typeof c.credential !== 'string' || !c.credential.startsWith('shm_agt_')) return null;
     return Date.parse(c.expiresAt) - now > RENEW_BEFORE_MS ? c.credential : null;
   } catch {
@@ -140,11 +176,12 @@ export async function workloadCredential({ url, env = process.env, file = worklo
   const source = workloadSource(env);
   const audience = String(env.SHOMRA_AUDIENCE ?? '').trim();
   if (!source || !audience || !url) return null;
-  const cached = readCachedCredential(file, { url, source, audience, now });
+  const workload = workloadKey(source, env);
+  const cached = readCachedCredential(file, { url, source, audience, workload, now });
   if (cached) return cached;
   try {
     const minted = await exchangeWorkloadToken(url, await platformToken(source, audience, env));
-    writeCachedCredential(file, { url, source, audience, credential: minted.credential, expiresAt: minted.expiresAt });
+    writeCachedCredential(file, { url, source, audience, workload, credential: minted.credential, expiresAt: minted.expiresAt });
     return minted.credential;
   } catch (e) {
     onError?.(e);

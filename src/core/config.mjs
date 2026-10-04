@@ -123,3 +123,37 @@ export function resolveSettings(cfg) {
     url: raw ? raw.replace(/\/$/, '').replace('://localhost', '://127.0.0.1') : null,
   };
 }
+
+export function storedAgentCredential(cfg, vendor, url) {
+  const all = cfg?.agentCredentials;
+  if (!all || typeof all !== 'object' || Array.isArray(all)) return null;
+  for (const key of [vendor, 'default']) {
+    const e = key ? all[key] : null;
+    if (!e || typeof e.credential !== 'string' || !e.credential.startsWith('shm_agt_')) continue;
+    if (url && e.url && e.url !== url) continue;
+    return e.credential;
+  }
+  return null;
+}
+
+export function saveAgentCredential(target, entry, file = CONFIG_FILE) {
+  let cfg = {};
+  try {
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) cfg = raw;
+  } catch {}
+  const all = cfg.agentCredentials && typeof cfg.agentCredentials === 'object' && !Array.isArray(cfg.agentCredentials) ? cfg.agentCredentials : {};
+  cfg.agentCredentials = { ...all, [target]: entry };
+  const dir = path.dirname(file);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    fs.chmodSync(dir, 0o700);
+  } catch {}
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2), { mode: 0o600 });
+  try {
+    fs.chmodSync(tmp, 0o600);
+  } catch {}
+  fs.renameSync(tmp, file);
+  return file;
+}

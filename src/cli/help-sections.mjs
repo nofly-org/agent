@@ -225,12 +225,25 @@ const HARDEN = () => `${bold('HARDEN')}
 const AGENT_IDENTITY = () => `${bold('AGENT IDENTITY')}
   Give each non-human agent a first-class identity with a least-privilege
   capability policy - which providers/models it may call, which tools / MCP
-  servers it may invoke, whether it may run shell. ${bold('agent-identity register')} mints
-  its shm_agt_ credential; export ${bold('SHOMRA_AGENT')} so ${bold('llm-proxy')} and the runtime
-  firewall present it, and every call is authorized against its policy at the two
-  runtime chokepoints (identity axis) on top of content screening. Govern,
-  approve break-glass requests, and revoke (a live kill-switch) in the dashboard
-  → Agent Identities. Unknown agents are auto-discovered there for visibility.
+  servers it may invoke, whether it may run shell. Every call is authorized
+  against its policy at the runtime chokepoints on top of content screening.
+
+  ${bold('On a developer machine')}: ${bold('agent-identity register --name "…" --purpose "…"')} mints
+  its shm_agt_ credential and saves it to ~/.shomra/config.json (0600); the
+  runtime firewall, ${bold('llm-proxy')} and the MCP shim present it from the next call.
+  ${bold('--for claude')} keeps one per coding agent, ${bold('--no-save')} prints it instead, and
+  ${bold('SHOMRA_AGENT')} still overrides it.
+
+  ${bold('In CI or a cluster')}: the workload registers ITSELF with its own identity
+  token, so the agent never holds a stored credential. It is automatic in GitHub
+  Actions with ${bold('permissions: id-token: write')} and in GitLab with
+  ${bold('id_tokens: SHOMRA_ID_TOKEN')}; elsewhere pass ${bold('--workload kubernetes|entra|okta')}.
+  Re-running it returns the same agent, so it is safe on every build. A stored
+  credential in CI needs ${bold('--static')}.
+
+  ${bold('--owner <email>')} names who answers for it (default: your git email;
+  ${bold('--no-owner')} sends none). Govern, review, approve and revoke in the
+  dashboard → Agent Identities. Unknown agents are auto-discovered there.
 `;
 
 const LLM_PROXY = () => `${bold('LLM-PROXY')}
@@ -291,7 +304,8 @@ const ENV = () => `${bold('ENV')}
   SHOMRA_API_KEY              API key (overrides config)
   SHOMRA_URL                  Backend URL (overrides config)
   SHOMRA_API_TIMEOUT_MS=30000 Per-request backend timeout for scan/gate/report (never hangs)
-  SHOMRA_AGENT                Agent credential (shm_agt_…) presented as x-shomra-agent (llm-proxy + firewall)
+  SHOMRA_AGENT                Agent credential (shm_agt_…) presented as x-shomra-agent (llm-proxy + firewall);
+                              overrides the one \`agent-identity register\` saved
   SHOMRA_WORKLOAD             Keyless sign-in: github | gitlab | kubernetes | entra | okta. The firewall trades
                               the workload's own identity token for an hour-long agent credential and needs no
                               stored key. entra asks the Azure managed identity (AKS workload identity, App
