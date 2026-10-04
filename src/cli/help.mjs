@@ -19,7 +19,7 @@ ${bold(cyan('shomra admin'))} ${dim('- governance & advanced security operations
   ${cyan('redteam')}       Continuously red-team your guardrails  ${dim('[--target llm-guard|model] [--evolve] [--min 80] [--fail-on-regression] [--json]')}
   ${cyan('campaign')}      Autonomous multi-turn adversary run    ${dim('[--objectives exfil-canary,tool-abuse] [--turns 6] [--min 80] [--json]')}
   ${cyan('harden')}        Auto-fix what the red-team breached     ${dim('[--run <id>] [--target llm-guard|model] [--apply] [--json]')}
-  ${cyan('agent-identity')} Register a non-human agent identity    ${dim('register --name "…" --type coding-agent [--json]')}
+  ${cyan('agent-identity')} Register a non-human agent identity    ${dim('register --name "…" --type coding-agent [--purpose "…"] [--owner <email>] [--for claude] [--workload github] [--json]')}
   ${cyan('llm-proxy')}     Guardrail live LLM traffic             ${dim('[--port 4141] [--project <id>] [--agent-id <handle>]')}
 
   ${dim('Fleet rollout')}

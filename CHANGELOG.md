@@ -6,6 +6,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Agent identity registration
+- **`agent-identity register` works with the key `shomra init` stores.** The
+  server refused every org endpoint key as "an agent credential"; it now refuses
+  only a real agent credential.
+- **`--owner` and `--no-owner` work.** Neither was a known flag, so the command
+  exited before sending anything and the owner was always your git email.
+- **A workload registers itself, and the agent holds no secret.** In GitHub Actions (with
+  `id-token: write`) and GitLab (`id_tokens`) registration is keyless
+  automatically; `--workload kubernetes|entra|okta` elsewhere. Re-running it on
+  every build returns the same agent instead of minting `name-2`, `name-3`…
+  Registering with a stored credential from CI now needs `--static`, because it
+  minted a new secret per run and printed it into the build log.
+- **No copy-paste, no restart.** On a developer machine the credential is saved
+  to `~/.shomra/config.json` (0600) and presented by the firewall, `llm-proxy`
+  and the MCP shim; `--for claude` keeps one per coding agent, `--no-save`
+  prints it instead.
+- **`--purpose`** records what the agent is for, so its calls can be graded
+  against it, and `shomra status` shows which identity the machine presents.
+- **A keyless session is never reused by another job.** The cached session was
+  keyed only by backend and audience, so on a self-hosted runner a later job
+  could present an earlier job's agent for up to an hour. It is now keyed to the
+  job (GitHub, GitLab) or to the token's subject (clusters), and a refused
+  session is dropped at once.
+- **A refusal says which credential was refused and why.** Every 401/403 was
+  reported as a rejected API key, including a suspended agent or one awaiting
+  approval.
+
 ### Security (agent runtime hardening)
 - **What a named script runs is screened, not just its name.** `npm test`,
   `make deploy` and `./setup.sh` showed the server only a name. The hook now

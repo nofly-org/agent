@@ -7,6 +7,7 @@ import { CONFIG_FILE, loadConfig, resolveSettings } from '../core/config.mjs';
 import { bold, cyan, dim, gray, green, red, yellow } from '../core/terminal.mjs';
 import { VERSION } from '../core/version.mjs';
 import { envFlag } from '../guard/options.mjs';
+import { identityStatus } from './agent-identity.mjs';
 
 export function cmdStatus() {
   const cfg = loadConfig();
@@ -22,6 +23,8 @@ export function cmdStatus() {
   }
   console.log(`  ${dim('Backend  ')} ${url || dim('none (local mode - set with shomra init --url)')}`);
   console.log(`  ${dim('API key  ')} ${apiKey ? green(apiKey.slice(0, 14) + '…') : dim('none (local mode)')}`);
+  const identity = identityStatus(cfg, url);
+  console.log(`  ${dim('Agent ID ')} ${identity ? green(identity) : dim('none - calls carry no agent identity (shomra agent-identity register)')}`);
   console.log(`  ${dim('Machine  ')} ${os.hostname()} ${dim('(' + (cfg.machineId || 'unenrolled') + ')')}`);
   console.log(`  ${dim('Config   ')} ${CONFIG_FILE}`);
 

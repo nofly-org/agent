@@ -1,6 +1,6 @@
 import { gateMachine } from '../core/api-client.mjs';
 import { breakerOpen } from '../core/circuit-breaker.mjs';
-import { loadConfig, resolveSettings } from '../core/config.mjs';
+import { loadConfig, resolveSettings, storedAgentCredential } from '../core/config.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { red } from '../core/terminal.mjs';
 import { detectEnv } from '../gate/environment.mjs';
@@ -323,7 +323,7 @@ export async function runMcpShim(flags, positional) {
     strict,
     settings,
     sessionId: shimSessionId(name),
-    agentId: resolveAgentIdentityHandle(flags),
+    agentId: resolveAgentIdentityHandle(flags) ?? storedAgentCredential(config, agent ?? null, settings.url),
   };
   if (process.env.SHOMRA_DEBUG) note(`mcp-guard: "${name}" screening=${ctx.mode} (from ${screening.source})`);
 

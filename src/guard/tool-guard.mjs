@@ -12,8 +12,8 @@ import { readSubjectTypes, rememberSubjectTypes, serverScreened, subjectBearingP
 import { artifactKindFor } from './artifact-paths.mjs';
 import { gateMachine } from '../core/api-client.mjs';
 import { VERSION } from '../core/version.mjs';
-import { loadConfig, resolveSettings } from '../core/config.mjs';
-import { workloadCredential } from '../core/workload-identity.mjs';
+import { loadConfig, resolveSettings, storedAgentCredential } from '../core/config.mjs';
+import { clearCachedCredential, workloadCredential } from '../core/workload-identity.mjs';
 import { classifyConsequence, downrankCodeContext, grade, localScan } from '../detect/guard-signals.mjs';
 import { SHELL_TOOLS_RE, WRITE_TOOLS, callSubjectTypes, guardNeedsServer, guardTargetPath, guardText } from './classify.mjs';
 import { shellCommandOf } from './command-text.mjs';
@@ -149,19 +149,35 @@ async function recordMemoryWrite({ url, apiKey, tool, input, normalized }) {
   }
 }
 
-function reportUnauthenticated(agent, status, strict) {
-  process.stderr.write(
-    `[shomra] guard NOT enforced: the backend rejected this API key (HTTP ${status}). `
+async function rejectionReason(response) {
+  try {
+    const body = await response.json();
+    const msg = Array.isArray(body?.message) ? body.message.join(', ') : body?.message;
+    return typeof msg === 'string' && msg.trim() ? msg.trim().slice(0, 300) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function unauthenticatedNote(status, { reason = null, agentCredential = false } = {}) {
+  const who = agentCredential ? 'this agent’s credential' : 'this API key';
+  const fix = agentCredential
+    ? 'Check the agent in the dashboard (suspended, revoked or awaiting approval), or issue it a new credential.'
+    : 'Re-enroll with `shomra init --key <key>`.';
+  return `[shomra] guard NOT enforced: the backend rejected ${who} (HTTP ${status}${reason ? `: ${reason}` : ''}). `
     + 'Local Tier-0 screening still ran; org policy, agent identity and flow control did not. '
-    + 'Re-enroll with `shomra init --key <key>`.\n',
-  );
+    + `${fix}\n`;
+}
+
+function reportUnauthenticated(agent, status, strict, detail = {}) {
+  process.stderr.write(unauthenticatedNote(status, detail));
   if (strict) {
     emitGuardDeny(agent, `Shomra guard could not authenticate (HTTP ${status}); blocked by fail-closed policy.`);
   }
   process.exit(0);
 }
 
-async function requestServerDecision({ url, apiKey, agentId, body, agent, strict, retried, onUnreachable }) {
+async function requestServerDecision({ url, apiKey, agentId, body, agent, strict, retried, onUnreachable, onRejected }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), guardTimeoutMs());
   try {
@@ -179,13 +195,17 @@ async function requestServerDecision({ url, apiKey, agentId, body, agent, strict
     clearTimeout(timer);
 
     if (!response.ok) {
-      if (response.status === 401 || response.status === 403) reportUnauthenticated(agent, response.status, strict);
+      if (response.status === 401 || response.status === 403) {
+        onRejected?.();
+        const agentCredential = String(apiKey ?? '').startsWith('shm_agt_') || String(agentId ?? '').startsWith('shm_agt_');
+        reportUnauthenticated(agent, response.status, strict, { reason: await rejectionReason(response), agentCredential });
+      }
       if (response.status === 429) {
         const wait = retryAfterMs(response);
         if (wait !== null && !retried) {
           clearTimeout(timer);
           await sleep(wait);
-          return requestServerDecision({ url, apiKey, agentId, body, agent, strict, retried: true, onUnreachable });
+          return requestServerDecision({ url, apiKey, agentId, body, agent, strict, retried: true, onUnreachable, onRejected });
         }
         clearTimeout(timer);
         return onUnreachable('rate limited', { breaker: false });
@@ -268,11 +288,15 @@ export async function cmdToolGuard(flags) {
   const agent = resolveAgentFlag(flags);
   const strict = envFlag('SHOMRA_GUARD_STRICT');
   const alwaysEscalate = envFlag('SHOMRA_GUARD_ALWAYS_ESCALATE');
-  const settings = resolveSettings(loadConfig());
+  const cfg = loadConfig();
+  const settings = resolveSettings(cfg);
   const { url } = settings;
-  const agentId =
-    resolveAgentIdentityHandle(flags) ??
-    (await workloadCredential({ url, onError: (e) => process.stderr.write(`shomra: keyless sign-in failed - ${e?.message ?? e}\n`) }));
+  const presented = resolveAgentIdentityHandle(flags);
+  const fromWorkload = presented
+    ? null
+    : await workloadCredential({ url, onError: (e) => process.stderr.write(`shomra: keyless sign-in failed - ${e?.message ?? e}\n`) });
+  const agentId = presented ?? fromWorkload ?? storedAgentCredential(cfg, agent, url);
+  const onRejected = fromWorkload ? () => clearCachedCredential() : undefined;
   const apiKey = settings.apiKey || (agentId?.startsWith('shm_agt_') ? agentId : undefined);
 
   const normalized = normalizeGuardInput(agent, readHookPayload());
@@ -371,6 +395,7 @@ export async function cmdToolGuard(flags) {
     agent,
     strict,
     onUnreachable,
+    onRejected,
     body: {
       ...buildGuardBody(normalized, agent, flagged ? 'FLAG' : undefined, flagged ? local.top?.label : undefined),
       ...post,

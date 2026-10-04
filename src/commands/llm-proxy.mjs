@@ -1,5 +1,5 @@
 import os from 'node:os';
-import { loadConfig, resolveSettings } from '../core/config.mjs';
+import { loadConfig, resolveSettings, storedAgentCredential } from '../core/config.mjs';
 import { exitNotConfigured } from '../core/exit-codes.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { VERSION } from '../core/version.mjs';
@@ -175,7 +175,7 @@ export async function cmdLlmProxy(flags) {
       project,
       machineId: config.machineId,
       sessionId: newSessionId(),
-      agentId: resolveAgentIdentityHandle(flags),
+      agentId: resolveAgentIdentityHandle(flags) ?? storedAgentCredential(config, null, url),
     },
   });
 
