@@ -1,4 +1,5 @@
 import { coinMiner, startupPersistence } from './rules-persistence.mjs';
+import { agencyRules } from './rules-agency.mjs';
 export const PY_RULES = [
   {
     id: 'python.dangerous_sinks',
@@ -111,6 +112,21 @@ export const PY_RULES = [
     cwe: 'CWE-502',
   },
   {
+    id: 'python.safetensors_refused',
+    title: 'Model load refuses the safetensors weights',
+    severity: 'MEDIUM',
+    category: 'supply-chain',
+    confidence: 0.9,
+    codeOnly: true,
+    re: /\buse_safetensors\s*=\s*False\b/,
+    sink: () => 'use_safetensors=False',
+    source: 'model repository',
+    message:
+      'A model is loaded with use_safetensors=False, so the loader skips the inert safetensors file and reads the pickle checkpoint - a format that can carry code, and the one a swapped or poisoned repo ships. Only torch.load\'s weights_only guard then stands between the file and the process, and before torch 2.6 that guard could be bypassed (CVE-2025-32434).',
+    remediation: 'Remove use_safetensors=False so safetensors is preferred, pin revision= to a reviewed commit, and keep torch at 2.6 or later.',
+    cwe: 'CWE-502',
+  },
+  {
     id: 'python.keras_unsafe_load',
     title: 'Keras load with safe_mode disabled',
     severity: 'HIGH',
@@ -197,14 +213,16 @@ export const PY_RULES = [
   },
   {
     id: 'python.reduce_payload',
-    title: 'Custom __reduce__ (pickle RCE gadget)',
+    title: 'Custom __reduce__ / __setstate__ pickle hook',
     severity: 'LOW',
     category: 'deserialization',
-    confidence: 0.8,
+    confidence: 0.4,
     re: /def\s+__reduce__\s*\(|def\s+__reduce_ex__\s*\(|def\s+__setstate__\s*\(/,
-    sink: (m) => m[0].replace(/^def\s+/, '').replace(/\s*\($/, '').trim(),
-    message: 'Defines a pickle reduction hook. These execute on unpickling and are the classic gadget used to hide code-exec inside a serialized model object.',
-    remediation: 'Verify why the class needs custom pickling. Do not unpickle objects from this repo; prefer safetensors serialization which has no code path.',
+    sink: (m) => m[0].replace(/^def\s+/, '').replace(/[ \t]{0,64}\($/, '').trim(),
+    message:
+      'Defines a pickle reduction hook. On its own this is ordinary serialization support; it only matters if untrusted pickles built from this class are later loaded. Treat as a gadget only alongside an unsafe loader in the same file.',
+    remediation:
+      'Verify why the class needs custom pickling. Do not unpickle objects from an untrusted source; prefer safetensors serialization which has no code path.',
     cwe: 'CWE-502',
   },
   {
@@ -287,6 +305,7 @@ export const PY_RULES = [
     remediation: 'Confirm the code has a legitimate need for the variable; model inference code generally should not read the environment.',
     cwe: 'CWE-200',
   },
+  ...agencyRules('python'),
 ];
 
 export const PY_TAINT = {

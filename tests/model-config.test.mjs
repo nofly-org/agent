@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { localGate } from '../src/detect/guard-signals.mjs';
 import { scanModelConfig } from '../src/detect/sast/scanner.mjs';
+import { platformPath } from './_platform.mjs';
 
 const RANK = { INFO: 1, LOW: 2, MEDIUM: 3, HIGH: 4, CRITICAL: 5 };
 const J = (o) => JSON.stringify(o, null, 2);
@@ -72,9 +73,11 @@ test('the array form of auto_map.AutoTokenizer is matched by the local SAST', ()
   assert.ok(hits.some((h) => h.ruleId === 'json.autotokenizer_usage'));
 });
 
-test('the generated mirrors are in sync with the platform sources', { skip: !fs.existsSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'Dragox.Backend')) && 'platform checkout not present' }, async () => {
+const MODEL_FORMATS = platformPath('src', 'modules', 'analysis', 'checks', 'model-formats');
+
+test('the generated mirrors are in sync with the platform sources', { skip: !MODEL_FORMATS && 'platform checkout not present' }, async () => {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const backend = path.join(here, '..', '..', 'Dragox.Backend', 'src', 'modules', 'analysis', 'checks', 'model-formats');
+  const backend = MODEL_FORMATS;
   const { stripTypeScriptTypes } = await import('node:module');
   if (typeof stripTypeScriptTypes !== 'function') return;
   for (const [ts, mjs] of [['model-config-rules.ts', 'model-config-rules.mjs'], ['chat-template.ts', 'chat-template.mjs']]) {
@@ -82,6 +85,6 @@ test('the generated mirrors are in sync with the platform sources', { skip: !fs.
     const local = fs.readFileSync(path.join(here, '..', 'src', 'detect', 'signals', mjs), 'utf8');
     // compare the RULE bodies: drop the import lines both sides swap
     const body = (s) => s.split('\n').filter((l) => !/^import |^\/\/ |^const binaryFinding/.test(l)).join('\n').replace(/\s+/g, ' ').trim();
-    assert.equal(body(local), body(stripped), `${mjs} drifted from ${ts} - regenerate with Dragox.Backend/scripts/mirror-model-config.mjs`);
+    assert.equal(body(local), body(stripped), `${mjs} drifted from ${ts} - regenerate with Shomra.Backend/scripts/mirror-model-config.mjs`);
   }
 });

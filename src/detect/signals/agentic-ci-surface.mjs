@@ -1,6 +1,6 @@
 import {
   ACTOR_GATE_RE, MODEL_SECRET_RE, PERMISSION_CHECK_ACTION_RE, PRIVILEGED_UNTRUSTED_TRIGGERS,
-  UNPRIVILEGED_UNTRUSTED_TRIGGERS, ciWorkflowModel, untrustedRefs, writerRefs,
+  UNPRIVILEGED_UNTRUSTED_TRIGGERS, UNTRUSTED_CHECKOUT_RE, UNTRUSTED_CHECKOUT_RUN_RE, ciWorkflowModel, untrustedRefs, writerRefs,
 
 } from './ci-workflow.mjs';
 import { locate } from './agentic-shim.mjs';
@@ -227,15 +227,13 @@ function flagNeedle(step        , label        )                  {
   return rule ? rule.re : step.uses ?? label;
 }
 
-const UNTRUSTED_CHECKOUT_RE = /github\.event\.pull_request\.head\.(?:sha|ref)|github\.head_ref|github\.event\.workflow_run\.head_(?:sha|branch)|refs\/pull\/|\bpull\/\$\{\{/i;
-
 function checkoutFindings(ctx          , step        )                    {
   const triggers = ctx.wf.triggers.filter((t) => t === 'pull_request_target' || t === 'workflow_run' || t === 'issue_comment');
   if (!triggers.length) return [];
   const job = jobOf(ctx.wf, step);
   const checkout = job.steps.find((s) => s.index < step.index && (
     (has(s.uses, /^actions\/checkout\b/i) && has(s.with.ref ?? '', UNTRUSTED_CHECKOUT_RE)) ||
-    has(s.run, /\bgh\s+pr\s+checkout\b|git\s+(?:fetch|checkout)[^\n]*(?:refs\/pull\/|\bpull\/|github\.event\.pull_request\.head)/i)
+    has(s.run, UNTRUSTED_CHECKOUT_RUN_RE)
   ));
   if (!checkout) return [];
   const trusted = /gemini/i.test(step.ai?.product ?? '') && /^['"]?(?:true|1)['"]?$/i.test((step.scopeEnv.GEMINI_TRUST_WORKSPACE ?? '').trim());

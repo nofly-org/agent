@@ -10,6 +10,7 @@ import { commandSubjectTypes, pathSubjectTypes, readSubjectTypes, rememberSubjec
 import { postEditContents } from '../src/guard/memory-write.mjs';
 import { normalizeGuardInput } from '../src/guard/normalize.mjs';
 import { postContentField } from '../src/guard/tool-guard.mjs';
+import { platformPath } from './_platform.mjs';
 
 const read = (files) => (p) => {
   const hit = Object.entries(files).find(([k]) => path.resolve(k) === path.resolve(p));
@@ -26,8 +27,10 @@ test('every vendor shell tool is a shell tool', () => {
   assert.equal(SHELL_TOOL_NAMES.length, new Set(SHELL_TOOL_NAMES).size);
 });
 
-test('the shell tool list matches the server’s SHELL_TOOL_NAMES', { skip: !fs.existsSync(new URL('../../Dragox.Backend/src/modules/runtime/gate/domain/tool-guard-grading.ts', import.meta.url)) }, () => {
-  const src = fs.readFileSync(new URL('../../Dragox.Backend/src/modules/runtime/gate/domain/tool-guard-grading.ts', import.meta.url), 'utf8');
+const GRADING = platformPath('src', 'modules', 'runtime', 'gate', 'domain', 'tool-guard-grading.ts');
+
+test('the shell tool list matches the server’s SHELL_TOOL_NAMES', { skip: !GRADING && 'platform checkout not present' }, () => {
+  const src = fs.readFileSync(GRADING, 'utf8');
   const lit = /SHELL_TOOL_NAMES: readonly string\[\] = \[([\s\S]*?)\];/.exec(src);
   const server = new Set([...(lit?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1]));
   assert.deepEqual([...server].sort(), [...SHELL_TOOL_NAMES].sort());

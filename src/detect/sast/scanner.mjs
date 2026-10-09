@@ -13,7 +13,7 @@ function scanLines(text, file, rules, taintCfg) {
   const seen = new Set();
 
   const pathNs = pathBindings(text);
-  const ctx = { pathNs, constPaths: constPathBindings(text, pathNs), lines, unitStart: 1 };
+  const ctx = { pathNs, constPaths: constPathBindings(text, pathNs), lines, unitStart: 1, file };
   for (const unit of units) {
     ctx.unitStart = unit.startLine;
     for (const rule of rules) {

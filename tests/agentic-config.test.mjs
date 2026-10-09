@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { localGate } from '../src/detect/signals/gate.mjs';
+import { platformPath } from './_platform.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const titles = (r) => r.findings.map((f) => `${f.severity}:${f.title}`).join(' | ');
@@ -22,6 +23,34 @@ test('an agent anyone can summon on issue_comment, with unscoped Bash, is blocke
 test('a pull_request_target checkout of the PR head before the agent is blocked', () => {
   const wf = GH('  pull_request_target:', '      - uses: actions/checkout@v4\n        with:\n          ref: ${{ github.event.pull_request.head.sha }}\n      - uses: anthropics/claude-code-action@v1\n        with:\n          prompt: review\n');
   assert.ok(has(localGate(wf, { path: '.github/workflows/r.yml' }), /pull request's own code/, 'CRITICAL'));
+});
+
+test('a pull_request_target checkout of the merge commit before the agent is blocked, by action or by git', () => {
+  const agent = '      - uses: anthropics/claude-code-action@v1\n        with:\n          prompt: review\n';
+  const byAction = GH('  pull_request_target:', '      - uses: actions/checkout@v4\n        with:\n          ref: ${{ github.event.pull_request.merge_commit_sha }}\n' + agent);
+  const byGit = GH('  pull_request_target:', '      - run: git fetch origin ${{ github.event.pull_request.merge_commit_sha }} && git checkout FETCH_HEAD\n' + agent);
+  for (const wf of [byAction, byGit]) {
+    const r = localGate(wf, { path: '.github/workflows/r.yml' });
+    assert.ok(has(r, /pull request's own code/, 'CRITICAL'), titles(r));
+  }
+});
+
+test('a merge, approval or push after an agent step with no person in between is flagged; a reviewed or protected one is not', () => {
+  const head = (on) => `name: Agent\non:\n${on}\npermissions:\n  contents: write\n  pull-requests: write\njobs:\n`;
+  const claude = '      - uses: anthropics/claude-code-action@v1\n        id: agent\n        with:\n          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}\n          prompt: "Fix the failing test and open a pull request"\n';
+  const released = (text) => localGate(text, { path: '.github/workflows/agent.yml' }).findings.filter((f) => /no person in between/.test(f.title));
+  const merge = released(head('  workflow_dispatch:') + `  fix:\n    runs-on: ubuntu-latest\n    steps:\n${claude}      - run: gh pr merge --squash --delete-branch "$BRANCH"\n`);
+  assert.equal(merge[0]?.severity, 'HIGH', JSON.stringify(merge));
+  const approve = released(head('  pull_request_target:') + `  review:\n    runs-on: ubuntu-latest\n    steps:\n${claude}      - uses: hmarr/auto-approve-action@v4\n`);
+  assert.equal(approve[0]?.severity, 'HIGH', JSON.stringify(approve));
+  const push = released(head('  issues:\n    types: [labeled]') + `  fix:\n    runs-on: ubuntu-latest\n    steps:\n${claude}      - run: git push origin HEAD:main\n`);
+  assert.equal(push[0]?.severity, 'HIGH', JSON.stringify(push));
+  const reviewed = "name: Merge\non:\n  pull_request_review:\n    types: [submitted]\njobs:\n  merge:\n    if: github.event.review.state == 'approved'\n    runs-on: ubuntu-latest\n    steps:\n" + claude + '      - run: gh pr merge --squash 7\n';
+  assert.deepEqual(released(reviewed), []);
+  const guarded = head('  workflow_dispatch:') + `  fix:\n    runs-on: ubuntu-latest\n    steps:\n${claude}  deploy:\n    needs: fix\n    environment: production\n    runs-on: ubuntu-latest\n    steps:\n      - run: npx vercel deploy --prod\n`;
+  assert.deepEqual(released(guarded), []);
+  const stops = head('  workflow_dispatch:') + `  fix:\n    runs-on: ubuntu-latest\n    steps:\n${claude}      - run: gh pr create --fill --head ai/fix\n`;
+  assert.deepEqual(released(stops), []);
 });
 
 test('--kind workflow grades a pasted workflow with no path', () => {
@@ -89,14 +118,16 @@ test('a stock-shaped Langflow flow is quiet - stock source and canvas floats are
   assert.ok(!r.findings.some((f) => ['HIGH', 'CRITICAL'].includes(f.severity)), titles(r));
 });
 
-test('the generated mirrors are in sync with the platform sources', { skip: !fs.existsSync(path.join(here, '..', '..', 'Dragox.Backend', 'scripts', 'mirror-agentic-config.mjs')) && 'platform checkout not present' }, async () => {
+const AGENTIC_MIRROR = platformPath('scripts', 'mirror-agentic-config.mjs');
+
+test('the generated mirrors are in sync with the platform sources', { skip: !AGENTIC_MIRROR && 'platform checkout not present' }, async () => {
   const { stripTypeScriptTypes } = await import('node:module');
   if (typeof stripTypeScriptTypes !== 'function') return;
 
-  const { render, jobs } = await import(pathToFileURL(path.join(here, '..', '..', 'Dragox.Backend', 'scripts', 'mirror-agentic-config.mjs')).href);
+  const { render, jobs } = await import(pathToFileURL(AGENTIC_MIRROR).href);
   assert.ok(jobs.length >= 6, 'every generated mirror is in the job table');
   for (const j of jobs) {
     const local = fs.readFileSync(path.join(here, '..', 'src', 'detect', 'signals', j.out), 'utf8');
-    assert.equal(local, render(j), `${j.out} drifted from ${j.ts} - regenerate with Dragox.Backend/scripts/mirror-agentic-config.mjs`);
+    assert.equal(local, render(j), `${j.out} drifted from ${j.ts} - regenerate with Shomra.Backend/scripts/mirror-agentic-config.mjs`);
   }
 });

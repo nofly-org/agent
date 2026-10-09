@@ -5,16 +5,17 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { SECRET_PATTERNS } from '../src/detect/signals/secrets.mjs';
 import { redactLocally } from '../src/detect/local-redact.mjs';
+import { platformPath } from './_platform.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const SCRIPT = path.join(here, '..', '..', 'Dragox.Backend', 'scripts', 'mirror-secret-patterns.mjs');
+const SCRIPT = platformPath('scripts', 'mirror-secret-patterns.mjs');
 
-test('the generated secret mirror is in sync with the platform source', { skip: !fs.existsSync(SCRIPT) && 'platform checkout not present' }, async () => {
+test('the generated secret mirror is in sync with the platform source', { skip: !SCRIPT && 'platform checkout not present' }, async () => {
   const { stripTypeScriptTypes } = await import('node:module');
   if (typeof stripTypeScriptTypes !== 'function') return;
   const { render } = await import(pathToFileURL(SCRIPT).href);
   const local = fs.readFileSync(path.join(here, '..', 'src', 'detect', 'signals', 'secret-scanner.mjs'), 'utf8');
-  assert.equal(local, render(), 'secret-scanner.mjs drifted - regenerate with Dragox.Backend/scripts/mirror-secret-patterns.mjs');
+  assert.equal(local, render(), 'secret-scanner.mjs drifted - regenerate with Shomra.Backend/scripts/mirror-secret-patterns.mjs');
 });
 
 test('the list the agent masks with carries the providers the old hand-kept copy missed', () => {

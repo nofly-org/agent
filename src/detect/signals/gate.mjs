@@ -9,7 +9,8 @@ import { isModelConfigPath, localModelConfig } from './model-config.mjs';
 import { isInstructionPath } from './instruction-paths.mjs';
 import { PLUGIN_MANIFEST_RE, TOOL_MANIFEST_RE, localExtension, localPlugin, localToolManifest } from './manifests.mjs';
 import { agenticCiFindings } from './agentic-ci-surface.mjs';
-import { ciVendorOf } from './ci-workflow.mjs';
+import { agentReleaseFindings } from './agent-output-release.mjs';
+import { ciVendorOf, ciWorkflowModel } from './ci-workflow.mjs';
 import { guardrailConfigFindings } from './guardrail-surface.mjs';
 import { guardrailFramework } from './guardrail-shape.mjs';
 import { frameworkFindings } from './agent-graph-surface.mjs';
@@ -139,7 +140,8 @@ export function localGate(content, { kind, path } = {}) {
   }
   if (kind === 'workflow' || (auto && ciVendorOf(lowerPath))) {
     const wfPath = ciVendorOf(lowerPath) ? lowerPath : '.github/workflows/workflow.yml';
-    for (const f of agenticCiFindings({ kind: 'AGENT_WORKFLOW', path: wfPath, name: wfPath.split('/').pop(), content: content || '' })) {
+    const wf = { kind: 'AGENT_WORKFLOW', path: wfPath, name: wfPath.split('/').pop(), content: content || '' };
+    for (const f of [...agenticCiFindings(wf), ...agentReleaseFindings(wf, ciWorkflowModel(wfPath, wf.content))]) {
       push(f.severity, f.title, f.remediationText, f.evidence?.line);
     }
   }

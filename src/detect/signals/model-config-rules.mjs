@@ -20,7 +20,7 @@ import { inspectText } from './inspect-shim.mjs';
 
                                      
                  
-                                                                                                                                   
+                                                                                                                                                             
                                                    
                 
                  
@@ -509,6 +509,26 @@ function litellmFindings(doc     , file        )                       {
       detail: 'Prompts, completions and the provider key cross the network unencrypted.',
       remediation: 'Use an https api_base.',
       evidence: { apiBases: plaintext.slice(0, 5), file },
+    });
+  }
+  const cacheParams = isObj(settings.cache_params) ? settings.cache_params : {};
+  const cacheType = String(cacheParams.type ?? '').trim().toLowerCase();
+  const callTypes = cacheParams.supported_call_types;
+  if (
+    (settings.cache === true || /^true$/i.test(String(settings.cache ?? ''))) &&
+    /^(?:redis|qdrant|valkey)-semantic$/.test(cacheType) &&
+    !/^default_off$/i.test(String(cacheParams.mode ?? '').trim()) &&
+    !/\b(?:end_user|user|key|team|tenant|org)/i.test(String(cacheParams.semantic_cache_scope ?? '')) &&
+    !(Array.isArray(callTypes) && callTypes.length === 0)
+  ) {
+    out.push({
+      ruleId: 'litellm.semantic_cache_shared', cls: 'VECTOR_STORE_EXPOSURE', severity: 'MEDIUM', cwe: 'CWE-524', anchor: 'cache_params',
+      title: `LiteLLM proxy answers every caller from one semantic cache (${cacheType})`,
+      detail:
+        `${file} turns on a ${cacheType} cache for every request, and nothing in cache_params keeps one end user's answers from another's. A prompt that embeds close enough to a stored one gets the stored answer, so an answer built from one person's documents or conversation is served to the next person who asks something similar, and anyone who can get a prompt answered can plant an answer for everyone who asks near it (OWASP LLM09:2026).`,
+      remediation:
+        'Set semantic_cache_scope: end_user under cache_params so each end user has their own bucket, or make caching opt-in with mode: default_off, and keep multi-turn and agent traffic out of the semantic cache.',
+      evidence: { cacheType, file },
     });
   }
   return out;

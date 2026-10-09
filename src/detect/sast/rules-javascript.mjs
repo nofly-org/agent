@@ -1,6 +1,8 @@
 import { coinMiner, startupPersistence } from './rules-persistence.mjs';
 import { isNotAModuleLoad, isStaticPathExpr } from './path-expressions.mjs';
 import { callArgText } from './source-lines.mjs';
+import { agencyRules } from './rules-agency.mjs';
+import { markdownImageRules } from './rules-markdown-image.mjs';
 
 export const JS_RULES = [
   {
@@ -115,6 +117,8 @@ export const JS_RULES = [
   },
   ...startupPersistence('js'),
   coinMiner('js'),
+  ...agencyRules('js'),
+  ...markdownImageRules(),
 ];
 
 export const JS_TAINT = {

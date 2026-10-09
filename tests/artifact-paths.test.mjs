@@ -11,7 +11,7 @@
  * either side failed.
  *
  * The vocabulary is GENERATED from the server's own module now
- * (`Dragox.Backend/scripts/mirror-artifact-paths.mjs`), and this pins both
+ * (`Shomra.Backend/scripts/mirror-artifact-paths.mjs`), and this pins both
  * halves: the mirror is in sync, and the send decision uses it.
  */
 import { test } from 'node:test';
@@ -23,21 +23,22 @@ import { fileURLToPath } from 'node:url';
 
 import { ARTIFACT_PATHS, artifactKindFor } from '../src/guard/artifact-paths.mjs';
 import { WRITE_TOOLS, guardNeedsServer, guardText, guardTouchedPaths, shellWritePaths } from '../src/guard/classify.mjs';
+import { platformPath } from './_platform.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const MIRROR = path.join(here, '..', 'src', 'guard', 'artifact-paths.mjs');
-const BACKEND = path.join(here, '..', '..', 'Dragox.Backend');
+const SCRIPT = platformPath('scripts', 'mirror-artifact-paths.mjs');
 
 test('the generated artifact-path mirror is in sync with the server source', async (t) => {
-  if (!fs.existsSync(path.join(BACKEND, 'scripts', 'mirror-artifact-paths.mjs'))) {
-    t.skip('Dragox.Backend not checked out');
+  if (!SCRIPT) {
+    t.skip('Shomra.Backend not checked out');
     return;
   }
-  const { render } = await import(pathToUrl(path.join(BACKEND, 'scripts', 'mirror-artifact-paths.mjs')));
+  const { render } = await import(pathToUrl(SCRIPT));
   assert.equal(
     fs.readFileSync(MIRROR, 'utf8'),
     render(),
-    'artifact-paths.mjs drifted - regenerate with Dragox.Backend/scripts/mirror-artifact-paths.mjs',
+    'artifact-paths.mjs drifted - regenerate with Shomra.Backend/scripts/mirror-artifact-paths.mjs',
   );
 });
 
