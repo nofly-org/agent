@@ -20,7 +20,7 @@ import { inspectText } from './inspect-shim.mjs';
 
                                      
                  
-                                                                                                                                   
+                                                                                                                                                             
                                                    
                 
                  
@@ -452,6 +452,18 @@ function torchserveFindings(text        , file        )                       {
 
 const KNOWN_CALLBACKS = /^(?:langfuse|langsmith|lunary|helicone|datadog|prometheus|otel|opentelemetry|s3|gcs_bucket|azure_storage|sentry|slack|traceloop|openmeter|athina|braintrust|logfire|arize|arize_phoenix|galileo|opik|mlflow|wandb|posthog|supabase|dynamodb|generic|custom_callback_api|email|pagerduty|lago|greenscale|literalai|humanloop|argilla|bedrock_guardrails|aporia|lakera|presidio|hide_secrets|llamaguard)$/i;
 const envRef = (v         ) => typeof v === 'string' && /^os\.environ\/|^\$\{?[A-Z_][A-Z0-9_]*\}?$|^os\.getenv/.test(v.trim());
+const truthy = (v         ) => v === true || (typeof v === 'string' && /^(?:true|yes|on|1)$/i.test(v.trim()));
+const LITELLM_PUBLISHED_KEYS = new Set(['sk-1234']);
+const LITELLM_MODEL_ROUTES = [
+  '/chat/completions', '/v1/chat/completions', '/completions', '/v1/completions', '/embeddings', '/v1/embeddings',
+  '/v1/messages', '/responses', '/v1/responses', '/images/generations', '/v1/images/generations', '/audio/speech',
+  '/v1/audio/transcriptions', '/moderations', '/v1/moderations', '/rerank', '/v1/rerank', '/v1/batches', '/v1/files',
+  '/v1/assistants', '/v1/threads', '/v1/realtime', '/engines/m/chat/completions', '/openai/deployments/m/chat/completions',
+  '/openai/v1/chat/completions', '/anthropic/v1/messages', '/gemini/v1beta/models/m:generateContent', '/vertex_ai/v1/projects',
+  '/bedrock/model/m/invoke', '/azure/openai/deployments/m/chat/completions',
+];
+const opensModelRoute = (route        ) =>
+  route.endsWith('*') ? LITELLM_MODEL_ROUTES.some((r) => r.startsWith(route.slice(0, -1))) : LITELLM_MODEL_ROUTES.includes(route);
 
 function litellmFindings(doc     , file        )                       {
   const out                       = [];
@@ -475,12 +487,43 @@ function litellmFindings(doc     , file        )                       {
     });
   }
   if (typeof general.master_key === 'string' && general.master_key && !envRef(general.master_key)) {
+    const published = LITELLM_PUBLISHED_KEYS.has(general.master_key.trim());
     out.push({
-      ruleId: 'litellm.literal_master_key', cls: 'SECRET_EXPOSURE', severity: 'HIGH', cwe: 'CWE-798', anchor: 'master_key',
-      title: 'LiteLLM master key is written into the config',
-      detail: `\`general_settings.master_key\` is a literal in ${file}. It is the admin credential for the proxy - every virtual key, budget and model route.`,
+      ruleId: 'litellm.literal_master_key', cls: 'SECRET_EXPOSURE', severity: published ? 'CRITICAL' : 'HIGH', cwe: 'CWE-798', anchor: 'master_key',
+      title: published ? `LiteLLM master key is the documentation's example (${general.master_key.trim()})` : 'LiteLLM master key is written into the config',
+      detail: published
+        ? `\`general_settings.master_key\` in ${file} is the example key printed throughout the LiteLLM documentation, so anyone who reaches the proxy holds its admin credential - every virtual key, budget and model route.`
+        : `\`general_settings.master_key\` is a literal in ${file}. It is the admin credential for the proxy - every virtual key, budget and model route.`,
       remediation: 'Set it as `master_key: os.environ/LITELLM_MASTER_KEY` and rotate the exposed value.',
+      evidence: { file, publishedExample: published },
+    });
+  }
+  if (truthy(general.dangerously_permit_weak_or_unset_master_key)) {
+    out.push({
+      ruleId: 'litellm.weak_master_key_allowed', cls: 'WEAK_AUTH', severity: 'HIGH', cwe: 'CWE-1188', anchor: 'dangerously_permit_weak_or_unset_master_key',
+      title: 'LiteLLM is told to start with no master key, an empty one or the published example',
+      detail: `\`general_settings.dangerously_permit_weak_or_unset_master_key\` in ${file} switches off the start-up check that refuses a missing, empty or publicly known master key. With no key the proxy asks callers for nothing, and with the example key everyone has it, so whoever reaches it runs any configured model on your provider keys and manages its keys and budgets.`,
+      remediation: 'Remove the setting and set a random master key from the environment (`master_key: os.environ/LITELLM_MASTER_KEY`).',
       evidence: { file },
+    });
+  }
+  if (truthy(general.allow_requests_on_db_unavailable)) {
+    out.push({
+      ruleId: 'litellm.db_outage_open', cls: 'WEAK_AUTH', severity: 'MEDIUM', cwe: 'CWE-636', anchor: 'allow_requests_on_db_unavailable',
+      title: 'LiteLLM serves callers it could not verify while its database is down',
+      detail: `\`general_settings.allow_requests_on_db_unavailable\` in ${file} makes the proxy hand any caller a fallback identity whenever the database holding the virtual keys cannot be reached. For as long as the outage lasts no key is checked and no key budget, model list or rate limit applies, so model calls run on your provider keys for anyone who can reach the proxy - and an attacker who can exhaust the database connections chooses when that window opens. LiteLLM documents it for proxies that are not reachable from the internet.`,
+      remediation: 'Remove the setting so an unreachable database refuses calls, or keep the proxy reachable only from inside your network and alert on the database being down.',
+      evidence: { file },
+    });
+  }
+  const publicModelRoutes = (Array.isArray(general.public_routes) ? general.public_routes : []).filter((r         ) => typeof r === 'string' && opensModelRoute(r.trim()));
+  if (publicModelRoutes.length) {
+    out.push({
+      ruleId: 'litellm.public_model_route', cls: 'WEAK_AUTH', severity: 'HIGH', cwe: 'CWE-306', anchor: 'public_routes',
+      title: `LiteLLM opens model calls to callers with no key (${publicModelRoutes.slice(0, 3).join(', ')})`,
+      detail: `\`general_settings.public_routes\` in ${file} lists ${publicModelRoutes.slice(0, 4).join(', ')}, so on a licensed proxy those routes skip key checks, and the budgets and rate limits that hang off a key never apply. Whoever reaches the proxy runs models on your provider keys.`,
+      remediation: 'Keep only health and documentation routes in public_routes and require a virtual key for every model route.',
+      evidence: { file, routes: publicModelRoutes.slice(0, 10) },
     });
   }
   const literalKeys           = [];
@@ -509,6 +552,26 @@ function litellmFindings(doc     , file        )                       {
       detail: 'Prompts, completions and the provider key cross the network unencrypted.',
       remediation: 'Use an https api_base.',
       evidence: { apiBases: plaintext.slice(0, 5), file },
+    });
+  }
+  const cacheParams = isObj(settings.cache_params) ? settings.cache_params : {};
+  const cacheType = String(cacheParams.type ?? '').trim().toLowerCase();
+  const callTypes = cacheParams.supported_call_types;
+  if (
+    (settings.cache === true || /^true$/i.test(String(settings.cache ?? ''))) &&
+    /^(?:redis|qdrant|valkey)-semantic$/.test(cacheType) &&
+    !/^default_off$/i.test(String(cacheParams.mode ?? '').trim()) &&
+    !/\b(?:end_user|user|key|team|tenant|org)/i.test(String(cacheParams.semantic_cache_scope ?? '')) &&
+    !(Array.isArray(callTypes) && callTypes.length === 0)
+  ) {
+    out.push({
+      ruleId: 'litellm.semantic_cache_shared', cls: 'VECTOR_STORE_EXPOSURE', severity: 'MEDIUM', cwe: 'CWE-524', anchor: 'cache_params',
+      title: `LiteLLM proxy answers every caller from one semantic cache (${cacheType})`,
+      detail:
+        `${file} turns on a ${cacheType} cache for every request, and nothing in cache_params keeps one end user's answers from another's. A prompt that embeds close enough to a stored one gets the stored answer, so an answer built from one person's documents or conversation is served to the next person who asks something similar, and anyone who can get a prompt answered can plant an answer for everyone who asks near it (OWASP LLM09:2026).`,
+      remediation:
+        'Set semantic_cache_scope: end_user under cache_params so each end user has their own bucket, or make caching opt-in with mode: default_off, and keep multi-turn and agent traffic out of the semantic cache.',
+      evidence: { cacheType, file },
     });
   }
   return out;

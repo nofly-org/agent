@@ -125,6 +125,10 @@ export function writerRefs(src                           )           {
 export const ACTOR_GATE_RE =
   /author_association|github\.(?:triggering_)?actor\b|github\.event\.sender\.login|\.labels\.\*\.name|github\.event\.label\.name|head\.repo\.fork\s*==\s*false|head\.repo\.full_name\s*==\s*github\.repository|getCollaboratorPermissionLevel|permission(?:-level)?\s*==\s*['"](?:admin|write|maintain)/i;
 export const PERMISSION_CHECK_ACTION_RE = /check-(?:user-)?permission|check-actor-permission|actor-permission|user-permission/i;
+export const UNTRUSTED_CHECKOUT_RE =
+  /github\.event\.pull_request\.(?:head\.(?:sha|ref)|merge_commit_sha)|github\.head_ref|github\.event\.workflow_run\.head_(?:sha|branch)|refs\/pull\/|\bpull\/\$\{\{/i;
+export const UNTRUSTED_CHECKOUT_RUN_RE =
+  /\bgh[ \t]{1,4}pr[ \t]{1,4}checkout\b|\bgit[ \t]{1,4}(?:fetch|checkout)\b[^\n]{0,300}(?:refs\/pull\/|\bpull\/|github\.event\.pull_request\.(?:head|merge_commit_sha))/i;
 
 export const MODEL_SECRET_RE = /^(?:ANTHROPIC_API_KEY|CLAUDE_CODE_OAUTH_TOKEN|OPENAI_API_KEY|OPENAI_KEY|GEMINI_API_KEY|GOOGLE_API_KEY|GOOGLE_GENERATIVE_AI_API_KEY|AZURE_OPENAI_(?:API_)?KEY|MISTRAL_API_KEY|GROQ_API_KEY|OPENROUTER_API_KEY|GITHUB_TOKEN|DEEPSEEK_API_KEY|XAI_API_KEY|DASHSCOPE_API_KEY)$/i;
 

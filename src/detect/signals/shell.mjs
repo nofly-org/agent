@@ -208,6 +208,11 @@ export const DANGEROUS_SHELL = [
   { name: 'PowerShell download-and-run (iwr/curl … | iex)', re: /\b(iwr|curl|wget|invoke-webrequest|invoke-restmethod|irm)\b[^\n|]{0,200}\|\s*(iex|invoke-expression)\b/i, severity: 'CRITICAL' },
   { name: 'Invoke-Expression of downloaded content', re: /\b(iex|invoke-expression)\b[^\n]{0,120}(downloadstring|net\.webclient|\(\s*(iwr|irm|invoke-)|\$\()/i, severity: 'CRITICAL' },
   { name: 'Reverse shell via /dev/tcp', re: /\/dev\/(tcp|udp)\//i, severity: 'CRITICAL' },
+  {
+    name: 'Shuts down or reboots the host',
+    re: /(?:^|[;&|(`"']\s*|\bsudo\s+(?:-\S+\s+)*|\bexec\s+)(?:shutdown(?:\.exe)?\s+(?:-[hHrPpc]\b|now\b|\+\d|[0-2]?\d:[0-5]\d\b|\/[srpf]\b)|(?:poweroff|reboot|halt)(?=\s*(?:$|[;&|)`]|["'](?!\s*:)|-[fpw]\b|now\b))|systemctl\s+(?:poweroff|reboot|halt|kexec)\b|(?:tel)?init\s+[06]\b)|\b(?:Stop|Restart)-Computer\b/im,
+    severity: 'HIGH',
+  },
   { name: 'Base64 blob piped to a shell', re: /base64\s+(--?d(ecode)?)?\b[^\n|]{0,200}\|\s*(ba|z)?sh\b/i, severity: 'CRITICAL' },
   { name: 'curl/wget posts data to the network (exfiltration)', re: /\b(curl|wget|http|https|invoke-restmethod|irm)\b[^\n]{0,220}(--data(-raw|-binary|-urlencode)?|--form\b|--upload-file\b|(^|\s)-d\s|(^|\s)-F\s|(^|\s)-T\s|-Method\s+Post)/i, severity: 'HIGH', refine: targetsExternalNetwork },
   {

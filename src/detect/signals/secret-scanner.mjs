@@ -35,13 +35,15 @@ export const SECRET_PATTERNS                                 = [
   },
   { name: 'Pinecone API key', re: /\bpcsk_[A-Za-z0-9_]{30,}/ },
   { name: 'OpenRouter API key', re: /\bsk-or-v1-[A-Za-z0-9]{32,}/ },
+  { name: 'Jina AI API key', re: /\bjina_(?=[A-Za-z0-9_-]{0,80}[0-9])(?=[A-Za-z0-9_-]{0,80}[A-Z])[A-Za-z0-9_-]{40,}/ },
+  { name: 'Mixedbread API key', re: /\bmxb_(?=[A-Za-z0-9]{0,80}[0-9])(?=[A-Za-z0-9]{0,80}[A-Za-z])[A-Za-z0-9]{24,}/ },
   { name: 'Discord webhook', re: /\bdiscord(?:app)?\.com\/api\/webhooks\/\d{17,}\/[A-Za-z0-9_-]{40,}/ },
   { name: 'Telegram bot token', re: /\b\d{8,12}:AA[A-Za-z0-9_-]{30,}/ },
   { name: 'Sentry DSN with secret', re: /\bhttps:\/\/[a-f0-9]{32}(?::[a-f0-9]{32})?@[\w.-]*(?:sentry\.io|ingest\.[\w.-]+)\/\d+/ },
   { name: 'Registry auth blob (docker config)', re: /"auth"\s*:\s*"[A-Za-z0-9+/]{24,}={0,2}"/ },
   {
     name: 'Provider API key (named env var)',
-    re: /\b(?:AZURE_OPENAI_API_KEY|MISTRAL_API_KEY|COHERE_API_KEY|CO_API_KEY|TOGETHER_API_KEY|DEEPSEEK_API_KEY|DD_API_KEY|DATADOG_API_KEY|TWILIO_AUTH_TOKEN|VERCEL_TOKEN|CLOUDFLARE_API_TOKEN|WEAVIATE_API_KEY|VOYAGE_API_KEY|NVIDIA_API_KEY|CEREBRAS_API_KEY|SAMBANOVA_API_KEY)\s*[=:]\s*["']?[A-Za-z0-9_-]{24,}\b/,
+    re: /\b(?:AZURE_OPENAI_API_KEY|MISTRAL_API_KEY|COHERE_API_KEY|CO_API_KEY|TOGETHER_API_KEY|DEEPSEEK_API_KEY|DD_API_KEY|DATADOG_API_KEY|TWILIO_AUTH_TOKEN|VERCEL_TOKEN|CLOUDFLARE_API_TOKEN|WEAVIATE_API_KEY|VOYAGE_API_KEY|JINA_API_KEY|JINAAI_API_KEY|MXBAI_API_KEY|MIXEDBREAD_API_KEY|NVIDIA_API_KEY|CEREBRAS_API_KEY|SAMBANOVA_API_KEY)\s*[=:]\s*["']?[A-Za-z0-9_-]{24,}\b/,
   },
 ];
 
