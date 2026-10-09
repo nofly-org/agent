@@ -6,9 +6,10 @@ import { VERSION } from '../core/version.mjs';
 import { resolveAgentIdentityHandle } from './agent-identity.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
 
-export const LLM_PROVIDERS = ['openai', 'anthropic', 'gemini', 'groq', 'mistral', 'xai', 'deepseek', 'openrouter', 'together'];
+export const LLM_PROVIDERS = ['openai', 'anthropic', 'gemini', 'groq', 'mistral', 'xai', 'deepseek', 'openrouter', 'together', 'cohere', 'voyage', 'jina'];
 
-const OPENAI_COMPATIBLE = ['groq', 'mistral', 'xai', 'deepseek', 'openrouter', 'together'];
+const OPENAI_COMPATIBLE = ['groq', 'mistral', 'xai', 'deepseek', 'openrouter', 'together', 'cohere'];
+const EMBEDDINGS_ONLY = ['voyage', 'jina'];
 const DEFAULT_PORT = 4141;
 const BODYLESS_METHODS = ['GET', 'HEAD'];
 const HOP_BY_HOP_REQUEST_HEADERS = ['host', 'connection', 'content-length', 'accept-encoding', 'expect'];
@@ -153,6 +154,8 @@ function printStartupBanner({ port, url, project, actor }) {
   console.log(`      http://127.0.0.1:${port}/gemini`);
   console.log(dim(`    OpenAI-compatible (${OPENAI_COMPATIBLE.join(', ')}) - set the SDK baseURL to`));
   console.log(`      http://127.0.0.1:${port}/<provider>/v1`);
+  console.log(dim(`    Embeddings only (${EMBEDDINGS_ONLY.join(', ')}) - POST to`));
+  console.log(`      http://127.0.0.1:${port}/<provider>/v1/embeddings`);
   console.log(dim('\n  Prompts and completions are screened against org policy;'));
   console.log(dim('  blocked calls return HTTP 403 with the reason. Ctrl+C to stop.\n'));
 }
