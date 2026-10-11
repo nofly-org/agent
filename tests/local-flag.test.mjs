@@ -178,3 +178,36 @@ test('a repo .shomraignore never silences screening of a path outside the repo',
     fs.rmSync(outside, { recursive: true, force: true });
   }
 });
+
+function crashRun(env) {
+  const script = [
+    `import { strictOnCrash } from ${JSON.stringify(new URL('../src/guard/crash.mjs', import.meta.url).href)};`,
+    `import { emitGuardDeny } from ${JSON.stringify(new URL('../src/guard/emit.mjs', import.meta.url).href)};`,
+    "const run = strictOnCrash(async () => { throw new Error('boom'); }, emitGuardDeny, 'guard');",
+    "run({ agent: 'claude' }).catch(() => process.exit(1));",
+  ].join('\n');
+  return new Promise((done) => {
+    const base = { ...process.env };
+    for (const k of Object.keys(base)) if (k.startsWith('SHOMRA_')) delete base[k];
+    const child = spawn(process.execPath, ['--input-type=module', '-e', script], { env: { ...base, ...env } });
+    let stdout = '';
+    child.stdout.on('data', (d) => { stdout += d; });
+    child.stderr.resume();
+    child.on('close', (code) => done({ code, stdout }));
+  });
+}
+
+test('a guard that crashes refuses the call under SHOMRA_GUARD_STRICT and keeps today\'s error exit otherwise', async () => {
+  const strict = await crashRun({ SHOMRA_GUARD_STRICT: '1' });
+  assert.equal(strict.code, 0);
+  assert.match(JSON.parse(strict.stdout).hookSpecificOutput.permissionDecision, /deny/);
+  assert.match(strict.stdout, /Shomra guard failed \(boom\)/);
+  const lax = await crashRun({});
+  assert.equal(lax.code, 1);
+  assert.equal(lax.stdout, '');
+});
+
+test('a tool name that is not a string does not crash the hook', async () => {
+  const out = await guard({ tool_name: 42, tool_input: { command: 'git status' }, cwd: home });
+  assert.equal(out.code, 0, out.stdout);
+});

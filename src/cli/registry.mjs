@@ -36,6 +36,11 @@ import { cmdPromptGuard } from '../guard/prompt-guard.mjs';
 import { cmdSessionGuard } from '../guard/session-guard.mjs';
 import { cmdResultGuard } from '../guard/result-guard.mjs';
 import { cmdToolGuard } from '../guard/tool-guard.mjs';
+import { strictOnCrash } from '../guard/crash.mjs';
+import { emitGuardDeny, emitResultBlock } from '../guard/emit.mjs';
+
+const toolGuard = strictOnCrash(cmdToolGuard, emitGuardDeny, 'guard');
+const resultGuard = strictOnCrash(cmdResultGuard, emitResultBlock, 'result-guard');
 
 export const COMMANDS = {
   init: (f) => cmdInit(f),
@@ -63,9 +68,9 @@ export const COMMANDS = {
   'agent-identity': (f, p) => cmdAgentIdentity(f, p),
   'agent-id': (f, p) => cmdAgentIdentity(f, p),
   'llm-proxy': (f) => cmdLlmProxy(f),
-  'tool-guard': (f) => cmdToolGuard(f),
+  'tool-guard': (f) => toolGuard(f),
   'mcp-guard': (f, p) => cmdMcpGuard(f, p),
-  'result-guard': (f) => cmdResultGuard(f),
+  'result-guard': (f) => resultGuard(f),
   'prompt-guard': (f) => cmdPromptGuard(f),
   'plan-guard': (f) => cmdPlanGuard(f),
   'session-guard': (f) => cmdSessionGuard(f),

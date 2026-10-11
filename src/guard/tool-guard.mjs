@@ -329,7 +329,7 @@ export async function cmdToolGuard(flags) {
   const apiKey = settings.apiKey || (agentId?.startsWith('shm_agt_') ? agentId : undefined);
 
   const normalized = normalizeGuardInput(agent, readHookPayload());
-  const tool = (normalized.tool_name ?? '').trim();
+  const tool = String(normalized.tool_name ?? '').trim();
   const input = normalized.tool_input ?? {};
 
   const local = localTierDisabled() ? ALLOW_VERDICT : screenLocally(normalized, tool, input);
