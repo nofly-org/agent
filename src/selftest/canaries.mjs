@@ -120,7 +120,14 @@ export function canariesFor(vendor, { marker, dir, pkg, docker, session = `selft
         make('shell-install', { hook_event_name: 'BeforeTool', session_id: session, cwd, tool_name: 'run_shell_command', tool_input: { command: install } }),
         make('write-dockerfile', { hook_event_name: 'BeforeTool', session_id: session, cwd, tool_name: 'write_file', tool_input: { file_path: dockerPath, content: dockerfileText(marker) } }),
         make('edit-manifest', { hook_event_name: 'BeforeTool', session_id: session, cwd, tool_name: 'replace', tool_input: { file_path: pkgPath, old_string: edit.old, new_string: edit.new } }),
-        make('mcp-exec', { hook_event_name: 'BeforeTool', session_id: session, cwd, tool_name: mcpTool, tool_input: { command: install } }),
+        make('mcp-exec', {
+          hook_event_name: 'BeforeTool',
+          session_id: session,
+          cwd,
+          tool_name: `mcp_${marker}_execute_command`,
+          tool_input: { command: install },
+          mcp_context: { server_name: marker, tool_name: 'execute_command', command: 'npx', args: ['-y', marker] },
+        }),
         make('mcp-connect', { hook_event_name: 'BeforeTool', session_id: session, cwd, tool_name: 'run_shell_command', tool_input: { command: connect } }),
       ];
 

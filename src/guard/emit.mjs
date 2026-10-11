@@ -47,11 +47,11 @@ export function emitResultBlock(agent, reason) {
   process.exit(0);
 }
 
-const RESULT_CONTEXT_AGENTS = new Set(['claude', 'codex', 'cline']);
+const RESULT_CONTEXT_AGENTS = new Set(['claude', 'codex', 'cline', 'gemini']);
 
 export function emitResultContext(agent, note) {
   if (RESULT_CONTEXT_AGENTS.has(agent)) {
-    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: note } }));
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: agent === 'gemini' ? 'AfterTool' : 'PostToolUse', additionalContext: note } }));
   } else {
     process.stderr.write(`${note}\n`);
   }

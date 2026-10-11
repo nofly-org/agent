@@ -120,7 +120,13 @@ function normalizeGuardShape(agent, payload) {
       }
       return { tool_name: name, tool_input: input, tool_response: payload.tool_response ?? payload.result, cwd: payload.cwd, session_id: payload.task_id || payload.session_id };
     }
-    case 'gemini':
+    case 'gemini': {
+      const mcp = payload.mcp_context;
+      const server = typeof mcp?.server_name === 'string' ? mcp.server_name.trim().replace(/__/g, '_') : '';
+      const leaf = typeof mcp?.tool_name === 'string' ? mcp.tool_name.trim() : '';
+      const name = server && leaf && !String(payload.tool_name ?? '').startsWith('mcp__') ? `mcp__${server}__${leaf}` : payload.tool_name;
+      return { tool_name: name, tool_input: payload.tool_input, tool_response: payload.tool_response, cwd: payload.cwd, session_id: payload.session_id };
+    }
     case 'codex':
     case 'claude':
     case 'aider':
