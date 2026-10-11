@@ -11,6 +11,7 @@ export const LLM_PROVIDERS = ['openai', 'anthropic', 'gemini', 'groq', 'mistral'
 const OPENAI_COMPATIBLE = ['groq', 'mistral', 'xai', 'deepseek', 'openrouter', 'together', 'cohere'];
 const EMBEDDINGS_ONLY = ['voyage', 'jina'];
 const DEFAULT_PORT = 4141;
+const MAX_BODY_BYTES = 64 * 1024 * 1024;
 const BODYLESS_METHODS = ['GET', 'HEAD'];
 const HOP_BY_HOP_REQUEST_HEADERS = ['host', 'connection', 'content-length', 'accept-encoding', 'expect'];
 const HOP_BY_HOP_RESPONSE_HEADERS = ['content-length', 'transfer-encoding', 'content-encoding', 'connection'];
@@ -57,20 +58,42 @@ export function forwardHeaders(incoming, { apiKey, actor, machineId, sessionId, 
   return headers;
 }
 
-async function readBody(request) {
+export class BodyTooLarge extends Error {}
+
+export async function readBody(request, limit = MAX_BODY_BYTES) {
   const chunks = [];
-  for await (const chunk of request) chunks.push(chunk);
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > limit) throw new BodyTooLarge(`request body is larger than ${limit} bytes`);
+    chunks.push(chunk);
+  }
   return Buffer.concat(chunks);
 }
 
 function sendJson(response, status, payload) {
+  if (response.headersSent || response.destroyed) return;
   response.writeHead(status, { 'content-type': 'application/json' });
   response.end(JSON.stringify(payload));
 }
 
 async function streamUpstreamBody(upstream, response) {
   try {
-    if (upstream.body) for await (const chunk of upstream.body) response.write(chunk);
+    if (!upstream.body) return;
+    for await (const chunk of upstream.body) {
+      if (response.destroyed) break;
+      if (!response.write(chunk)) {
+        await new Promise((done) => {
+          const finish = () => {
+            response.off('drain', finish);
+            response.off('close', finish);
+            done();
+          };
+          response.on('drain', finish);
+          response.on('close', finish);
+        });
+      }
+    }
   } catch {
     return;
   }
@@ -81,9 +104,30 @@ async function relayResponse(upstream, response) {
   for (const [name, value] of upstream.headers) {
     if (!HOP_BY_HOP_RESPONSE_HEADERS.includes(name)) headers[name] = value;
   }
+  response.once('close', () => {
+    if (!response.writableFinished) upstream.body?.cancel?.().catch(() => {});
+  });
   response.writeHead(upstream.status, headers);
   await streamUpstreamBody(upstream, response);
   response.end();
+}
+
+export function containRequestErrors(handler) {
+  return async (request, response) => {
+    request.on('error', () => {});
+    response.on('error', () => {});
+    try {
+      await handler(request, response);
+    } catch (error) {
+      if (error instanceof BodyTooLarge) {
+        sendJson(response, 413, { error: { message: `Refused: ${error.message}.` } });
+        request.destroy();
+        return;
+      }
+      if (response.headersSent) response.destroy();
+      else sendJson(response, 502, { error: { message: `Shomra LLM proxy error: ${error?.message ?? error}` } });
+    }
+  };
 }
 
 function statusMark(status) {
@@ -183,5 +227,17 @@ export async function cmdLlmProxy(flags) {
   });
 
   const { createServer } = await import('node:http');
-  createServer(handler).listen(port, '127.0.0.1', () => printStartupBanner({ port, url, project, actor }));
+  const server = createServer(containRequestErrors(handler));
+  server.on('clientError', (_error, socket) => {
+    if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
+    else socket.destroy();
+  });
+  server.on('error', (error) => {
+    const why = error?.code === 'EADDRINUSE'
+      ? `port ${port} is already in use - another llm-proxy may be running, or pass --port <n>`
+      : error?.message ?? String(error);
+    console.error(red(`✗ Shomra LLM proxy could not listen: ${why}`));
+    process.exit(1);
+  });
+  server.listen(port, '127.0.0.1', () => printStartupBanner({ port, url, project, actor }));
 }
