@@ -60,7 +60,7 @@ function normalizeGuardShape(agent, payload) {
       if ((payload.tool_name || payload.tool) && payload.hook_event_name !== 'beforeShellExecution') {
         const name = String(payload.tool_name || payload.tool);
         const server = String(payload.server_name ?? payload.server ?? payload.mcp_server ?? 'cursor').replace(/__/g, '_') || 'cursor';
-        return { tool_name: name.startsWith('mcp__') ? name : `mcp__${server}__${name}`, tool_input: payload.tool_input ?? payload.arguments, tool_response: payload.tool_response ?? payload.result, cwd: payload.cwd || payload.workspace_roots?.[0], session_id: payload.conversation_id };
+        return { tool_name: name.startsWith('mcp__') ? name : `mcp__${server}__${name}`, tool_input: payload.tool_input ?? payload.arguments, tool_response: payload.tool_response ?? payload.result ?? jsonOrText(payload.result_json), cwd: payload.cwd || payload.workspace_roots?.[0], session_id: payload.conversation_id };
       }
       if (typeof payload.command === 'string') {
         return { tool_name: 'Bash', tool_input: { command: payload.command }, cwd: payload.cwd || payload.workspace_roots?.[0], session_id: payload.conversation_id };
@@ -69,8 +69,12 @@ function normalizeGuardShape(agent, payload) {
         const name = payload.tool_name || payload.tool;
         return { tool_name: String(name).startsWith('mcp') ? name : `mcp__${name}`, tool_input: payload.tool_input ?? payload.arguments, tool_response: payload.tool_response ?? payload.result, cwd: payload.cwd, session_id: payload.conversation_id };
       }
+      if (typeof payload.file_path === 'string' && Array.isArray(payload.edits)) {
+        const written = payload.edits.map((e) => (typeof e?.new_string === 'string' ? e.new_string : '')).filter(Boolean).join('\n');
+        return { tool_name: 'MultiEdit', tool_input: { file_path: payload.file_path, edits: payload.edits }, tool_response: written || undefined, cwd: payload.cwd || payload.workspace_roots?.[0], session_id: payload.conversation_id };
+      }
       if (typeof payload.file_path === 'string') {
-        return { tool_name: 'Edit', tool_input: { file_path: payload.file_path, content: payload.content ?? payload.new_content }, cwd: payload.cwd, session_id: payload.conversation_id };
+        return { tool_name: 'Edit', tool_input: { file_path: payload.file_path, content: payload.content ?? payload.new_content }, tool_response: payload.content ?? payload.new_content, cwd: payload.cwd || payload.workspace_roots?.[0], session_id: payload.conversation_id };
       }
       return { tool_name: payload.hook_event_name || 'unknown', tool_input: payload, session_id: payload.conversation_id };
     }
@@ -180,4 +184,13 @@ function clineShape(payload) {
     cwd: payload.workspaceRoots?.[0] ?? payload.cwd,
     session_id: payload.taskId ?? payload.task_id ?? payload.session_id,
   };
+}
+
+function jsonOrText(value) {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
 }

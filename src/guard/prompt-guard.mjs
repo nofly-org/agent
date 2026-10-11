@@ -172,10 +172,20 @@ function promptInjectionNote(injection) {
   );
 }
 
+const MAX_PROMPT_SENT = 4 * 1024 * 1024;
+
+function sendablePrompt(prompt) {
+  const text = String(prompt ?? '');
+  if (text.length <= MAX_PROMPT_SENT) return text;
+  const half = Math.floor(MAX_PROMPT_SENT / 2);
+  return `${text.slice(0, half)}\n[shomra: ${text.length - half * 2} characters not sent]\n${text.slice(text.length - half)}`;
+}
+
 function buildPromptGuardBody(norm, agent, clientDecision, clientReason) {
+  const prompt = sendablePrompt(norm.prompt);
   const redaction = localTierDisabled()
-    ? { text: norm.prompt, masked: [], changed: false }
-    : redactLocally(norm.prompt);
+    ? { text: prompt, masked: [], changed: false }
+    : redactLocally(prompt);
 
   return {
     tool_name: 'UserPromptSubmit',

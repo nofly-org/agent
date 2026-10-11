@@ -5,6 +5,15 @@ import { readLedger, recordLedger, sha256 } from './memory-write.mjs';
 import { gateMachine } from '../core/api-client.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
 import { guardTimeoutMs } from '../core/circuit-breaker.mjs';
+import { writeFileAtomic } from '../core/json-file.mjs';
+
+const realOf = (p) => {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
+};
 
 export const MAX_RESTORE_BYTES = 256 * 1024;
 export const MAX_RESTORES = 20;
@@ -28,19 +37,13 @@ export function restoreVerdict(item, { read = readOrNull, ledger = readLedger } 
   const current = read(p);
   if (current == null) return { ok: false, reason: 'the file is no longer on disk' };
   if (sha256(current) !== item.replaces) return { ok: false, reason: 'the file changed since the rollback was asked for, so writing it back could lose someone’s edits' };
-  return { ok: true, path: p };
+  const target = realOf(p);
+  if (target !== p && !isMemoryPath(target)) return { ok: false, reason: `the file is a link to ${target}, which is not an agent memory or rules file, so the hook will not write through it` };
+  return { ok: true, path: p, target };
 }
 
 export function writeRestored(p, content) {
-  let mode;
-  try {
-    mode = fs.statSync(p).mode & 0o777;
-  } catch {
-    mode = 0o600;
-  }
-  const tmp = `${p}.${process.pid}.shomra-restore`;
-  fs.writeFileSync(tmp, content, { mode });
-  fs.renameSync(tmp, p);
+  writeFileAtomic(realOf(p), content);
   return sha256(fs.readFileSync(p, 'utf8'));
 }
 

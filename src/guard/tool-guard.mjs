@@ -380,8 +380,6 @@ export async function cmdToolGuard(flags) {
 
   await screenSkillInvocation({ agent, tool, input, normalized, url, apiKey: settings.apiKey, agentId, strict });
 
-  await recordMemoryWrite({ url, apiKey, tool, input, normalized });
-
   /**
    * ⚠ The org's subject types come from the server's last answer, cached on
    * disk - reading them costs no round trip. Unknown (no answer yet, stale, an
@@ -395,6 +393,7 @@ export async function cmdToolGuard(flags) {
   if (!escalate) {
     recordSelftest({ stage: 'not-escalated', tool, subjectTypes, reason: 'the local tier decided this call alone - the server never saw it' });
     countUnscreened('not escalated - screened by the local tier only');
+    await recordMemoryWrite({ url, apiKey, tool, input, normalized });
     process.exit(0);
   }
 
@@ -460,5 +459,6 @@ export async function cmdToolGuard(flags) {
 
   if (decision && typeof decision === 'object') rememberSubjectTypes(decision.subjectTypes, { url });
   enforceServerDecision(agent, decision);
+  await recordMemoryWrite({ url, apiKey, tool, input, normalized });
   process.exit(0);
 }

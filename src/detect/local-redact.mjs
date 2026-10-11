@@ -1,11 +1,35 @@
 import { PII_PATTERNS, SECRET_PATTERNS, isPlaceholderSecret, luhnValid } from './signals/secrets.mjs';
 
 const MAX_TEXT = 200_000;
-const MAX_SPANS = 200;
+const MAX_SPANS = 5000;
+
+function chunks(src) {
+  const out = [];
+  let start = 0;
+  while (start < src.length) {
+    let end = Math.min(src.length, start + MAX_TEXT);
+    if (end < src.length) {
+      const nl = src.lastIndexOf('\n', end);
+      const ws = src.slice(start, end).search(/\s\S*$/);
+      if (nl > start + MAX_TEXT / 2) end = nl + 1;
+      else if (ws > MAX_TEXT / 2) end = start + ws + 1;
+    }
+    out.push(src.slice(start, end));
+    start = end;
+  }
+  return out;
+}
 
 export function redactLocally(text, opts = {}) {
   const src = String(text ?? '');
-  if (!src || src.length > MAX_TEXT) return { text: src, masked: [], unmaskable: [], changed: false };
+  if (src.length <= MAX_TEXT) return redactChunk(src, opts);
+  const parts = chunks(src).map((part) => redactChunk(part, opts));
+  if (!parts.some((p) => p.changed)) return { text: src, masked: [], unmaskable: [], changed: false };
+  return { text: parts.map((p) => p.text).join(''), masked: parts.flatMap((p) => p.masked), unmaskable: [], changed: true };
+}
+
+function redactChunk(src, opts) {
+  if (!src) return { text: src, masked: [], unmaskable: [], changed: false };
 
   const categories = opts.categories ?? ['secret', 'pii'];
   const spans = [];
