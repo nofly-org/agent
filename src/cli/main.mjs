@@ -2,7 +2,6 @@ import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { bold, dim, red } from '../core/terminal.mjs';
 import { VERSION } from '../core/version.mjs';
 import { KNOWN_FLAGS, parseFlags } from './flags.mjs';
-import { cmdAdminHelp, cmdHelp } from './help.mjs';
 import { ADMIN_VERBS, COMMANDS } from './registry.mjs';
 import { didYouMean } from './suggestions.mjs';
 
@@ -14,7 +13,7 @@ export async function main() {
   const { flags, positional, unknown } = parseFlags(ours);
 
   if (command === 'help' || command === undefined || command === '--help' || command === '-h') {
-    return cmdHelp();
+    return (await import('./help.mjs')).cmdHelp();
   }
   if (command === '--version' || command === '-v' || command === 'version') {
     console.log(VERSION);
@@ -33,7 +32,7 @@ export async function main() {
 
   if (command === 'admin') {
     const sub = positional[0];
-    if (!sub || sub === 'help' || flags.help) return cmdAdminHelp();
+    if (!sub || sub === 'help' || flags.help) return (await import('./help.mjs')).cmdAdminHelp();
     const fn = COMMANDS[sub];
     if (!fn || !ADMIN_VERBS.has(sub)) {
       const near = didYouMean(sub, [...ADMIN_VERBS]);

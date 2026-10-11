@@ -1,93 +1,56 @@
-import { cmdAdd } from '../commands/add.mjs';
-import { cmdAgentIdentity } from '../commands/agent-identity.mjs';
-import { cmdBaseline, cmdCheck } from '../commands/check.mjs';
-import { cmdCorpus } from '../commands/corpus.mjs';
-import { cmdDesign } from '../commands/design.mjs';
-import { cmdDoctor } from '../commands/doctor.mjs';
-import { cmdFix } from '../commands/fix.mjs';
-import { cmdGate } from '../commands/gate.mjs';
-import { cmdInstallPrecommit } from '../commands/git-hooks.mjs';
-import { cmdInit } from '../commands/init.mjs';
-import { cmdInstallHook } from '../commands/install-hook.mjs';
-import { cmdLedger } from '../commands/ledger.mjs';
-import { cmdLlmProxy } from '../commands/llm-proxy.mjs';
-import { cmdMcp, cmdMcpGuard } from '../commands/mcp.mjs';
-import { cmdMdmScript } from '../commands/mdm-script.mjs';
-import { cmdMemoryScan } from '../commands/memory-scan.mjs';
-import { cmdMemoryRestore } from '../guard/memory-restore.mjs';
-import { cmdModelScan } from '../commands/model-scan.mjs';
-import { cmdModels } from '../commands/models.mjs';
-import { cmdNew } from '../commands/new.mjs';
-import { cmdPlan, cmdPlanGuard } from '../commands/plan.mjs';
-import { cmdPr } from '../commands/pr.mjs';
-import { cmdProtect } from '../commands/protect.mjs';
-import { cmdProvenance } from '../commands/provenance.mjs';
-import { cmdCampaign, cmdHarden, cmdRedteam } from '../commands/redteam.mjs';
-import { cmdRules } from '../commands/rules.mjs';
-import { cmdRun } from '../commands/run.mjs';
-import { cmdSchedule } from '../commands/schedule.mjs';
-import { cmdScanZip } from '../commands/scan-zip.mjs';
-import { cmdScan } from '../commands/scan.mjs';
-import { cmdSecrets } from '../commands/secrets.mjs';
-import { cmdSelftest } from '../commands/selftest.mjs';
-import { cmdStatus } from '../commands/status.mjs';
-import { cmdWhy } from '../commands/why.mjs';
-import { cmdPromptGuard } from '../guard/prompt-guard.mjs';
-import { cmdSessionGuard } from '../guard/session-guard.mjs';
-import { cmdResultGuard } from '../guard/result-guard.mjs';
-import { cmdToolGuard } from '../guard/tool-guard.mjs';
-import { strictOnCrash } from '../guard/crash.mjs';
-import { emitGuardDeny, emitResultBlock } from '../guard/emit.mjs';
+const lazy = (load, name, call = (fn, f, p) => fn(f, p)) => async (f, p) => call((await load())[name], f, p);
 
-const toolGuard = strictOnCrash(cmdToolGuard, emitGuardDeny, 'guard');
-const resultGuard = strictOnCrash(cmdResultGuard, emitResultBlock, 'result-guard');
+const guardCommand = (load, name, refuse, what) => async (f) => {
+  const [mod, { strictOnCrash }, emit] = await Promise.all([load(), import('../guard/crash.mjs'), import('../guard/emit.mjs')]);
+  return strictOnCrash(mod[name], emit[refuse], what)(f);
+};
 
 export const COMMANDS = {
-  init: (f) => cmdInit(f),
-  scan: (f) => cmdScan(f),
-  report: (f) => cmdScan({ ...f, report: true }),
-  schedule: (f, p) => cmdSchedule(f, p),
-  'mdm-script': (f) => cmdMdmScript(f),
-  gate: (f, p) => cmdGate(f, p),
-  run: (f, p) => cmdRun(f, p),
-  check: (f, p) => cmdCheck(f, p),
-  pr: (f, p) => cmdPr(f, p),
-  baseline: (f, p) => cmdBaseline(f, p),
-  fix: (f, p) => cmdFix(f, p),
-  why: (f, p) => cmdWhy(f, p),
-  provenance: (f, p) => cmdProvenance(f, p),
-  'install-precommit': (f, p) => cmdInstallPrecommit(f, p),
-  'scan-zip': (f, p) => cmdScanZip(f, p),
-  'model-scan': (f, p) => cmdModelScan(f, p),
-  models: (f, p) => cmdModels(f, p),
-  'memory-scan': (f, p) => cmdMemoryScan(f, p),
-  'memory-restore': () => cmdMemoryRestore(),
-  redteam: (f) => cmdRedteam(f),
-  campaign: (f) => cmdCampaign(f),
-  harden: (f) => cmdHarden(f),
-  'agent-identity': (f, p) => cmdAgentIdentity(f, p),
-  'agent-id': (f, p) => cmdAgentIdentity(f, p),
-  'llm-proxy': (f) => cmdLlmProxy(f),
-  'tool-guard': (f) => toolGuard(f),
-  'mcp-guard': (f, p) => cmdMcpGuard(f, p),
-  'result-guard': (f) => resultGuard(f),
-  'prompt-guard': (f) => cmdPromptGuard(f),
-  'plan-guard': (f) => cmdPlanGuard(f),
-  'session-guard': (f) => cmdSessionGuard(f),
-  plan: (f, p) => cmdPlan(f, p),
-  corpus: (f, p) => cmdCorpus(f, p),
-  rules: (f, p) => cmdRules(f, p),
-  design: (f, p) => cmdDesign(f, p),
-  add: (f, p) => cmdAdd(f, p),
-  'install-hook': (f) => cmdInstallHook(f),
-  selftest: (f) => cmdSelftest(f),
-  protect: (f) => cmdProtect(f),
-  ledger: (f) => cmdLedger(f),
-  doctor: (f) => cmdDoctor(f),
-  new: (f, p) => cmdNew(f, p),
-  mcp: (f, p) => cmdMcp(f, p),
-  secrets: (f, p) => cmdSecrets(f, p),
-  status: () => cmdStatus(),
+  init: lazy(() => import('../commands/init.mjs'), 'cmdInit', (fn, f) => fn(f)),
+  scan: lazy(() => import('../commands/scan.mjs'), 'cmdScan', (fn, f) => fn(f)),
+  report: lazy(() => import('../commands/scan.mjs'), 'cmdScan', (fn, f) => fn({ ...f, report: true })),
+  schedule: lazy(() => import('../commands/schedule.mjs'), 'cmdSchedule'),
+  'mdm-script': lazy(() => import('../commands/mdm-script.mjs'), 'cmdMdmScript', (fn, f) => fn(f)),
+  gate: lazy(() => import('../commands/gate.mjs'), 'cmdGate'),
+  run: lazy(() => import('../commands/run.mjs'), 'cmdRun'),
+  check: lazy(() => import('../commands/check.mjs'), 'cmdCheck'),
+  pr: lazy(() => import('../commands/pr.mjs'), 'cmdPr'),
+  baseline: lazy(() => import('../commands/check.mjs'), 'cmdBaseline'),
+  fix: lazy(() => import('../commands/fix.mjs'), 'cmdFix'),
+  why: lazy(() => import('../commands/why.mjs'), 'cmdWhy'),
+  provenance: lazy(() => import('../commands/provenance.mjs'), 'cmdProvenance'),
+  'install-precommit': lazy(() => import('../commands/git-hooks.mjs'), 'cmdInstallPrecommit'),
+  'scan-zip': lazy(() => import('../commands/scan-zip.mjs'), 'cmdScanZip'),
+  'model-scan': lazy(() => import('../commands/model-scan.mjs'), 'cmdModelScan'),
+  models: lazy(() => import('../commands/models.mjs'), 'cmdModels'),
+  'memory-scan': lazy(() => import('../commands/memory-scan.mjs'), 'cmdMemoryScan'),
+  'memory-restore': lazy(() => import('../guard/memory-restore.mjs'), 'cmdMemoryRestore', (fn) => fn()),
+  redteam: lazy(() => import('../commands/redteam.mjs'), 'cmdRedteam', (fn, f) => fn(f)),
+  campaign: lazy(() => import('../commands/redteam.mjs'), 'cmdCampaign', (fn, f) => fn(f)),
+  harden: lazy(() => import('../commands/redteam.mjs'), 'cmdHarden', (fn, f) => fn(f)),
+  'agent-identity': lazy(() => import('../commands/agent-identity.mjs'), 'cmdAgentIdentity'),
+  'agent-id': lazy(() => import('../commands/agent-identity.mjs'), 'cmdAgentIdentity'),
+  'llm-proxy': lazy(() => import('../commands/llm-proxy.mjs'), 'cmdLlmProxy', (fn, f) => fn(f)),
+  'tool-guard': guardCommand(() => import('../guard/tool-guard.mjs'), 'cmdToolGuard', 'emitGuardDeny', 'guard'),
+  'mcp-guard': lazy(() => import('../commands/mcp.mjs'), 'cmdMcpGuard'),
+  'result-guard': guardCommand(() => import('../guard/result-guard.mjs'), 'cmdResultGuard', 'emitResultBlock', 'result-guard'),
+  'prompt-guard': lazy(() => import('../guard/prompt-guard.mjs'), 'cmdPromptGuard', (fn, f) => fn(f)),
+  'plan-guard': lazy(() => import('../commands/plan.mjs'), 'cmdPlanGuard', (fn, f) => fn(f)),
+  'session-guard': lazy(() => import('../guard/session-guard.mjs'), 'cmdSessionGuard', (fn, f) => fn(f)),
+  plan: lazy(() => import('../commands/plan.mjs'), 'cmdPlan'),
+  corpus: lazy(() => import('../commands/corpus.mjs'), 'cmdCorpus'),
+  rules: lazy(() => import('../commands/rules.mjs'), 'cmdRules'),
+  design: lazy(() => import('../commands/design.mjs'), 'cmdDesign'),
+  add: lazy(() => import('../commands/add.mjs'), 'cmdAdd'),
+  'install-hook': lazy(() => import('../commands/install-hook.mjs'), 'cmdInstallHook', (fn, f) => fn(f)),
+  selftest: lazy(() => import('../commands/selftest.mjs'), 'cmdSelftest', (fn, f) => fn(f)),
+  protect: lazy(() => import('../commands/protect.mjs'), 'cmdProtect', (fn, f) => fn(f)),
+  ledger: lazy(() => import('../commands/ledger.mjs'), 'cmdLedger', (fn, f) => fn(f)),
+  doctor: lazy(() => import('../commands/doctor.mjs'), 'cmdDoctor', (fn, f) => fn(f)),
+  new: lazy(() => import('../commands/new.mjs'), 'cmdNew'),
+  mcp: lazy(() => import('../commands/mcp.mjs'), 'cmdMcp'),
+  secrets: lazy(() => import('../commands/secrets.mjs'), 'cmdSecrets'),
+  status: lazy(() => import('../commands/status.mjs'), 'cmdStatus', (fn) => fn()),
 };
 
 export const ADMIN_VERBS = new Set([
