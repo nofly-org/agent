@@ -103,6 +103,8 @@ test('the learned type set round-trips, expires, and is cleared by an answer wit
   assert.deepEqual(readSubjectTypes({ file, url: 'u' }), ['package', 'image']);
   assert.equal(readSubjectTypes({ file, url: 'other' }), null, 'another server’s set is not this one');
   assert.equal(readSubjectTypes({ file, url: 'u', now: Date.now() + 86_400_000 }), null, 'stale = unknown');
+  rememberSubjectTypes(['package'], { file, url: 'u', now: Date.now() + 86_400_000 });
+  assert.equal(readSubjectTypes({ file, url: 'u' }), null, 'a set stamped in the future never reads as fresh');
   rememberSubjectTypes(undefined, { file, url: 'u' });
   assert.equal(readSubjectTypes({ file, url: 'u' }), null, 'an older server clears it');
   fs.rmSync(dir, { recursive: true, force: true });
