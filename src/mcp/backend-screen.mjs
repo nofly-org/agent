@@ -3,6 +3,7 @@ import { gateMachine } from '../core/api-client.mjs';
 import { breakerOpen, breakerReset, breakerTrip, guardTimeoutMs } from '../core/circuit-breaker.mjs';
 import { detectEnv } from '../gate/environment.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
+import { guardWait } from '../guard/options.mjs';
 
 /**
  * WHERE THE SHIM JUDGES A TOOL CALL AND ITS RESULT.
@@ -87,19 +88,19 @@ async function post(settings, route, body, agentId) {
  * Returns `{ blocked, held, reason }`, or `{ unreachable: reason }` when the backend
  * did not answer - the caller then runs the local rules (or refuses under strict).
  */
-async function judge(settings, route, body, agentId) {
-  if (breakerOpen()) return { unreachable: 'circuit open after recent failures' };
+async function judge(settings, route, body, agentId, strict) {
+  if (!strict && breakerOpen()) return { unreachable: 'circuit open after recent failures' };
   try {
-    const d = await post(settings, route, body, agentId);
+    const d = await post(settings, route, { ...body, ...guardWait() }, agentId);
     const held = d.hold === true;
     return { blocked: d.decision === 'BLOCK' || held, held, approvalId: d.approvalId ?? null, reason: String(d.reason ?? ''), decision: d.decision };
   } catch (error) {
-    breakerTrip();
+    if (!error?.status || error.status >= 500) breakerTrip();
     return { unreachable: error?.message ?? String(error) };
   }
 }
 
-export function screenCallRemote({ settings, server, tool, args, sessionId, agentId }) {
+export function screenCallRemote({ settings, server, tool, args, sessionId, agentId, strict }) {
   return judge(
     settings,
     '/gate/tool-call',
@@ -112,10 +113,11 @@ export function screenCallRemote({ settings, server, tool, args, sessionId, agen
       agent: 'mcp-shim',
     },
     agentId,
+    strict,
   );
 }
 
-export function screenResultRemote({ settings, server, tool, args, result, sessionId, agentId }) {
+export function screenResultRemote({ settings, server, tool, args, result, sessionId, agentId, strict }) {
   return judge(
     settings,
     '/gate/tool-result',
@@ -129,5 +131,6 @@ export function screenResultRemote({ settings, server, tool, args, result, sessi
       agent: 'mcp-shim',
     },
     agentId,
+    strict,
   );
 }

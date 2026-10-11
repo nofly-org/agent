@@ -691,7 +691,8 @@ add an exception in the platform instead:
 | `SHOMRA_GUARD_IGNORE` | Comma-separated file globs the runtime guard treats as known-safe (adds to `.shomraignore`) |
 | `SHOMRA_GUARD_ALWAYS_ESCALATE` | `1` = send every call to the server (full telemetry, higher overhead) |
 | `SHOMRA_GUARD_TIMEOUT_MS` | Firewall per-call server timeout (default 2000) |
-| `SHOMRA_GUARD_BREAKER_MS` | Skip the server this long after a failure (default 30000; `0` disables) |
+| `SHOMRA_GUARD_BREAKER_MS` | Skip the server this long after repeated failures (default 30000; `0` disables) |
+| `SHOMRA_GUARD_BREAKER_FAILURES` | Failures in a row before the server is skipped (default 3). One slow or failed screen no longer switches the server off for every later call, and `SHOMRA_GUARD_STRICT` never skips it. |
 | `SHOMRA_LLM_PROXY_BASE` | Proxy base URL `install-hook` writes for Aider (default `http://127.0.0.1:4141/openai/v1`) |
 | `SHOMRA_MODEL_GUARD` | `0` = disable the model-load screen in the PreToolUse hook |
 | `SHOMRA_PROMPT_GUARD_OFF` | `1` = disable the prompt channel only (tool-call and tool-result guards stay on) |

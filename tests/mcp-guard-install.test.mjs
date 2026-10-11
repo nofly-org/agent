@@ -144,3 +144,20 @@ test('padding cannot push a payload past what the shim screens, and a text blob 
   screenResult({ content: Array.from({ length: 100000 }, (_, i) => ({ type: 'text', text: `row ${i}` })) });
   assert.ok(Date.now() - started < 5000, 'many small strings are screened in linear time');
 });
+
+test('a refused server answers the client\'s own initialize id, so the client sees why instead of timing out', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-refuse-'));
+  const child = spawn(process.execPath, [CLI, 'mcp-guard', '--name', 'blocked', '--', process.execPath, '-e', 'setTimeout(() => {}, 60000)'], {
+    env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, SHOMRA_GUARD_STRICT: '1' },
+  });
+  let out = '';
+  child.stdout.on('data', (d) => { out += d; });
+  child.stderr.resume();
+  const exited = new Promise((done) => child.on('exit', done));
+  child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 7, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } })}\n`);
+  await exited;
+  const reply = JSON.parse(out.trim().split('\n')[0]);
+  assert.equal(reply.id, 7, out);
+  assert.equal(reply.error.code, -32001);
+  assert.match(reply.error.message, /not configured/);
+});

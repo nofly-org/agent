@@ -66,12 +66,32 @@ export function refusal(id, message, data) {
   return { jsonrpc: '2.0', id, error: { code: SHOMRA_REFUSED, message, data } };
 }
 
+const BLOCKED_INIT_WAIT_MS = 3000;
+
 export function sendBlockedInitialize(reason, server, verdict) {
-  writeMessage(refusal(0, reason, {
+  const data = {
     source: 'shomra-mcp-shim',
     server,
     refusedBy: 'policy',
     ...(verdict?.state ? { state: verdict.state } : {}),
     ...(verdict?.eventId ? { eventId: verdict.eventId } : {}),
-  }));
+  };
+  return new Promise((done) => {
+    let finished = false;
+    const finish = (id) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      process.stdin.pause();
+      process.stdout.write(`${JSON.stringify(refusal(id, reason, data))}\n`, () => done());
+    };
+    const timer = setTimeout(() => finish(0), BLOCKED_INIT_WAIT_MS);
+    const framer = createLineFramer((message) => {
+      if (message && typeof message === 'object' && !Array.isArray(message) && (typeof message.id === 'number' || typeof message.id === 'string')) finish(message.id);
+    });
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', framer);
+    process.stdin.once('end', () => finish(0));
+    process.stdin.once('error', () => finish(0));
+  });
 }
