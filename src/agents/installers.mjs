@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readJsonFile } from '../core/json-file.mjs';
-import { LLM_PROXY_BASE, hookCommand } from './hook-command.mjs';
+import { SettingsFileError, readJsonFile, writeFileAtomic, writeJsonFile } from '../core/json-file.mjs';
+import { LLM_PROXY_BASE, SHOMRA_ANY_HOOK_RE, hookCommand } from './hook-command.mjs';
 import { hasFlatHook, hasGroupedHook } from './hook-files.mjs';
 import { matcherFor } from './vendor-tools.mjs';
 
@@ -62,15 +62,33 @@ export function widenToolGuardMatcher(list, required) {
   return changed;
 }
 
+function hooksOf(settings, file) {
+  if (settings.hooks === undefined || settings.hooks === null) settings.hooks = {};
+  if (typeof settings.hooks !== 'object' || Array.isArray(settings.hooks)) {
+    throw new SettingsFileError(`${file}: "hooks" is not an object - fix it first; nothing was changed.`);
+  }
+  return settings.hooks;
+}
+
+function eventList(container, key, file) {
+  if (container[key] === undefined || container[key] === null) container[key] = [];
+  if (!Array.isArray(container[key])) {
+    throw new SettingsFileError(`${file}: "${key}" is not a list - fix it first; nothing was changed.`);
+  }
+  return container[key];
+}
+
 export const AGENT_INSTALLERS = {
   claude(global) {
     const portable = !global;
     const dir = global ? path.join(os.homedir(), '.claude') : path.join(process.cwd(), '.claude');
     const file = path.join(dir, 'settings.json');
     const settings = readJsonFile(file);
-    settings.hooks = settings.hooks || {};
-    const pre = (settings.hooks.PreToolUse = settings.hooks.PreToolUse || []);
-    const post = (settings.hooks.PostToolUse = settings.hooks.PostToolUse || []);
+    const hooks = hooksOf(settings, file);
+    const pre = eventList(hooks, 'PreToolUse', file);
+    const post = eventList(hooks, 'PostToolUse', file);
+    const prompt = eventList(hooks, 'UserPromptSubmit', file);
+    const start = eventList(hooks, 'SessionStart', file);
     let changed = false;
     if (!hasGroupedHook(pre, 'tool-guard')) {
       pre.push({ matcher: TOOL_GUARD_MATCHERS.claude, hooks: [{ type: 'command', command: hookCommand('tool-guard --agent claude', { portable }) }] });
@@ -81,7 +99,6 @@ export const AGENT_INSTALLERS = {
       changed = true;
     }
 
-    const prompt = (settings.hooks.UserPromptSubmit = settings.hooks.UserPromptSubmit || []);
     if (!hasGroupedHook(prompt, 'prompt-guard')) {
       prompt.push({ hooks: [{ type: 'command', command: hookCommand('prompt-guard --agent claude', { portable }) }] });
       changed = true;
@@ -92,14 +109,12 @@ export const AGENT_INSTALLERS = {
       changed = true;
     }
 
-    const start = (settings.hooks.SessionStart = settings.hooks.SessionStart || []);
     if (!hasGroupedHook(start, 'session-guard')) {
       start.push({ hooks: [{ type: 'command', command: hookCommand('session-guard --agent claude', { portable }) }] });
       changed = true;
     }
     if (changed) {
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(settings, null, 2));
+      writeJsonFile(file, settings);
     }
     return { file, changed };
   },
@@ -109,8 +124,8 @@ export const AGENT_INSTALLERS = {
     const dir = global ? path.join(os.homedir(), '.codex') : path.join(process.cwd(), '.codex');
     const file = path.join(dir, 'hooks.json');
     const settings = readJsonFile(file);
-    const pre = (settings.PreToolUse = settings.PreToolUse || []);
-    const post = (settings.PostToolUse = settings.PostToolUse || []);
+    const pre = eventList(settings, 'PreToolUse', file);
+    const post = eventList(settings, 'PostToolUse', file);
     let changed = false;
     if (!hasGroupedHook(pre, 'tool-guard')) {
       pre.push({ matcher: TOOL_GUARD_MATCHERS.codex, hooks: [{ type: 'command', command: hookCommand('tool-guard --agent codex', { portable }) }] });
@@ -121,8 +136,7 @@ export const AGENT_INSTALLERS = {
       changed = true;
     }
     if (changed) {
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(settings, null, 2));
+      writeJsonFile(file, settings);
     }
     return { file, changed };
   },
@@ -132,9 +146,9 @@ export const AGENT_INSTALLERS = {
     const dir = global ? path.join(os.homedir(), '.gemini') : path.join(process.cwd(), '.gemini');
     const file = path.join(dir, 'settings.json');
     const settings = readJsonFile(file);
-    settings.hooks = settings.hooks || {};
-    const before = (settings.hooks.BeforeTool = settings.hooks.BeforeTool || []);
-    const after = (settings.hooks.AfterTool = settings.hooks.AfterTool || []);
+    const hooks = hooksOf(settings, file);
+    const before = eventList(hooks, 'BeforeTool', file);
+    const after = eventList(hooks, 'AfterTool', file);
     let changed = false;
     if (!hasGroupedHook(before, 'tool-guard')) {
       before.push({ matcher: '.*', hooks: [{ type: 'command', command: hookCommand('tool-guard --agent gemini', { portable }) }] });
@@ -145,8 +159,7 @@ export const AGENT_INSTALLERS = {
       changed = true;
     }
     if (changed) {
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(settings, null, 2));
+      writeJsonFile(file, settings);
     }
     return { file, changed };
   },
@@ -157,10 +170,10 @@ export const AGENT_INSTALLERS = {
     const file = path.join(dir, 'hooks.json');
     const cfg = readJsonFile(file);
     if (cfg.version === undefined) cfg.version = 1;
-    cfg.hooks = cfg.hooks || {};
+    const hooks = hooksOf(cfg, file);
     let changed = false;
     const wire = (event, command) => {
-      const list = (cfg.hooks[event] = cfg.hooks[event] || []);
+      const list = eventList(hooks, event, file);
       if (!hasFlatHook(list)) {
         list.push({ command });
         changed = true;
@@ -173,8 +186,7 @@ export const AGENT_INSTALLERS = {
 
     wire('beforeSubmitPrompt', hookCommand('prompt-guard --agent cursor', { portable }));
     if (changed) {
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(cfg, null, 2));
+      writeJsonFile(file, cfg);
     }
     return { file, changed };
   },
@@ -184,10 +196,10 @@ export const AGENT_INSTALLERS = {
     const dir = global ? path.join(os.homedir(), '.codeium', 'windsurf') : path.join(process.cwd(), '.windsurf');
     const file = path.join(dir, 'hooks.json');
     const cfg = readJsonFile(file);
-    cfg.hooks = cfg.hooks || {};
+    const hooks = hooksOf(cfg, file);
     let changed = false;
     const wire = (event, command) => {
-      const list = (cfg.hooks[event] = cfg.hooks[event] || []);
+      const list = eventList(hooks, event, file);
       if (!hasFlatHook(list)) {
         list.push({ command });
         changed = true;
@@ -198,8 +210,7 @@ export const AGENT_INSTALLERS = {
     wire('pre_mcp_tool_use', hookCommand('tool-guard --agent windsurf', { portable }));
     wire('post_mcp_tool_use', hookCommand('result-guard --agent windsurf', { portable }));
     if (changed) {
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(cfg, null, 2));
+      writeJsonFile(file, cfg);
     }
     return { file, changed };
   },
@@ -213,8 +224,7 @@ export const AGENT_INSTALLERS = {
       preToolUse: [{ command: hookCommand('tool-guard --agent copilot', { portable }) }],
       postToolUse: [{ command: hookCommand('result-guard --agent copilot', { portable }) }],
     };
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(cfg, null, 2));
+    writeJsonFile(file, cfg);
     return { file, changed: true };
   },
 
@@ -223,9 +233,9 @@ export const AGENT_INSTALLERS = {
     const dir = global ? path.join(os.homedir(), '.cline') : path.join(process.cwd(), '.cline');
     const file = path.join(dir, 'hooks.json');
     const settings = readJsonFile(file);
-    settings.hooks = settings.hooks || {};
-    const pre = (settings.hooks.PreToolUse = settings.hooks.PreToolUse || []);
-    const post = (settings.hooks.PostToolUse = settings.hooks.PostToolUse || []);
+    const hooks = hooksOf(settings, file);
+    const pre = eventList(hooks, 'PreToolUse', file);
+    const post = eventList(hooks, 'PostToolUse', file);
     let changed = false;
     if (!hasGroupedHook(pre, 'tool-guard')) {
       pre.push({ matcher: TOOL_GUARD_MATCHERS.cline, hooks: [{ type: 'command', command: hookCommand('tool-guard --agent cline', { portable }) }] });
@@ -236,8 +246,7 @@ export const AGENT_INSTALLERS = {
       changed = true;
     }
     if (changed) {
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(settings, null, 2));
+      writeJsonFile(file, settings);
     }
     return { file, changed };
   },
@@ -255,7 +264,89 @@ export const AGENT_INSTALLERS = {
       `# prompt/response is policy-screened. Requires: shomra llm-proxy (running).\n` +
       `openai-api-base: ${LLM_PROXY_BASE}\n` +
       `# --- end shomra ---\n`;
-    fs.writeFileSync(file, (text.endsWith('\n') || !text ? text : text + '\n') + block);
+    writeFileAtomic(file, (text.endsWith('\n') || !text ? text : text + '\n') + block);
     return { file, changed: true };
+  },
+};
+
+const isShomraHook = (h) => SHOMRA_ANY_HOOK_RE.test(String(h?.command ?? ''));
+
+function stripGrouped(list) {
+  let removed = 0;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const group = list[i];
+    if (!Array.isArray(group?.hooks)) continue;
+    const kept = group.hooks.filter((h) => !isShomraHook(h));
+    removed += group.hooks.length - kept.length;
+    if (!kept.length) list.splice(i, 1);
+    else if (kept.length !== group.hooks.length) group.hooks = kept;
+  }
+  return removed;
+}
+
+function stripFlat(list) {
+  let removed = 0;
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (isShomraHook(list[i])) {
+      list.splice(i, 1);
+      removed++;
+    }
+  }
+  return removed;
+}
+
+function stripEvents(container, strip) {
+  if (!container || typeof container !== 'object' || Array.isArray(container)) return 0;
+  let removed = 0;
+  for (const [event, list] of Object.entries(container)) {
+    if (!Array.isArray(list)) continue;
+    const n = strip(list);
+    removed += n;
+    if (n && !list.length) delete container[event];
+  }
+  return removed;
+}
+
+function uninstallJson(file, strip, { dropWhen = (cfg) => !Object.keys(cfg).length } = {}) {
+  if (!fs.existsSync(file)) return { file, changed: false, removed: 0 };
+  const cfg = readJsonFile(file);
+  const removed = strip(cfg);
+  if (!removed) return { file, changed: false, removed: 0 };
+  if (dropWhen(cfg)) fs.rmSync(file, { force: true });
+  else writeJsonFile(file, cfg);
+  return { file, changed: true, removed };
+}
+
+function nestedStrip(strip) {
+  return (cfg) => {
+    const removed = stripEvents(cfg.hooks, strip);
+    if (removed && cfg.hooks && typeof cfg.hooks === 'object' && !Object.keys(cfg.hooks).length) delete cfg.hooks;
+    return removed;
+  };
+}
+
+const homeOrCwd = (global, ...parts) => (global ? path.join(os.homedir(), ...parts) : path.join(process.cwd(), ...parts));
+
+const AIDER_BLOCK_RE = /\n?# --- shomra llm guard ---\n[\s\S]*?# --- end shomra ---\n?/;
+
+export const AGENT_UNINSTALLERS = {
+  claude: (global) => uninstallJson(homeOrCwd(global, '.claude', 'settings.json'), nestedStrip(stripGrouped)),
+  codex: (global) => uninstallJson(homeOrCwd(global, '.codex', 'hooks.json'), (cfg) => stripEvents(cfg, stripGrouped)),
+  gemini: (global) => uninstallJson(homeOrCwd(global, '.gemini', 'settings.json'), nestedStrip(stripGrouped)),
+  cline: (global) => uninstallJson(homeOrCwd(global, '.cline', 'hooks.json'), nestedStrip(stripGrouped)),
+  cursor: (global) => uninstallJson(homeOrCwd(global, '.cursor', 'hooks.json'), nestedStrip(stripFlat), {
+    dropWhen: (cfg) => Object.keys(cfg).every((k) => k === 'version'),
+  }),
+  windsurf: (global) => uninstallJson(global ? path.join(os.homedir(), '.codeium', 'windsurf', 'hooks.json') : path.join(process.cwd(), '.windsurf', 'hooks.json'), nestedStrip(stripFlat)),
+  copilot: (global) => uninstallJson(global ? path.join(os.homedir(), '.copilot', 'hooks', 'shomra.json') : path.join(process.cwd(), '.github', 'hooks', 'shomra.json'), (cfg) => stripEvents(cfg, stripFlat)),
+  aider(global) {
+    const file = homeOrCwd(global, '.aider.conf.yml');
+    if (!fs.existsSync(file)) return { file, changed: false, removed: 0 };
+    const text = fs.readFileSync(file, 'utf8');
+    if (!AIDER_BLOCK_RE.test(text)) return { file, changed: false, removed: 0 };
+    const next = text.replace(AIDER_BLOCK_RE, '');
+    if (!next.trim()) fs.rmSync(file, { force: true });
+    else writeFileAtomic(file, next);
+    return { file, changed: true, removed: 1 };
   },
 };

@@ -16,6 +16,7 @@ const IGNORE_FILE_RE = /(?:^|[\\/])\.shomraignore$/i;
 const DISABLE_HOOKS_RE = /["']?disableAllHooks["']?\s*:\s*true\b/i;
 const GUARD_ENV_RE = /["']?SHOMRA_(?:GUARD_LOCAL|GUARD_IGNORE|MODEL_GUARD|MCP_SCREEN|URL|GUARD_TIMEOUT_MS|GUARD_BREAKER_MS)["']?\s*:|\bSHOMRA_(?:GUARD_LOCAL|GUARD_IGNORE|MODEL_GUARD|MCP_SCREEN|URL|GUARD_TIMEOUT_MS|GUARD_BREAKER_MS)=/gi;
 const HOOK_COMMAND_RE = /"command"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+const SELF_UNINSTALL_RE = /(?:\bshomra(?:\.mjs)?["']?|@shomra\/agent(?:@[\w.-]+)?)\s+install-hook\b[^\n;&|]*\s--uninstall\b/i;
 const CHAINED_SHELL_RE = /[;&|`<>()]|\$\(/;
 
 function guardEnvCount(text) {
@@ -104,6 +105,7 @@ export function guardHookTamper(tool, input = {}, { cwd = process.cwd(), home = 
   const note = (p, why) => {
     if (!hits.some((h) => h.path === p)) hits.push({ path: p, why });
   };
+  if (command && SELF_UNINSTALL_RE.test(command)) note('the coding agents\' hook settings', 'uninstall');
   for (const p of [...direct, ...viaShell]) {
     const target = abs(p);
     if (IGNORE_FILE_RE.test(target)) {
@@ -135,6 +137,7 @@ const HOOK_TAMPER_WHY = {
   'chains-hook': 'wraps the Shomra guard hook in other commands, which then run on every screened call, in',
   rewrites: 'rewrites, with no way to check the Shomra guard hook survives,',
   'ignore-list': 'edits the list of paths the Shomra guard skips,',
+  uninstall: 'runs `shomra install-hook --uninstall`, which removes the Shomra guard hook from',
 };
 
 export function hookTamperReason(hit) {

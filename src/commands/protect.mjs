@@ -18,7 +18,7 @@ export function cmdProtect(flags) {
 
   const global = !(flags.local || flags.project);
   console.log(bold(cyan('\n  Shomra protect')) + dim(` - wiring the runtime firewall for ${detected.length} coding agent${detected.length > 1 ? 's' : ''} (${global ? 'machine-wide' : 'this repo'})`));
-  let wired = 0, already = 0;
+  let wired = 0, already = 0, failed = 0;
   for (const a of detected) {
 
     try {
@@ -27,8 +27,13 @@ export function cmdProtect(flags) {
       else { already++; console.log(`  ${yellow('•')} ${AGENT_LABELS[a.key]} ${dim('already protected (' + file + ')')}`); }
       if (a.key === 'aider') console.log(dim('      Aider has no tool hook - routes model calls through the LLM Guard proxy. Start ') + bold('shomra llm-proxy') + dim('.'));
     } catch (e) {
+      failed++;
       console.log(`  ${red('✗')} ${AGENT_LABELS[a.key]} ${dim('- ' + e.message)}`);
     }
+  }
+  if (failed) {
+    process.exitCode = 1;
+    console.log(red(`\n  ✗ ${failed} agent${failed > 1 ? 's were' : ' was'} NOT protected - fix the file named above and re-run.`));
   }
   console.log(`\n  ${wired ? green(`✓ ${wired} newly protected`) : green('✓ Already protected')}${already ? dim(` · ${already} already wired`) : ''}${dim(' - tool calls, results and prompts now screened on-machine.')}`);
 
