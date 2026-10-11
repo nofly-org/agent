@@ -1,6 +1,8 @@
 import { AGENT_INSTALLERS, AGENT_KEYS, AGENT_LABELS, AGENT_UNINSTALLERS } from '../agents/installers.mjs';
+import { MANAGED_AGENTS, installManaged, uninstallManaged, userWritableLauncher } from '../agents/managed.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
+import { isPrivileged } from '../core/user-homes.mjs';
 import { PROMPT_HOOK_AGENTS } from '../guard/prompt-guard.mjs';
 
 function requestedAgents(flags, fallback) {
@@ -39,7 +41,55 @@ function uninstallHooks(flags) {
   if (failed) process.exitCode = 1;
 }
 
+function managedHooks(flags) {
+  if (!process.env.SHOMRA_MANAGED_ROOT && !isPrivileged()) {
+    console.error(red('✗') + ' ' + bold('shomra install-hook --managed') + ' writes machine-wide policy files and must run as root (sudo) or an elevated Administrator.');
+    process.exit(EXIT_USAGE);
+  }
+  const targets = flags.agent ? requestedAgents(flags, 'all') : MANAGED_AGENTS;
+  let failed = 0;
+  let done = 0;
+  for (const agent of targets) {
+    if (!MANAGED_AGENTS.includes(agent)) {
+      console.log(dim(`  • ${AGENT_LABELS[agent]} has no machine-wide hook location - install it per user with shomra install-hook --global.`));
+      continue;
+    }
+    let result;
+    try {
+      result = flags.uninstall ? uninstallManaged(agent) : installManaged(agent);
+    } catch (error) {
+      failed++;
+      console.error(red('✗') + ` ${AGENT_LABELS[agent]}: ${error.message}`);
+      continue;
+    }
+    if (result.unsupported) {
+      console.log(dim(`  • ${AGENT_LABELS[agent]} has no machine-wide hook location on this OS.`));
+      continue;
+    }
+    done++;
+    if (flags.uninstall) {
+      if (result.changed) console.log(green('✓') + ` Removed the managed Shomra hooks for ${bold(AGENT_LABELS[agent])} from ${bold(result.file)}`);
+      else console.log(dim(`  • No managed Shomra hook for ${AGENT_LABELS[agent]} in ${result.file}`));
+      continue;
+    }
+    if (result.changed) console.log(green('✓') + ` Installed managed Shomra hooks for ${bold(AGENT_LABELS[agent])} → ${bold(result.file)}`);
+    else console.log(yellow('•') + ` Managed Shomra hooks already installed for ${AGENT_LABELS[agent]} in ${bold(result.file)}`);
+    if (result.note) console.log(dim(`    ${result.note}`));
+  }
+  if (failed) process.exitCode = 1;
+  if (flags.uninstall || !done) return;
+  console.log(dim('\n  Managed hooks run for every user of this machine, and a user cannot remove them or switch them off'));
+  console.log(dim('  from their own settings. Hooks a user installed with --global still run alongside them.'));
+  const writable = userWritableLauncher();
+  if (writable) {
+    console.log(yellow('\n  ⚠') + ` The hooks run ${bold(process.execPath)} on this install, but ${bold(writable)} can be changed by a`);
+    console.log(dim('    non-root user, who could replace what every hook runs. Install Shomra in a root-owned location'));
+    console.log(dim('    (the script from shomra admin mdm-script does) and run this again from there.'));
+  }
+}
+
 export function cmdInstallHook(flags) {
+  if (flags.managed) return managedHooks(flags);
   if (flags.uninstall) return uninstallHooks(flags);
   const global = !!flags.global;
   const targets = requestedAgents(flags, 'claude');

@@ -6,7 +6,7 @@ export const PACKAGE_NAME = '@shomra/agent';
 const shQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 const psQuote = (s) => `'${String(s).replace(/'/g, "''")}'`;
 
-function bashScript({ os, key, url, hours }) {
+function bashScript({ os, key, url, hours, guard }) {
   const jamf = os === 'macos';
   const keyLine = key
     ? `SHOMRA_API_KEY="\${SHOMRA_API_KEY:-}"\n[ -n "$SHOMRA_API_KEY" ] || SHOMRA_API_KEY=${shQuote(key)}`
@@ -39,12 +39,12 @@ fi
 
 "$NODE" "$ENTRY" init --machine --url "$SHOMRA_URL"
 "$NODE" "$ENTRY" schedule install --all-users --every ${hours}h
-"$NODE" "$ENTRY" report --all-users || echo "first report finished with findings or errors - see the Shomra dashboard"
+${guard ? '"$NODE" "$ENTRY" install-hook --managed || echo "the managed runtime firewall could not be installed for every agent - see the output above"\n' : ''}"$NODE" "$ENTRY" report --all-users || echo "first report finished with findings or errors - see the Shomra dashboard"
 exit 0
 `;
 }
 
-function powershellScript({ key, url, hours }) {
+function powershellScript({ key, url, hours, guard }) {
   return `# Shomra endpoint agent - MDM bootstrap (Windows). Run as SYSTEM or an elevated Administrator.
 $ErrorActionPreference = 'Stop'
 
@@ -74,16 +74,16 @@ if (-not (Test-Path $Entry)) {
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $Node $Entry schedule install --all-users --every ${hours}h
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-& $Node $Entry report --all-users
+${guard ? "& $Node $Entry install-hook --managed\nif ($LASTEXITCODE -ne 0) { Write-Output 'the managed runtime firewall could not be installed for every agent - see the output above' }\n" : ''}& $Node $Entry report --all-users
 if ($LASTEXITCODE -ne 0) { Write-Output 'first report finished with findings or errors - see the Shomra dashboard' }
 exit 0
 `;
 }
 
-export function mdmScript({ os, key = null, url = null, every = undefined } = {}) {
+export function mdmScript({ os, key = null, url = null, every = undefined, guard = false } = {}) {
   const target = String(os ?? '').toLowerCase();
   if (!MDM_OSES.includes(target)) throw new Error(`--os must be one of ${MDM_OSES.join(', ')}`);
   const hours = parseEvery(every);
-  const args = { os: target, key: key && key !== true ? String(key) : null, url: url && url !== true ? String(url).replace(/\/$/, '') : null, hours };
+  const args = { os: target, key: key && key !== true ? String(key) : null, url: url && url !== true ? String(url).replace(/\/$/, '') : null, hours, guard: !!guard };
   return target === 'windows' ? powershellScript(args) : bashScript(args);
 }

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { agentHookFiles } from '../agents/hook-files.mjs';
+import { agentHookFiles, managedFile } from '../agents/hook-files.mjs';
 import { PACKAGE_SPEC, SELF_PATH, shomraHookRe } from '../agents/hook-command.mjs';
 import { KIND_LABEL, VENDOR_TOOLS, matcherCovers, missingTools } from '../agents/vendor-tools.mjs';
 import { VERSION } from '../core/version.mjs';
@@ -154,7 +154,7 @@ function scopeOf(file) {
 export function staticCheck(vendor) {
   const v = VENDOR_TOOLS[vendor];
   const files = agentHookFiles(vendor).filter((f) => fs.existsSync(f));
-  const installs = files.flatMap((file) => hookEntries(vendor, file).map((e) => ({ ...e, file, scope: scopeOf(file) })));
+  const installs = files.flatMap((file) => hookEntries(vendor, file).map((e) => ({ ...e, file, scope: file === managedFile(vendor) ? 'machine' : scopeOf(file) })));
   const fix = `shomra install-hook --agent ${vendor}`;
 
   if (!installs.length) {

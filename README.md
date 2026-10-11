@@ -328,6 +328,19 @@ Each agent gets its hooks in the format it actually loads:
 
 Running the install again repairs an older install written in a shape the agent
 ignored, and a hook left pointing at a Node or Shomra install that was removed.
+
+**Managed install, for organizations.** `sudo shomra install-hook --managed`
+(or an elevated Administrator on Windows) writes the hooks where a developer
+cannot remove or switch them off: Claude Code's managed settings
+(`managed-settings.d/50-shomra.json`, read by Claude Code 2.1.83 or later), `/etc/codex/hooks.json` (Codex runs these
+without a trust review), and Copilot CLI's `policy.d`. Add `--guard` to
+`shomra admin mdm-script` to include it in the Jamf, Intune or Kandji bootstrap,
+which installs Shomra in a root-owned location so nobody can quietly replace
+what the hooks run. If you also deliver Claude Code settings from the admin
+console or an MDM profile, set `managedSourcesBehavior: "merge"` there, or Claude
+Code skips the managed settings folder; check with `/status`. Set
+`SHOMRA_MANAGED_ROOT` to write the same files under a staging folder, for
+example when building a golden image.
 A symlinked settings file stays a symlink, and a file installed by root for
 another user keeps that user as its owner.
 

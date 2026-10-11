@@ -23,7 +23,7 @@ ${bold(cyan('shomra admin'))} ${dim('- governance & advanced security operations
   ${cyan('llm-proxy')}     Guardrail live LLM traffic             ${dim('[--port 4141] [--project <id>] [--agent-id <handle>]')}
 
   ${dim('Fleet rollout')}
-  ${cyan('mdm-script')}    Print a Jamf/Intune/Kandji bootstrap script ${dim('--os macos|windows|linux [--url <url>] [--key <key>] [--every 6h]')}
+  ${cyan('mdm-script')}    Print a Jamf/Intune/Kandji bootstrap script ${dim('--os macos|windows|linux [--url <url>] [--key <key>] [--every 6h] [--guard]')}
                 ${dim('Without --key the script reads SHOMRA_API_KEY from the MDM secret variables.')}
 
   ${dim('Each also runs as a bare top-level verb (e.g.')} ${dim(bold('shomra redteam'))}${dim(') for back-compat.')}

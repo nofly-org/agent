@@ -36,7 +36,7 @@ const COMMANDS = () => `${bold('COMMANDS')}
   ${cyan('init')}          Configure + enroll this machine       ${dim('--key shm_live_… [--url <backend>]  ·  --machine for a root-only machine-wide config')}
   ${cyan('schedule')}      Re-report on a timer (launchd / Task Scheduler / systemd / cron) ${dim('install [--every 6h] [--all-users] · remove · status')}
   ${cyan('protect')}       Wire the runtime firewall for every coding agent ${dim('[--project] [--force]')}
-  ${cyan('install-hook')}  Wire the runtime firewall into ONE agent ${dim('[--agent claude|cursor|windsurf|gemini|codex|copilot|cline|aider|all] [--global] [--uninstall]')}
+  ${cyan('install-hook')}  Wire the runtime firewall into ONE agent ${dim('[--agent claude|cursor|windsurf|gemini|codex|copilot|cline|aider|all] [--global|--managed] [--uninstall]')}
   ${cyan('selftest')}      ${bold('Prove the firewall is really in path')} ${dim('[--agent <name>|all] [--json] [--strict]')}
                 ${dim('Reads each installed agent\'s own settings, then drives its REAL hook with')}
                 ${dim('inert canaries in that vendor\'s wire shape - a shell install, a Dockerfile')}
@@ -272,6 +272,11 @@ const RUNTIME_FIREWALL = () => `${bold('RUNTIME FIREWALL (multi-agent)')}
     ${dim('cline')} (Cline) · ${dim('aider')} (Aider - no tool hooks, so it is routed through the LLM Guard proxy)
   e.g. ${dim('shomra install-hook --agent cursor,windsurf')} or ${dim('shomra install-hook --agent all')}.
   Windsurf's post-hooks can flag/log but not withhold a result (vendor limit).
+
+  ${bold('--managed')} (root or Administrator) installs the hooks machine-wide, where a
+  developer cannot remove or switch them off: Claude Code managed settings
+  (managed-settings.d/50-shomra.json), /etc/codex/hooks.json, and Copilot CLI's
+  policy.d. ${bold('shomra admin mdm-script --guard')} adds it to the MDM bootstrap.
 
   Risky calls/results are blocked and every decision lands in Gate Activity,
   tagged with which agent triggered it.
