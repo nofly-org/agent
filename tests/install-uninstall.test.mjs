@@ -27,7 +27,7 @@ function cli(box, args) {
 
 const AGENT_FILES = [
   '.claude/settings.json', '.codex/hooks.json', '.gemini/settings.json', '.cursor/hooks.json',
-  '.windsurf/hooks.json', '.github/hooks/shomra.json', '.cline/hooks.json', '.aider.conf.yml',
+  '.windsurf/hooks.json', '.github/hooks/shomra.json', '.clinerules/hooks/PreToolUse', '.clinerules/hooks/PostToolUse', '.aider.conf.yml',
 ];
 
 test('install then uninstall for every agent leaves no Shomra hook and no file it created', () => {

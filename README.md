@@ -316,6 +316,26 @@ backend, behind a short timeout + circuit breaker - so a slow or down backend
 never freezes the agent. Fail-open by default; `SHOMRA_GUARD_STRICT=1` fails
 closed on the server tier.
 
+Each agent gets its hooks in the format it actually loads:
+
+| Agent | Where | Notes |
+| :- | :- | :- |
+| Claude Code | `~/.claude/settings.json`, or `.claude/settings.json` in a repo | Covers `Bash`, `PowerShell`, `Monitor`, file writes, skills and MCP calls. |
+| Codex CLI | `~/.codex/hooks.json`, or `.codex/hooks.json`, under its `"hooks"` key | Codex runs a new user or project hook only after you trust it in the review it shows at its next start. |
+| GitHub Copilot CLI | `~/.copilot/hooks/shomra.json` (or `$COPILOT_HOME/hooks/`), or `.github/hooks/shomra.json` | Version 1 format, with separate bash and PowerShell commands. |
+| Cline | `PreToolUse` and `PostToolUse` scripts in `~/Documents/Cline/Hooks` (or `~/.cline/hooks`), or `.clinerules/hooks` | Cline cannot pause a call for approval, so a call Shomra would ask about is refused with the reason. |
+| Gemini CLI, Cursor, Windsurf | their own settings or hooks file | |
+
+Running the install again repairs an older install written in a shape the agent
+ignored, and a hook left pointing at a Node or Shomra install that was removed.
+A symlinked settings file stays a symlink, and a file installed by root for
+another user keeps that user as its owner.
+
+When the guard blocks a tool result, Claude Code (2.1.121 or later), Copilot CLI,
+Gemini CLI and Cline get the result replaced or withheld, so the model never
+reads it; Codex replaces MCP results. Where an agent cannot replace a result, it
+stays visible with a note telling the model to treat it as untrusted data.
+
 A call the on-machine rules flag as high risk (a reverse tunnel, a netcat shell,
 data posted to the network) is never run silently just because no server
 answered. With no backend configured, or when the backend is unreachable or

@@ -63,6 +63,7 @@ export function cmdInstallHook(flags) {
     } else {
       console.log(yellow('•') + ` Shomra runtime firewall already installed for ${AGENT_LABELS[agent]} in ${bold(file)}`);
     }
+    if (result.note) console.log(dim(`    Note: ${result.note}`));
     if (agent === 'windsurf') {
       console.log(dim('    Note: Windsurf\'s post-hooks can flag/log but not withhold a tool result.'));
     }

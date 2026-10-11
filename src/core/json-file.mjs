@@ -24,19 +24,73 @@ export function readJsonFile(file) {
   return parsed;
 }
 
+function realTarget(file) {
+  try {
+    return fs.realpathSync(file);
+  } catch {
+    return file;
+  }
+}
+
+function ownerOf(target) {
+  let cur = target;
+  for (let i = 0; i < 64; i++) {
+    try {
+      const st = fs.statSync(cur);
+      return { uid: st.uid, gid: st.gid };
+    } catch {
+      const parent = path.dirname(cur);
+      if (parent === cur) return null;
+      cur = parent;
+    }
+  }
+  return null;
+}
+
+function handOver(p, owner) {
+  if (!owner) return;
+  try {
+    fs.chownSync(p, owner.uid, owner.gid);
+  } catch {
+  }
+}
+
+function makeDirs(dir, owner) {
+  const first = fs.mkdirSync(dir, { recursive: true });
+  if (!first || !owner) return;
+  for (let cur = dir, i = 0; i < 64; i++) {
+    handOver(cur, owner);
+    const parent = path.dirname(cur);
+    if (cur === first || parent === cur) return;
+    cur = parent;
+  }
+}
+
 export function writeFileAtomic(file, text) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const target = realTarget(file);
+  const dir = path.dirname(target);
+  const found = typeof process.getuid === 'function' && process.getuid() === 0 ? ownerOf(target) : null;
+  const owner = found && found.uid !== 0 ? found : null;
+  makeDirs(dir, owner);
   let mode;
   try {
-    mode = fs.statSync(file).mode & 0o777;
+    mode = fs.statSync(target).mode & 0o777;
   } catch {
     mode = undefined;
   }
-  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  const tmp = path.join(dir, `.${path.basename(target)}.${process.pid}.${Date.now()}.tmp`);
   try {
     fs.writeFileSync(tmp, text, mode === undefined ? undefined : { mode });
+  } catch (error) {
+    if (error.code !== 'EACCES' && error.code !== 'EPERM' && error.code !== 'EROFS') throw error;
+    fs.writeFileSync(target, text);
+    handOver(target, owner);
+    return;
+  }
+  try {
     if (mode !== undefined) fs.chmodSync(tmp, mode);
-    fs.renameSync(tmp, file);
+    handOver(tmp, owner);
+    fs.renameSync(tmp, target);
   } catch (error) {
     fs.rmSync(tmp, { force: true });
     throw error;

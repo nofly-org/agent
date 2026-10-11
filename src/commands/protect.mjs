@@ -22,9 +22,10 @@ export function cmdProtect(flags) {
   for (const a of detected) {
 
     try {
-      const { file, changed } = AGENT_INSTALLERS[a.key](global);
+      const { file, changed, note } = AGENT_INSTALLERS[a.key](global);
       if (changed) { wired++; console.log(`  ${green('✓')} Protected ${bold(AGENT_LABELS[a.key])} ${dim('→ ' + file)}`); }
       else { already++; console.log(`  ${yellow('•')} ${AGENT_LABELS[a.key]} ${dim('already protected (' + file + ')')}`); }
+      if (note) console.log(dim(`      ${note}`));
       if (a.key === 'aider') console.log(dim('      Aider has no tool hook - routes model calls through the LLM Guard proxy. Start ') + bold('shomra llm-proxy') + dim('.'));
     } catch (e) {
       failed++;

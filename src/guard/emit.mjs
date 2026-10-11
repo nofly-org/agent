@@ -10,7 +10,7 @@ export function emitGuardDeny(agent, reason, userNote, stopped) {
     copilot: () => ({ permissionDecision: 'deny', permissionDecisionReason: reason }),
     gemini: () => ({ decision: 'deny', reason }),
     codex: () => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }),
-    cline: () => ({ decision: 'deny', reason, hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }),
+    cline: () => ({ cancel: true, errorMessage: reason }),
     claude: () => ({ ...(stopped ? { continue: false, stopReason: stopped } : {}), hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason }, ...(userNote ? { systemMessage: userNote } : {}) }),
   };
   process.stdout.write(JSON.stringify((bodies[agent] || bodies.claude)()));
@@ -36,30 +36,39 @@ export function emitResultBlock(agent, reason, withheld) {
     console.error(dim(reason));
     process.exit(0);
   }
-  const told = agent === 'gemini' ? reason : `${reason}${STILL_VISIBLE}`;
+  const hidden = agent === 'gemini' || agent === 'cline' || (agent === 'copilot' && withheld);
+  const told = hidden ? reason : `${reason}${STILL_VISIBLE}`;
   const replaced = withheld ? { updatedToolOutput: withheld.output, ...(withheld.mcp ? { updatedMCPToolOutput: withheld.output } : {}) } : {};
+  const mcpOnly = withheld?.mcp ? { updatedMCPToolOutput: withheld.output } : {};
+  const text = typeof withheld?.output === 'string' ? withheld.output : `[${reason}]`;
   const bodies = {
     cursor: () => ({ permission: 'deny', user_message: told, agent_message: told }),
-    copilot: () => ({ permissionDecision: 'deny', permissionDecisionReason: told }),
+    copilot: () => ({ modifiedResult: { resultType: 'success', textResultForLlm: text }, additionalContext: told }),
     gemini: () => ({ decision: 'deny', reason: told }),
-    codex: () => ({ decision: 'block', reason: told, hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: told } }),
-    cline: () => ({ decision: 'block', reason: told, hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: told } }),
+    codex: () => ({ decision: 'block', reason: told, hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: told, ...mcpOnly } }),
+    cline: () => ({ cancel: true, errorMessage: told }),
     claude: () => ({ decision: 'block', reason: told, hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: told, ...replaced } }),
   };
   process.stdout.write(JSON.stringify((bodies[agent] || bodies.claude)()));
   process.exit(0);
 }
 
-const RESULT_CONTEXT_AGENTS = new Set(['claude', 'codex', 'cline', 'gemini']);
+const RESULT_CONTEXT_AGENTS = new Set(['claude', 'codex', 'gemini']);
 
 export function emitResultContext(agent, note) {
   if (RESULT_CONTEXT_AGENTS.has(agent)) {
     process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: agent === 'gemini' ? 'AfterTool' : 'PostToolUse', additionalContext: note } }));
+  } else if (agent === 'copilot') {
+    process.stdout.write(JSON.stringify({ additionalContext: note }));
+  } else if (agent === 'cline') {
+    process.stdout.write(JSON.stringify({ context: note }));
   } else {
     process.stderr.write(`${note}\n`);
   }
   process.exit(0);
 }
+
+const CLINE_ASK = ' Cline cannot pause a tool call for approval, so Shomra refused it - run it yourself if you meant it.';
 
 export function emitGuardAsk(agent, reason) {
   const bodies = {
@@ -67,7 +76,7 @@ export function emitGuardAsk(agent, reason) {
     copilot: () => ({ permissionDecision: 'ask', permissionDecisionReason: reason }),
     gemini: () => ({ decision: 'ask', reason }),
     codex: () => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: reason } }),
-    cline: () => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: reason } }),
+    cline: () => ({ cancel: true, errorMessage: `${reason}${CLINE_ASK}` }),
     claude: () => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: reason } }),
   };
 
