@@ -34,6 +34,10 @@ test('the generated artifact-path mirror is in sync with the server source', asy
     t.skip('Shomra.Backend not checked out');
     return;
   }
+  if (typeof (await import('node:module')).stripTypeScriptTypes !== 'function') {
+    t.skip('the platform mirror script needs a Node with stripTypeScriptTypes');
+    return;
+  }
   const { render } = await import(pathToUrl(SCRIPT));
   assert.equal(
     fs.readFileSync(MIRROR, 'utf8'),

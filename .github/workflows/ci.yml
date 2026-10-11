@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        node: [18, 20, 22]
+        include:
+          - os: macos-latest
+            node: 22
+          - os: windows-latest
+            node: 22
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Syntax check every module
+        shell: bash
+        run: |
+          set -euo pipefail
+          git ls-files '*.mjs' | while read -r f; do node --check "$f"; done
+
+      - name: Test
+        run: npm test
+
+      - name: CLI smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          node shomra.mjs --version
+          node shomra.mjs help > /dev/null
+          echo '{"tool_name":"Bash","tool_input":{"command":"git status"}}' | node shomra.mjs tool-guard --agent claude
