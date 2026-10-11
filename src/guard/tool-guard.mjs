@@ -85,8 +85,8 @@ function ackLedger() {
 function askUnscreened(agent, why, flagged = null) {
   emitGuardAsk(
     agent,
-    `Shomra could not screen this call (${why}), and it is a destructive one - a delete, a force push, `
-    + 'or a write to a file that survives the session. Nothing has judged it: approve it only if you meant it. '
+    `Shomra could not screen this call (${why}), and it is a high-consequence one - a delete, a force push, `
+    + 'or a call that touches credentials or a file that survives the session. Nothing has judged it: approve it only if you meant it. '
     + (flagged ? `The on-machine rules also matched: ${flagged}. ` : '')
     + 'Set SHOMRA_GUARD_FAILOPEN_SEVERE=1 to let these through unscreened.',
   );
