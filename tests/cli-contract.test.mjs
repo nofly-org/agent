@@ -227,3 +227,26 @@ test('MCP servers in a large ~/.claude.json are still found, and a store too lar
     s.done();
   }
 });
+
+test('mcp add keeps what it was given: comma lists in env, quoted paths, a server named after its runner, and arguments after --', () => {
+  const s = sandbox();
+  const env = { SHOMRA_OFFLINE: '1' };
+  try {
+    const hosts = s.run(['mcp', 'add', 'hosts', '--no-index', '--env', 'ALLOWED_HOSTS=a.example.com,b.example.com,LOG=debug', '--', 'npx', '-y', '@modelcontextprotocol/server-everything', '--port', '9000'], env);
+    assert.equal(hosts.status, 0, hosts.stderr + hosts.stdout);
+    let config = JSON.parse(fs.readFileSync(path.join(s.dir, '.mcp.json'), 'utf8'));
+    assert.deepEqual(config.mcpServers.hosts.env, { ALLOWED_HOSTS: 'a.example.com,b.example.com', LOG: 'debug' });
+    assert.deepEqual(config.mcpServers.hosts.args, ['-y', '@modelcontextprotocol/server-everything', '--port', '9000']);
+    assert.equal(s.run(['mcp', 'add', 'docker', '--no-index', '--', 'docker', 'run', '-i', '--rm', 'mcp/time'], env).status, 0);
+    assert.equal(s.run(['mcp', 'add', 'npx', '--no-index', 'some-server'], env).status, 3, 'a runner as the name with a package as the command is a forgotten name');
+    assert.equal(s.run(['mcp', 'add', 'tools', '--no-index', '--command', 'node "/opt/my tools/server.js"'], env).status, 0);
+    config = JSON.parse(fs.readFileSync(path.join(s.dir, '.mcp.json'), 'utf8'));
+    assert.deepEqual(config.mcpServers.tools, { command: 'node', args: ['/opt/my tools/server.js'] });
+    assert.ok(config.mcpServers.docker);
+    s.write('.mcp.json', '{\n  // my servers\n  "mcpServers": {}\n}\n');
+    assert.equal(s.run(['mcp', 'add', 'x', '--no-index', '--', 'node', 'x.js'], env).status, 3, 'a commented config is never rewritten without its comments');
+    assert.match(fs.readFileSync(path.join(s.dir, '.mcp.json'), 'utf8'), /my servers/);
+  } finally {
+    s.done();
+  }
+});

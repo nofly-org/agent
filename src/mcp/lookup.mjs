@@ -2,11 +2,48 @@ import { clampInt } from '../core/numbers.mjs';
 
 export function parseEnvKV(str) {
   const env = {};
-  for (const pair of String(str || '').split(',')) {
+  for (const pair of String(str || '').split(/,(?=\s*[A-Za-z_][A-Za-z0-9_]*=)/)) {
     const i = pair.indexOf('=');
     if (i > 0) env[pair.slice(0, i).trim()] = pair.slice(i + 1).trim();
   }
   return env;
+}
+
+export function splitCommandLine(line) {
+  const out = [];
+  let current = '';
+  let quote = null;
+  let started = false;
+  const text = String(line ?? '');
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      else if (c === '\\' && quote === '"' && (text[i + 1] === '"' || text[i + 1] === '\\')) current += text[++i];
+      else current += c;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      quote = c;
+      started = true;
+      continue;
+    }
+    if (/\s/.test(c)) {
+      if (started) out.push(current);
+      current = '';
+      started = false;
+      continue;
+    }
+    if (c === '\\' && i + 1 < text.length && /[\s"'\\]/.test(text[i + 1])) {
+      current += text[++i];
+      started = true;
+      continue;
+    }
+    current += c;
+    started = true;
+  }
+  if (started) out.push(current);
+  return out;
 }
 
 const MCP_RUNNERS = new Set(['npx', '-y', '--yes', 'uvx', 'uv', 'node', 'bun', 'deno', 'python', 'python3', '-m', 'pipx', 'run', 'npm', 'pnpm', 'yarn', 'dlx', 'bunx']);

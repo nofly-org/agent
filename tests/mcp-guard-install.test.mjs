@@ -161,3 +161,11 @@ test('a refused server answers the client\'s own initialize id, so the client se
   assert.equal(reply.error.code, -32001);
   assert.match(reply.error.message, /not configured/);
 });
+
+test('a launch line through cmd.exe keeps trailing backslashes and quotes intact for the program it starts', async () => {
+  const { escapeCmdArgument, cmdLine } = await import('../src/mcp/child-process.mjs');
+  assert.equal(escapeCmdArgument('C:\\data\\'), '^"C:\\data\\\\^"', 'a trailing backslash is doubled so it does not escape the closing quote');
+  assert.equal(escapeCmdArgument('say "hi"'), '^"say^ \\^"hi\\^"^"');
+  assert.equal(escapeCmdArgument('a&b|c'), '^"a^&b^|c^"', 'cmd.exe never sees a bare & or |');
+  assert.equal(cmdLine('C:\\proj\\node_modules\\.bin\\srv.cmd', ['a&b']), 'C:\\proj\\node_modules\\.bin\\srv.cmd ^^^"a^^^&b^^^"', 'an npm .cmd shim parses the line twice');
+});
