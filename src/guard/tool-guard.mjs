@@ -20,7 +20,7 @@ import { SHELL_TOOLS_RE, WRITE_TOOLS, callSubjectTypes, guardNeedsServer, guardT
 import { shellCommandOf } from './command-text.mjs';
 import { runTargets } from './run-targets.mjs';
 import { redactLocally } from '../detect/local-redact.mjs';
-import { confirmationNote, emitGuardAsk, emitGuardDeny, stoppedNote } from './emit.mjs';
+import { confirmationNote, emitGuardAsk, emitGuardDeny, emitGuardNotice, stoppedNote } from './emit.mjs';
 import { guardPathAllowlisted } from './ignore.mjs';
 import { screenModelLoad } from './model-load.mjs';
 import { screenSkillInvocation } from './skill-check.mjs';
@@ -29,7 +29,7 @@ import { normalizeGuardInput } from './normalize.mjs';
 import { readHookPayload as readPayload } from './payload.mjs';
 import { envFlag, guardWait, resolveAgentFlag } from './options.mjs';
 import { recordSelftest, selftestField } from './selftest-marker.mjs';
-import { buildGuardBody, reportGuardDecision } from './report.mjs';
+import { buildGuardBody, flushQueuedReports, reportGuardDecision } from './report.mjs';
 import { guardHookTamper, guardStateTamper, hookTamperReason, refuseOrAsk, tamperReason } from './self-protect.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
 
@@ -82,6 +82,25 @@ function ackLedger() {
   } catch {
   }
   pendingLedger = [];
+}
+
+const FAIL_OPEN_NOTICE_EVERY_MS = 30 * 60 * 1000;
+
+function failOpenNoticeDue(now = Date.now()) {
+  const file = path.join(CONFIG_DIR, 'guard-notice.json');
+  let last = 0;
+  try {
+    last = Number(JSON.parse(fs.readFileSync(file, 'utf8')).at) || 0;
+  } catch {
+  }
+  if (now - last < FAIL_OPEN_NOTICE_EVERY_MS) return false;
+  try {
+    fs.mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(file, JSON.stringify({ at: now }), { mode: 0o600 });
+  } catch {
+    return false;
+  }
+  return true;
 }
 
 function askUnscreened(agent, why, flagged = null) {
@@ -243,6 +262,7 @@ async function requestServerDecision({ url, apiKey, agentId, body, agent, strict
     if (!isGuardDecision(decision)) throw new Error('the backend answered without a guard decision');
     breakerReset();
     ackLedger();
+    await flushQueuedReports(url, apiKey);
     return decision;
   } catch (error) {
     clearTimeout(timer);
@@ -410,6 +430,7 @@ export async function cmdToolGuard(flags) {
     countUnscreened(subjectCall ? `${why} - org subject rules NOT evaluated` : supplyCall ? `${why} - package and image checks NOT run` : why);
     if (severe) askUnscreened(agent, why, flaggedBy);
     settleFlagged(agent, flaggedBy, `No Shomra verdict arrived (${why})`);
+    if (failOpenNoticeDue()) emitGuardNotice(agent, `Shomra could not reach its server (${why}), so tool calls are screened on this machine only and org policy is not applied until it answers again. Set SHOMRA_GUARD_STRICT=1 to refuse calls instead.`);
     return process.exit(0);
   };
 

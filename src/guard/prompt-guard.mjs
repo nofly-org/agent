@@ -11,7 +11,7 @@ import { keyedFetch } from '../core/keyed-fetch.mjs';
 import { stoppedNote } from './emit.mjs';
 import { readHookPayload as readPayload } from './payload.mjs';
 
-export const PROMPT_HOOK_AGENTS = new Set(['claude', 'cursor']);
+export const PROMPT_HOOK_AGENTS = new Set(['claude', 'cursor', 'codex', 'gemini']);
 
 function normalizePromptInput(agent, payload) {
   const p = payload || {};
@@ -34,7 +34,11 @@ function normalizePromptInput(agent, payload) {
 }
 
 function emitPromptDeny(agent, reason, stopped) {
-  if (stopped && (agent === 'claude' || !agent)) {
+  if (agent === 'gemini') {
+    process.stdout.write(JSON.stringify({ decision: 'deny', reason: stopped ? `${stopped} ${reason}` : reason }));
+    process.exit(0);
+  }
+  if (stopped && (agent === 'claude' || agent === 'codex' || !agent)) {
     process.stdout.write(JSON.stringify({ continue: false, stopReason: stopped, decision: 'block', reason }));
     process.exit(0);
   }
@@ -52,7 +56,7 @@ function emitPromptContext(agent, note) {
     process.stderr.write(note + '\n');
     process.exit(0);
   }
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: note } }));
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: agent === 'gemini' ? 'BeforeAgent' : 'UserPromptSubmit', additionalContext: note } }));
   process.exit(0);
 }
 

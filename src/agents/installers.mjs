@@ -112,12 +112,17 @@ export function installCodexAt(file, portable) {
   const hooks = hooksOf(settings, file);
   const pre = eventList(hooks, 'PreToolUse', file);
   const post = eventList(hooks, 'PostToolUse', file);
+  const prompt = eventList(hooks, 'UserPromptSubmit', file);
   if (!hasGroupedHook(pre, 'tool-guard')) {
     pre.push({ matcher: TOOL_GUARD_MATCHERS.codex, hooks: [{ type: 'command', command: hookCommand('tool-guard --agent codex', { portable }) }] });
     changed = true;
   } else if (widenToolGuardMatcher(pre, TOOL_GUARD_MATCHERS.codex)) changed = true;
   if (!hasGroupedHook(post, 'result-guard')) {
     post.push({ matcher: 'WebFetch|WebSearch|web_search|Read|mcp__.*', hooks: [{ type: 'command', command: hookCommand('result-guard --agent codex', { portable }) }] });
+    changed = true;
+  }
+  if (!hasGroupedHook(prompt, 'prompt-guard')) {
+    prompt.push({ hooks: [{ type: 'command', command: hookCommand('prompt-guard --agent codex', { portable }) }] });
     changed = true;
   }
   if (refreshGrouped(hooks)) changed = true;
@@ -182,6 +187,7 @@ export const AGENT_INSTALLERS = {
     const hooks = hooksOf(settings, file);
     const before = eventList(hooks, 'BeforeTool', file);
     const after = eventList(hooks, 'AfterTool', file);
+    const prompt = eventList(hooks, 'BeforeAgent', file);
     let changed = false;
     if (!hasGroupedHook(before, 'tool-guard')) {
       before.push({ matcher: '.*', hooks: [{ type: 'command', command: hookCommand('tool-guard --agent gemini', { portable }) }] });
@@ -189,6 +195,10 @@ export const AGENT_INSTALLERS = {
     }
     if (!hasGroupedHook(after, 'result-guard')) {
       after.push({ matcher: '.*', hooks: [{ type: 'command', command: hookCommand('result-guard --agent gemini', { portable }) }] });
+      changed = true;
+    }
+    if (!hasGroupedHook(prompt, 'prompt-guard')) {
+      prompt.push({ hooks: [{ type: 'command', command: hookCommand('prompt-guard --agent gemini', { portable }) }] });
       changed = true;
     }
     if (refreshGrouped(hooks)) changed = true;
@@ -296,6 +306,14 @@ export const AGENT_INSTALLERS = {
     let text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
     if (/#\s*shomra llm guard/i.test(text) || text.includes(LLM_PROXY_BASE)) {
       return { file, changed: false };
+    }
+    const existing = /^\s*openai-api-base\s*:\s*(\S.*)$/m.exec(text);
+    if (existing) {
+      return {
+        file,
+        changed: false,
+        note: `${file} already sets openai-api-base (${existing[1].trim()}), so Shomra left it alone - a second key would silently replace yours. To screen Aider, point it at ${LLM_PROXY_BASE} and give shomra llm-proxy your endpoint as its upstream.`,
+      };
     }
     const block =
       `\n# --- shomra llm guard ---\n` +

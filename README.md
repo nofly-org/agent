@@ -184,7 +184,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with: { node-version: 22 }
       - name: Vet AI artifacts
         env:
           SHOMRA_API_KEY: ${{ secrets.SHOMRA_API_KEY }}
@@ -221,7 +221,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }   # need the base ref to diff changed artifacts
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with: { node-version: 22 }
       - run: npx @shomra/agent pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -387,7 +387,7 @@ Three channels are screened:
 |---|---|---|
 | **Tool call** | PreToolUse / `beforeShellExecution` | the shell command, artifact write or MCP call, before it runs |
 | **Tool result** | PostToolUse / `afterMCPExecution` | injection, exfil sinks and hidden payloads in what a fetch/read brings *back* |
-| **Prompt** | `UserPromptSubmit` (Claude Code) / `beforeSubmitPrompt` (Cursor) | what **you** paste, before it leaves the machine |
+| **Prompt** | `UserPromptSubmit` (Claude Code, Codex) / `beforeSubmitPrompt` (Cursor) / `BeforeAgent` (Gemini CLI) | what **you** paste, before it leaves the machine |
 | **Plan** | `PreToolUse` on `ExitPlanMode` (Claude Code) | nothing - it *informs*. See [`shomra plan`](#shomra-plan--threat-model-what-the-agent-is-about-to-build) |
 
 **Skills are checked when they are invoked (Claude Code).** The `Skill` tool is

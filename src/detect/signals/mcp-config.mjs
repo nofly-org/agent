@@ -651,7 +651,6 @@ export function gradeMcpDocument(content, path = '') {
   return { servers, findings };
 }
 
-/* ─── masking what leaves the machine ────────────────────────────────────── */
 
 const MASK_KEY = 'shomra-mask-v1';
 const MAX_KEEP = 12;

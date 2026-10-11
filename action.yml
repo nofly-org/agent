@@ -57,7 +57,7 @@ runs:
     - name: Set up Node
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        node-version: '22'
 
     - name: Run Shomra
       id: run
@@ -66,17 +66,24 @@ runs:
       env:
         SHOMRA_API_KEY: ${{ inputs.api-key }}
         SHOMRA_URL: ${{ inputs.url }}
+        SHOMRA_ACTION_ARGS: ${{ inputs.args }}
+        SHOMRA_ACTION_VERSION: ${{ inputs.version }}
+        SHOMRA_ACTION_FAIL_ON_FLAG: ${{ inputs.fail-on-flag }}
       run: |
         set -o pipefail
-        args="${{ inputs.args }}"
+        if [[ ! "$SHOMRA_ACTION_VERSION" =~ ^[A-Za-z0-9._-]+$ ]]; then
+          echo "::error::version must be an npm dist-tag or an exact version"
+          exit 3
+        fi
+        read -r -a argv <<< "$SHOMRA_ACTION_ARGS"
         # --strict is appended rather than baked into the default, so a caller who
         # passes their own args still gets the fail-on-flag behaviour they asked
         # for, and passing --strict twice stays harmless.
-        if [ "${{ inputs.fail-on-flag }}" = "true" ] && [[ "$args" != *"--strict"* ]]; then
-          args="$args --strict"
+        if [ "$SHOMRA_ACTION_FAIL_ON_FLAG" = "true" ] && [[ " ${argv[*]} " != *" --strict "* ]]; then
+          argv+=("--strict")
         fi
         set +e
-        npx --yes "@shomra/agent@${{ inputs.version }}" $args
+        npx --yes "@shomra/agent@${SHOMRA_ACTION_VERSION}" "${argv[@]}"
         code=$?
         set -e
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"

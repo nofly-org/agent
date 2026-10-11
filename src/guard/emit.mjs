@@ -68,6 +68,14 @@ export function emitResultContext(agent, note) {
   process.exit(0);
 }
 
+const NOTICE_AGENTS = new Set(['claude', 'codex', 'gemini']);
+
+export function emitGuardNotice(agent, message) {
+  if (NOTICE_AGENTS.has(agent)) process.stdout.write(JSON.stringify({ systemMessage: message }));
+  else process.stderr.write(`${message}\n`);
+  process.exit(0);
+}
+
 const CLINE_ASK = ' Cline cannot pause a tool call for approval, so Shomra refused it - run it yourself if you meant it.';
 
 export function emitGuardAsk(agent, reason) {

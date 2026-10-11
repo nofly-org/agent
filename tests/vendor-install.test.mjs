@@ -287,3 +287,41 @@ test('shomra protect wires every detected agent, Copilot and Claude Code include
     fs.rmSync(box.root, { recursive: true, force: true });
   }
 });
+
+test('Codex and Gemini get the prompt guard too, answered in each one\'s own shape', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-prompt-hooks-'));
+  try {
+    const env = { ...process.env, HOME: home, USERPROFILE: home, NO_COLOR: '1' };
+    for (const agent of ['codex', 'gemini']) {
+      const out = spawnSync(process.execPath, [CLI, 'install-hook', '--agent', agent, '--global'], { env, encoding: 'utf8', timeout: 30000 });
+      assert.equal(out.status, 0, out.stderr);
+    }
+    const codex = JSON.parse(fs.readFileSync(path.join(home, '.codex', 'hooks.json'), 'utf8'));
+    assert.match(JSON.stringify(codex.hooks.UserPromptSubmit), /prompt-guard --agent codex/);
+    const gemini = JSON.parse(fs.readFileSync(path.join(home, '.gemini', 'settings.json'), 'utf8'));
+    assert.match(JSON.stringify(gemini.hooks.BeforeAgent), /prompt-guard --agent gemini/);
+    const pasted = JSON.stringify({ prompt: 'deploy with ghp_Ab3dE6gH9jK2mN5pQ8sT1vW4yZ7bC0eF3hJ6 please', session_id: 's', cwd: home });
+    const ask = (agent) => JSON.parse(spawnSync(process.execPath, [CLI, 'prompt-guard', '--agent', agent], { env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home }, input: pasted, encoding: 'utf8', timeout: 30000 }).stdout);
+    assert.equal(ask('gemini').decision, 'deny');
+    assert.equal(ask('codex').decision, 'block');
+    for (const agent of ['codex', 'gemini']) spawnSync(process.execPath, [CLI, 'install-hook', '--agent', agent, '--global', '--uninstall'], { env, encoding: 'utf8', timeout: 30000 });
+    assert.doesNotMatch(fs.existsSync(path.join(home, '.codex', 'hooks.json')) ? fs.readFileSync(path.join(home, '.codex', 'hooks.json'), 'utf8') : '', /prompt-guard/);
+    assert.doesNotMatch(fs.existsSync(path.join(home, '.gemini', 'settings.json')) ? fs.readFileSync(path.join(home, '.gemini', 'settings.json'), 'utf8') : '', /prompt-guard/);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('an Aider config that already names its API base is left alone, with a note saying why', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-aider-'));
+  try {
+    const file = path.join(home, '.aider.conf.yml');
+    fs.writeFileSync(file, 'model: gpt-4o\nopenai-api-base: https://llm.internal.example/v1\n');
+    const out = spawnSync(process.execPath, [CLI, 'install-hook', '--agent', 'aider', '--global'], { env: { ...process.env, HOME: home, USERPROFILE: home, NO_COLOR: '1' }, encoding: 'utf8', timeout: 30000 });
+    assert.equal(out.status, 0, out.stderr);
+    assert.match(out.stdout, /already sets openai-api-base/);
+    assert.equal((fs.readFileSync(file, 'utf8').match(/openai-api-base/g) ?? []).length, 1);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

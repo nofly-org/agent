@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }   # full history so the PR diff resolves
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with: { node-version: 22 }
       - run: npx @shomra/agent pr
         env:
           GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
