@@ -47,6 +47,17 @@ export function emitResultBlock(agent, reason) {
   process.exit(0);
 }
 
+const RESULT_CONTEXT_AGENTS = new Set(['claude', 'codex', 'cline']);
+
+export function emitResultContext(agent, note) {
+  if (RESULT_CONTEXT_AGENTS.has(agent)) {
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: note } }));
+  } else {
+    process.stderr.write(`${note}\n`);
+  }
+  process.exit(0);
+}
+
 export function emitGuardAsk(agent, reason) {
   const bodies = {
     cursor: () => ({ permission: 'ask', user_message: reason, agent_message: reason }),

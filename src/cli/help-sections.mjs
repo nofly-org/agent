@@ -317,6 +317,9 @@ const ENV = () => `${bold('ENV')}
   SHOMRA_GATE_CONCURRENCY=8   Parallel backend gate/model-lookup calls in batch runs (1-32)
   SHOMRA_GH_TOKEN             GitHub token for \`shomra pr\` (falls back to GITHUB_TOKEN)
   SHOMRA_GUARD_STRICT=1       Fail-closed on the server tier if the backend is unreachable
+  SHOMRA_GUARD_LOCAL_FLAG=ask What a call the on-machine rules flag does when no server verdict arrives:
+                              ask (default), allow or deny
+  SHOMRA_GUARD_FAILOPEN_SEVERE=1  Let destructive calls run unscreened when no server verdict arrives
   SHOMRA_GUARD_LOCAL=0        Disable the on-machine Tier-0 guard (route everything to the server)
   SHOMRA_GUARD_IGNORE=<globs> Comma-separated file globs the runtime guard treats as known-safe (never
                              withheld) - plus any .shomraignore in the working dir. For files with

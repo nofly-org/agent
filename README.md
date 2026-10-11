@@ -311,6 +311,15 @@ backend, behind a short timeout + circuit breaker - so a slow or down backend
 never freezes the agent. Fail-open by default; `SHOMRA_GUARD_STRICT=1` fails
 closed on the server tier.
 
+A call the on-machine rules flag as high risk (a reverse tunnel, a netcat shell,
+data posted to the network) is never run silently just because no server
+answered. With no backend configured, or when the backend is unreachable or
+rejects the credential, the agent **asks you** and names what matched. Set
+`SHOMRA_GUARD_LOCAL_FLAG=allow` to let flagged calls through or `=deny` to refuse
+them. A `.shomraignore` committed in a repo only quiets paths that really resolve
+inside that repo, so it can never silence a write to `~/.bashrc` or a symlinked
+path outside it.
+
 A command that names a script runs what the script says, so the hook reads it:
 the package.json script behind `npm test` / `npm run x` / `yarn x` / `pnpm x`
 (with npm's pre and post hooks), the recipe behind `make target`, or the file
@@ -638,6 +647,8 @@ add an exception in the platform instead:
 | `SHOMRA_GH_TOKEN` | GitHub token for `shomra pr` (falls back to `GITHUB_TOKEN`) |
 | `SHOMRA_ENVIRONMENT` | Declare where this runs: `LOCAL` \| `CI` \| `REMOTE`. Set `REMOTE` on a cloud agent runtime whose markers Shomra does not yet detect (Codex cloud, Jules, Cursor background agents, Devin…), so its sessions are not counted as developer machines. ⚠ It may only ever RAISE — it can never relabel a detected cloud container as a laptop. |
 | `SHOMRA_GUARD_STRICT` | `1` = firewall fails closed on the server tier |
+| `SHOMRA_GUARD_LOCAL_FLAG` | What a call the on-machine rules flag does when no server verdict arrives: `ask` (default), `allow`, or `deny`. Defaults to `allow` when `SHOMRA_GUARD_FAILOPEN_SEVERE=1` |
+| `SHOMRA_GUARD_FAILOPEN_SEVERE` | `1` = let destructive calls through unscreened when no server verdict arrives (default: ask) |
 | `SHOMRA_GUARD_LOCAL` | `0` = disable the on-machine Tier-0 guard |
 | `SHOMRA_GUARD_IGNORE` | Comma-separated file globs the runtime guard treats as known-safe (adds to `.shomraignore`) |
 | `SHOMRA_GUARD_ALWAYS_ESCALATE` | `1` = send every call to the server (full telemetry, higher overhead) |
