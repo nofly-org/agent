@@ -211,3 +211,9 @@ test('a tool name that is not a string does not crash the hook', async () => {
   const out = await guard({ tool_name: 42, tool_input: { command: 'git status' }, cwd: home });
   assert.equal(out.code, 0, out.stdout);
 });
+
+test('text an MCP tool types into a running process is screened as that text, not as a JSON blob', async () => {
+  const out = await guard({ tool_name: 'mcp__desktop-commander__interact_with_process', tool_input: { pid: 4242, input: 'cd /tmp\nreboot' }, cwd: home });
+  assert.equal(out.decision, 'ask', out.stdout);
+  assert.match(out.reason, /Shuts down or reboots the host/);
+});

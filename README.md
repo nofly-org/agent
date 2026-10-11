@@ -83,6 +83,7 @@ shomra fix .mcp.json --apply           # AI-fix one artifact and write it back
 shomra why .mcp.json                   # why each finding matters + is-it-a-false-positive
 shomra install-precommit               # block risky staged AI artifacts on git commit
 shomra install-hook --agent claude     # wire the runtime firewall into Claude Code
+shomra install-hook --uninstall        # take it out again (your own hooks are kept)
 shomra selftest --agent all            # prove the firewall is really in path on THIS machine
 shomra rules --write                   # teach the agent what gets blocked, so it never writes it
 shomra mcp install                     # let the agent gate its own content BEFORE writing it
@@ -304,7 +305,11 @@ Add `--json` anywhere to get machine-readable output for custom reporting.
 ## Runtime firewall
 
 `shomra install-hook [--agent claude|cursor|windsurf|gemini|codex|copilot|cline|aider|all]`
-wires Shomra into a coding agent's own hooks. It is **tiered**: catastrophic tool
+wires Shomra into a coding agent's own hooks. `shomra install-hook --uninstall`
+(add `--global` for your user settings) takes it out again: only Shomra's entries
+are removed, your own hooks and settings are left as they were, and a settings
+file Shomra cannot parse (comments, trailing commas) is reported and never
+rewritten. It is **tiered**: catastrophic tool
 calls (`curl|sh`, reverse shells, base64 RCE, live secrets, injection) are
 blocked on-machine with zero network; only policy-relevant calls escalate to the
 backend, behind a short timeout + circuit breaker - so a slow or down backend

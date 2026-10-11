@@ -124,6 +124,7 @@ export function guardText(tool, input) {
   if (typeof input.patch === 'string') parts.push(input.patch);
   if (typeof input.code_edit === 'string') parts.push(input.code_edit);
   if (Array.isArray(input.edits)) parts.push(input.edits.map((e) => e?.new_string ?? e?.new_str ?? '').join('\n'));
+  if (typeof input.input === 'string' && MCP_PROCESS_INPUT_LEAF.test(String(tool ?? '').split('__').slice(2).join('__'))) parts.push(input.input);
   if (!parts.length) { try { parts.push(JSON.stringify(input)); } catch { parts.push(String(input)); } }
   return parts.join('\n');
 }
