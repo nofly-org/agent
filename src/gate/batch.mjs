@@ -3,9 +3,9 @@ import { MAX_ARTIFACT_BYTES } from '../artifacts/matchers.mjs';
 import { api, gateMachine } from '../core/api-client.mjs';
 import { clampInt } from '../core/numbers.mjs';
 import { SEV_COLOR, bold, dim, gray, green, red, yellow } from '../core/terminal.mjs';
-import { localGate } from '../detect/guard-signals.mjs';
+import { grade, localGate } from '../detect/guard-signals.mjs';
 import { applyRepoPolicy, loadRepoPolicy } from './repo-policy.mjs';
-import { localAsGateResult } from './result.mjs';
+import { isGateVerdict, localAsGateResult } from './result.mjs';
 import { collectLocalSast, mergeSastIntoResult } from './sast.mjs';
 import { withMcpAdvisories } from './advisories.mjs';
 import { loadBaseline, loadIgnoreRules, suppressResult } from './suppressions.mjs';
@@ -16,28 +16,74 @@ const MAX_CONCURRENCY = 32;
 const MAX_FINDINGS_SHOWN = 3;
 const FAIL_ON_RANK = { critical: 3, high: 2, medium: 1 };
 
-function readArtifact(artifact, quiet) {
+const HALF_WINDOW = Math.floor(MAX_ARTIFACT_BYTES / 2);
+const DEC_ORDER = { ALLOW: 0, FLAG: 1, BLOCK: 2 };
+
+export function readArtifactBounded(full) {
+  let fd;
   try {
-    if (fs.statSync(artifact.full).size > MAX_ARTIFACT_BYTES) {
-      if (!quiet) console.log(`  ${gray('•')} ${dim(artifact.rel)} ${yellow('skipped (too large)')}`);
-      return null;
+    fd = fs.openSync(full, fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0));
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) return { skip: 'not a regular file' };
+    if (st.size <= MAX_ARTIFACT_BYTES) {
+      const buf = Buffer.alloc(st.size);
+      const n = fs.readSync(fd, buf, 0, st.size, 0);
+      return { content: buf.subarray(0, n).toString('utf8') };
     }
-    return fs.readFileSync(artifact.full, 'utf8');
-  } catch {
-    return null;
+    const head = Buffer.alloc(HALF_WINDOW);
+    const tail = Buffer.alloc(HALF_WINDOW);
+    const hn = fs.readSync(fd, head, 0, HALF_WINDOW, 0);
+    const tn = fs.readSync(fd, tail, 0, HALF_WINDOW, st.size - HALF_WINDOW);
+    return { content: `${head.subarray(0, hn).toString('utf8')}\n${tail.subarray(0, tn).toString('utf8')}`, unread: Math.max(0, st.size - hn - tn) };
+  } catch (error) {
+    return { skip: `could not be read (${error.code ?? error.message})` };
+  } finally {
+    if (fd !== undefined) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+      }
+    }
   }
+}
+
+function withUnreadMiddle(local, unread) {
+  const findings = [...local.findings, {
+    severity: 'HIGH',
+    title: `Artifact too large to read whole - ${unread} bytes in the middle were not analyzed`,
+    remediationText: 'An AI artifact this large is unusual; split it or review the unread part by hand.',
+  }];
+  const g = grade(findings);
+  return { ...local, findings, verdict: DEC_ORDER[g.verdict] > DEC_ORDER[local.verdict] ? g.verdict : local.verdict, riskScore: Math.max(local.riskScore ?? 0, g.riskScore) };
+}
+
+function notAnalyzedResult(artifact, why) {
+  return {
+    decision: 'FLAG',
+    name: artifact.rel.split('/').pop(),
+    kind: artifact.kind,
+    riskScore: 40,
+    findingCount: 1,
+    notAnalyzed: why,
+    findings: [{ severity: 'HIGH', title: `Not analyzed: ${why}`, remediationText: 'Shomra could not check this artifact, so it is not known to be safe. Make it readable, or remove it.' }],
+  };
 }
 
 function analyseLocally(artifacts, quiet) {
   const prepared = [];
   for (const artifact of artifacts) {
-    const content = readArtifact(artifact, quiet);
-    if (content == null) continue;
+    const read = artifact.skip ? { skip: artifact.skip } : readArtifactBounded(artifact.full);
+    if (read.skip) {
+      if (!quiet) console.log(`  ${gray('•')} ${dim(artifact.rel)} ${yellow(`not analyzed - ${read.skip}`)}`);
+      prepared.push({ artifact, skipped: read.skip });
+      continue;
+    }
+    const local = localGate(read.content, { kind: artifact.kind, path: artifact.rel });
     prepared.push({
       artifact,
-      content,
-      local: localGate(content, { kind: artifact.kind, path: artifact.rel }),
-      sast: collectLocalSast({ fullPath: artifact.full, relPath: artifact.rel, kind: artifact.kind, content }),
+      content: read.content,
+      local: read.unread ? withUnreadMiddle(local, read.unread) : local,
+      sast: collectLocalSast({ fullPath: artifact.full, relPath: artifact.rel, kind: artifact.kind, content: read.content }),
     });
   }
   return prepared;
@@ -47,7 +93,8 @@ async function requestServerVerdicts(prepared, { apiKey, url, env, flags, quiet 
   const verdicts = new Array(prepared.length).fill(null);
   const rejected = [];
   let backendDown = false;
-  if (!apiKey) return { verdicts, rejected, backendDown };
+  let authFailed = false;
+  if (!apiKey) return { verdicts, rejected, backendDown, authFailed };
 
   const concurrency = clampInt(process.env.SHOMRA_GATE_CONCURRENCY, DEFAULT_CONCURRENCY, MIN_CONCURRENCY, MAX_CONCURRENCY);
   let nextIndex = 0;
@@ -58,9 +105,10 @@ async function requestServerVerdicts(prepared, { apiKey, url, env, flags, quiet 
       nextIndex += 1;
       if (index >= prepared.length || backendDown) return;
 
-      const { artifact, content } = prepared[index];
+      const { artifact, content, skipped } = prepared[index];
+      if (skipped) continue;
       try {
-        verdicts[index] = await api(url, apiKey, '/gate/check', {
+        const verdict = await api(url, apiKey, '/gate/check', {
           kind: artifact.kind,
           path: artifact.rel,
           content,
@@ -68,11 +116,14 @@ async function requestServerVerdicts(prepared, { apiKey, url, env, flags, quiet 
           env,
           ...(flags.project ? { projectId: String(flags.project) } : {}),
         });
+        if (!isGateVerdict(verdict)) throw new Error('the backend answered without a gate verdict - is SHOMRA_URL pointing at the Shomra API?');
+        verdicts[index] = verdict;
       } catch (error) {
-        if (error?.rejected) {
+        if (error?.rejected && !error.auth) {
           rejected.push({ path: artifact.rel, kind: artifact.kind, reason: error.message });
           continue;
         }
+        if (error?.auth) authFailed = true;
         if (!backendDown && !quiet) {
           console.log(`  ${yellow('⚠')} ${dim(`backend unavailable (${error.message}) - on-machine analysis for the rest`)}`);
         }
@@ -83,7 +134,7 @@ async function requestServerVerdicts(prepared, { apiKey, url, env, flags, quiet 
   };
 
   await Promise.all(Array.from({ length: Math.min(concurrency, prepared.length) }, worker));
-  return { verdicts, rejected, backendDown };
+  return { verdicts, rejected, backendDown, authFailed };
 }
 
 function printResult(result, artifact, source) {
@@ -98,7 +149,8 @@ function printResult(result, artifact, source) {
   const findings = result.findings || [];
   for (const finding of findings.slice(0, MAX_FINDINGS_SHOWN)) {
     const location = finding.line ? dim(` (${finding.file || artifact.rel}:${finding.line})`) : '';
-    console.log(`      ${SEV_COLOR[finding.severity](String(finding.severity).padEnd(8))} ${finding.title}${location}`);
+    const severity = String(finding.severity ?? 'INFO').toUpperCase();
+    console.log(`      ${(SEV_COLOR[severity] ?? gray)(severity.padEnd(8))} ${finding.title}${location}`);
   }
   const remaining = findings.length - Math.min(findings.length, MAX_FINDINGS_SHOWN);
   if (remaining > 0) console.log(`      ${dim(`… and ${remaining} more (run with --json for all)`)}`);
@@ -121,11 +173,11 @@ export async function gateArtifactList(artifacts, { apiKey, url, env, flags, roo
   const policy = flags['no-policy'] ? null : loadRepoPolicy(workingRoot);
 
   const prepared = analyseLocally(artifacts, quiet);
-  const { verdicts, rejected, backendDown } = await requestServerVerdicts(prepared, { apiKey, url, env, flags, quiet });
+  const { verdicts, rejected, backendDown, authFailed } = await requestServerVerdicts(prepared, { apiKey, url, env, flags, quiet });
 
   let advisoryOutage = false;
   await Promise.all(prepared.map(async (p, i) => {
-    if (verdicts[i] || p.artifact.kind !== 'mcp') return;
+    if (p.skipped || verdicts[i] || p.artifact.kind !== 'mcp') return;
     const { local, advisories } = await withMcpAdvisories(p.local, { content: p.content, path: p.artifact.rel, kind: 'mcp', flags });
     p.local = local;
     if (advisories === 'unavailable') advisoryOutage = true;
@@ -137,11 +189,11 @@ export async function gateArtifactList(artifacts, { apiKey, url, env, flags, roo
   let flagged = 0;
   let suppressed = 0;
 
-  prepared.forEach(({ artifact, local, sast }, index) => {
+  prepared.forEach(({ artifact, local, sast, skipped }, index) => {
     const serverVerdict = verdicts[index];
     const source = serverVerdict ? 'server' : 'local';
-    const base = serverVerdict || localAsGateResult(local, artifact.rel.split('/').pop(), artifact.kind);
-    const merged = mergeSastIntoResult(base, sast);
+    const base = skipped ? notAnalyzedResult(artifact, skipped) : serverVerdict || localAsGateResult(local, artifact.rel.split('/').pop(), artifact.kind);
+    const merged = skipped ? base : mergeSastIntoResult(base, sast);
 
     const raw = { path: artifact.rel, full: artifact.full, kind: artifact.kind, source, ...merged, ...(serverVerdict ? { orgDecision: serverVerdict.decision } : {}) };
     const withSuppressions = suppression.enabled
@@ -157,11 +209,22 @@ export async function gateArtifactList(artifacts, { apiKey, url, env, flags, roo
     if (!quiet) printResult(result, artifact, source);
   });
 
-  return { results, blocked, flagged, suppressed, backendDown, rejected };
+  return { results, blocked, flagged, suppressed, backendDown, rejected, authFailed };
 }
 
 export function failOnHit(flags, blocked, flagged) {
   const threshold = FAIL_ON_RANK[String(flags['fail-on'] || 'critical').toLowerCase()] ?? 3;
   const worst = blocked > 0 ? 3 : flagged > 0 ? 2 : 0;
   return worst > 0 && worst >= threshold;
+}
+
+export function strictOutageOf(flags, { backendDown, authFailed }) {
+  return !!flags.strict && !!(backendDown || authFailed);
+}
+
+export function gateExitCode(flags, { blocked, flagged, backendDown, authFailed }) {
+  if (blocked > 0 || strictOutageOf(flags, { backendDown, authFailed })) return 1;
+  if (failOnHit(flags, blocked, flagged)) return 1;
+  if (flagged > 0 && flags.strict) return 2;
+  return 0;
 }

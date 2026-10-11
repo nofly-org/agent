@@ -11,6 +11,10 @@ export const magenta = ansi('35');
 export const cyan = ansi('36');
 export const gray = ansi('90');
 
-export const SEV_COLOR = { CRITICAL: red, HIGH: red, MEDIUM: yellow, LOW: cyan, INFO: gray };
+const SEV_BASE = { CRITICAL: red, HIGH: red, MEDIUM: yellow, LOW: cyan, INFO: gray };
+
+export const SEV_COLOR = new Proxy(SEV_BASE, {
+  get: (base, key) => (typeof key === 'string' ? base[key] ?? base[key.toUpperCase()] ?? gray : base[key]),
+});
 
 export const VERDICT_COLOR = { FAIL: red, REVIEW: yellow, PASS: green };

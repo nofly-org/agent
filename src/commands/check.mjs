@@ -1,11 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { ARTIFACT_MATCHERS, walkArtifacts } from '../artifacts/matchers.mjs';
+import { ARTIFACT_MATCHERS, resolveScanTarget, walkArtifacts } from '../artifacts/matchers.mjs';
+import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { git } from '../core/git-exec.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { VERSION } from '../core/version.mjs';
-import { failOnHit, gateArtifactList } from '../gate/batch.mjs';
+import { gateArtifactList, gateExitCode, strictOutageOf } from '../gate/batch.mjs';
 import { detectEnv } from '../gate/environment.mjs';
 import { toSarif } from '../gate/sarif.mjs';
 import { findingFingerprint } from '../gate/suppressions.mjs';
@@ -69,8 +70,8 @@ async function applyFixes({ results, flags, apiKey, url, blocked, flagged }) {
   if (!flags.json) console.log(dim('\n  Fixing flagged artifacts…'));
   let fixed = 0;
   for (const result of results) {
-    if (result.decision === 'ALLOW') continue;
-    const done = await fixOneFile(result.full, { apiKey, url, flags: { ...flags, apply: true, quiet: flags.json } });
+    if (result.decision === 'ALLOW' || result.notAnalyzed) continue;
+    const done = await fixOneFile(result.full, { apiKey, url, flags: { ...flags, apply: true, quiet: flags.json, silent: !!flags.json } });
     if (done) fixed += 1;
   }
   return fixed;
@@ -99,34 +100,43 @@ function printSummary({ results, blocked, flagged, suppressed, backendDown, reje
   } else if (!flags.fix && (blocked || flagged)) {
     console.log(dim('  Run ') + bold('shomra fix <file>') + dim(' or ') + bold('shomra check --fix') + dim(' to remediate.'));
   }
-  if (strictOutage) console.log(`  ${red('✗ Failing closed (--strict): backend unreachable, org policy unverified.')}`);
+  if (strictOutage) console.log(`  ${red('✗ Failing closed (--strict): backend unreachable or the credential was refused, org policy unverified.')}`);
   console.log('');
+}
+
+function scanTargetOrExit(flags, positional) {
+  const target = resolveScanTarget(positional[0] ?? flags.path);
+  if (target.error) {
+    console.error(`${red('✗')} ${target.error}`);
+    process.exit(EXIT_USAGE);
+  }
+  return target;
 }
 
 export async function cmdCheck(flags, positional) {
   const { apiKey, url } = resolveSettings(loadConfig());
-  const root = path.resolve(positional[0] || flags.path || '.');
+  const { root, single } = scanTargetOrExit(flags, positional);
   const env = detectEnv();
 
-  const artifacts = narrowToChanged(walkArtifacts(root), root, flags);
+  const artifacts = narrowToChanged(single ? [single] : walkArtifacts(root), root, flags);
   if (!artifacts.length) {
     printNothingToCheck(flags, root);
     return;
   }
 
   printHeader({ flags, artifacts, env, apiKey });
-  const { results, blocked, flagged, suppressed, backendDown, rejected } =
-    await gateArtifactList(artifacts, { apiKey, url, env, flags, root });
+  const outcome = await gateArtifactList(artifacts, { apiKey, url, env, flags, root });
+  const { results, blocked, flagged, suppressed, backendDown, rejected } = outcome;
+  const strictOutage = strictOutageOf(flags, outcome);
 
   if (flags.sarif) {
     console.log(JSON.stringify(toSarif(results), null, 2));
-    if (blocked) process.exitCode = 1;
-    else if (flagged && flags.strict) process.exitCode = 2;
+    if (strictOutage) console.error(`  ${red('✗ Failing closed (--strict): backend unreachable or the credential was refused, org policy unverified.')}`);
+    process.exitCode = gateExitCode(flags, outcome);
     return;
   }
 
   const fixed = await applyFixes({ results, flags, apiKey, url, blocked, flagged });
-  const strictOutage = backendDown && flags.strict;
 
   if (flags.json) {
     console.log(JSON.stringify({
@@ -137,14 +147,16 @@ export async function cmdCheck(flags, positional) {
     printSummary({ results, blocked, flagged, suppressed, backendDown, rejected, fixed, flags, strictOutage });
   }
 
-  if (blocked > 0 || strictOutage) process.exitCode = 1;
-  else if (failOnHit(flags, blocked, flagged)) process.exitCode = 1;
-  else if (flagged > 0 && flags.strict) process.exitCode = 2;
+  process.exitCode = gateExitCode(flags, outcome);
 }
 
 export async function cmdBaseline(flags, positional) {
   const { apiKey, url } = resolveSettings(loadConfig());
-  const root = path.resolve(positional[0] || flags.path || '.');
+  const { root, single } = scanTargetOrExit(flags, positional);
+  if (single) {
+    console.error(`${red('✗')} baseline takes a folder, not a file.`);
+    process.exit(EXIT_USAGE);
+  }
   const env = detectEnv();
 
   const artifacts = walkArtifacts(root);

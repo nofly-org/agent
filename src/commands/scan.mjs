@@ -111,7 +111,7 @@ async function sendReport(cfg, assets, flags, extra = {}) {
         const vc = VERDICT_COLOR[r.verdict] || gray;
         console.log(`  ${vc('●')} ${bold(r.name)} ${dim('risk ' + r.riskScore)} ${vc(r.verdict)}`);
         for (const f of r.findings || []) {
-          console.log(`      ${SEV_COLOR[f.severity](f.severity.padEnd(8))} ${f.title}`);
+          console.log(`      ${SEV_COLOR[f.severity](String(f.severity).padEnd(8))} ${f.title}`);
         }
       }
     }

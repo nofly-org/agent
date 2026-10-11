@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { MAX_ARTIFACT_BYTES, SKIP_DIRS } from '../artifacts/matchers.mjs';
+import { descendInto, readRegularFile, readableEntry } from '../artifacts/matchers.mjs';
 import { isModelConfig, isScannableSource, scanSourceFile } from '../detect/code-sast.mjs';
 import { grade } from '../detect/guard-signals.mjs';
 
@@ -8,15 +8,19 @@ const MAX_SAST_FILES = 60;
 
 function walkScripts(root) {
   const found = [];
-  const stack = [root];
+  let realRoot = root;
+  try { realRoot = fs.realpathSync(root); } catch {  }
+  const stack = [[root, '']];
   while (stack.length && found.length < MAX_SAST_FILES) {
-    const dir = stack.pop();
+    const [dir, relDir] = stack.pop();
     let entries;
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
     for (const ent of entries) {
       const full = path.join(dir, ent.name);
-      if (ent.isDirectory()) { if (!SKIP_DIRS.has(ent.name)) stack.push(full); continue; }
+      if (ent.isDirectory()) { if (descendInto(relDir ? `skills/${relDir}` : 'skills', ent.name)) stack.push([full, relDir ? `${relDir}/${ent.name}` : ent.name]); continue; }
       if (isScannableSource(ent.name) || isModelConfig(ent.name)) {
+        const readable = readableEntry(realRoot, full, ent);
+        if (!readable || readable.skip) continue;
         found.push({ full, rel: path.relative(process.cwd(), full).split(path.sep).join('/') });
         if (found.length >= MAX_SAST_FILES) break;
       }
@@ -45,9 +49,9 @@ export function collectLocalSast({ fullPath, relPath, kind, content }) {
   const isSkill = kind === 'skill' || /(^|\/)SKILL\.md$/i.test(relPath || '');
   if (isSkill && fullPath) {
     for (const s of walkScripts(path.dirname(fullPath))) {
-      let text;
-      try { if (fs.statSync(s.full).size > MAX_ARTIFACT_BYTES) continue; text = fs.readFileSync(s.full, 'utf8'); } catch { continue; }
-      for (const h of scanSourceFile(text, s.rel)) out.push(sastToFinding(h));
+      const read = readRegularFile(s.full);
+      if (read.skip) continue;
+      for (const h of scanSourceFile(read.content, s.rel)) out.push(sastToFinding(h));
     }
   }
   return out;

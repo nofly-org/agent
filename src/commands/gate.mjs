@@ -1,14 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { walkArtifacts } from '../artifacts/matchers.mjs';
+import { resolveScanTarget, walkArtifacts } from '../artifacts/matchers.mjs';
 import { api, gateMachine } from '../core/api-client.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { localGate } from '../detect/guard-signals.mjs';
-import { failOnHit, gateArtifactList } from '../gate/batch.mjs';
+import { gateArtifactList, gateExitCode, strictOutageOf } from '../gate/batch.mjs';
 import { GATE_KINDS, collectSiblings, detectEnv } from '../gate/environment.mjs';
-import { localAsGateResult, printGateResult } from '../gate/result.mjs';
+import { isGateVerdict, localAsGateResult, printGateResult } from '../gate/result.mjs';
 import { toSarif } from '../gate/sarif.mjs';
 import { collectLocalSast, mergeSastIntoResult } from '../gate/sast.mjs';
 import { withMcpAdvisories } from '../gate/advisories.mjs';
@@ -80,6 +80,7 @@ async function requestGateVerdict({ url, apiKey, flags, kind, relPath, content, 
       env: detectEnv(),
       ...(flags.project ? { projectId: String(flags.project) } : {}),
     });
+    if (!isGateVerdict(verdict)) throw new Error('the backend answered without a gate verdict - is SHOMRA_URL pointing at the Shomra API?');
     if (!flags.json) console.log('');
     return { verdict };
   } catch (error) {
@@ -129,10 +130,15 @@ export async function cmdGate(flags, positional) {
 
 async function cmdGateAll(flags, positional, { apiKey, url }) {
 
-  const dirArg = typeof flags.all === 'string' ? flags.all : positional[0] || '.';
-  const root = path.resolve(dirArg);
+  const dirArg = typeof flags.all === 'string' ? flags.all : positional[0];
+  const target = resolveScanTarget(dirArg);
+  if (target.error) {
+    console.error(`${red('✗')} ${target.error}`);
+    process.exit(EXIT_USAGE);
+  }
+  const { root } = target;
   const env = detectEnv();
-  const artifacts = walkArtifacts(root);
+  const artifacts = target.single ? [target.single] : walkArtifacts(root);
 
   if (!artifacts.length) {
     if (flags.json) console.log(JSON.stringify({ scanned: 0, results: [] }, null, 2));
@@ -142,15 +148,14 @@ async function cmdGateAll(flags, positional, { apiKey, url }) {
 
   if (!flags.json && !flags.sarif) console.log(bold(cyan('\n  Shomra gate')) + dim(` - batch (${artifacts.length} artifact${artifacts.length > 1 ? 's' : ''} · ${env.environment}${env.ciProvider ? ' · ' + env.ciProvider : ''})`));
 
-  const { results, blocked, flagged, suppressed, backendDown, rejected } = await gateArtifactList(artifacts, { apiKey, url, env, flags, root });
+  const outcome = await gateArtifactList(artifacts, { apiKey, url, env, flags, root });
+  const { results, blocked, flagged, suppressed, backendDown, rejected } = outcome;
 
-  const strictOutage = backendDown && flags.strict;
+  const strictOutage = strictOutageOf(flags, outcome);
 
   if (flags.sarif) {
     console.log(JSON.stringify(toSarif(results), null, 2));
-    if (blocked > 0 || strictOutage) process.exitCode = 1;
-    else if (failOnHit(flags, blocked, flagged)) process.exitCode = 1;
-    else if (flagged > 0 && flags.strict) process.exitCode = 2;
+    process.exitCode = gateExitCode(flags, outcome);
     return;
   }
   if (flags.json) {
@@ -164,13 +169,12 @@ async function cmdGateAll(flags, positional, { apiKey, url }) {
             ? yellow(`⚠ ${flagged} flagged`) + dim(` · ${results.length - flagged} allowed`)
             : green(`✓ All ${results.length} artifacts allowed.`)) +
         (suppressed ? dim(` · ${suppressed} suppressed`) : '') +
-        (backendDown ? yellow('  (on-machine analysis - org policy not applied)') : dim(' - full activity in the Shomra dashboard → Gate Activity')) +
+        (backendDown || !apiKey ? yellow('  (on-machine analysis - org policy not applied)') : dim(' - full activity in the Shomra dashboard → Gate Activity')) +
         '\n',
     );
-    if (strictOutage) console.log(`  ${red('✗ Failing closed (--strict): backend unreachable, org policy unverified.')}\n`);
+    for (const entry of rejected) console.log(`  ${yellow('!')} ${dim(`${entry.path} (${entry.kind}) - the backend refused it, org policy not applied: ${entry.reason}`)}`);
+    if (strictOutage) console.log(`  ${red('✗ Failing closed (--strict): backend unreachable or the credential was refused, org policy unverified.')}\n`);
   }
 
-  if (blocked > 0 || strictOutage) process.exitCode = 1;
-  else if (failOnHit(flags, blocked, flagged)) process.exitCode = 1;
-  else if (flagged > 0 && flags.strict) process.exitCode = 2;
+  process.exitCode = gateExitCode(flags, outcome);
 }

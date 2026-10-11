@@ -1,5 +1,14 @@
 import { SEV_COLOR, VERDICT_COLOR, bold, dim, gray, green, red, yellow } from '../core/terminal.mjs';
 
+const DECISIONS = new Set(['ALLOW', 'FLAG', 'BLOCK']);
+
+export function isGateVerdict(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v) && DECISIONS.has(v.decision)
+    && (v.findings === undefined || Array.isArray(v.findings));
+}
+
+export const severityColor = (severity) => SEV_COLOR[String(severity ?? '').toUpperCase()] ?? gray;
+
 export function localAsGateResult(local, name, kind) {
   return {
     decision: local.verdict,
@@ -20,7 +29,7 @@ export function printGateResult(res, source, flags) {
   console.log(dc(res.decision) + (source === 'local' ? dim('  (on-machine)') : ''));
   console.log(`\n  ${dc('●')} ${bold(res.name)} ${dim(`${res.kind} · risk ${res.riskScore}/100 · ${res.findingCount ?? (res.findings || []).length} finding(s)`)}`);
   for (const f of res.findings || []) {
-    console.log(`     ${SEV_COLOR[f.severity](String(f.severity).padEnd(8))} ${f.title}`);
+    console.log(`     ${severityColor(f.severity)(String(f.severity ?? 'INFO').toUpperCase().padEnd(8))} ${f.title}`);
     if (f.remediationText) console.log(`     ${dim('fix: ' + f.remediationText)}`);
   }
   for (const c of res.catalog || []) {

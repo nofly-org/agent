@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { readRegularFile } from '../artifacts/matchers.mjs';
 import { api } from '../core/api-client.mjs';
+import { writeFileAtomic } from '../core/json-file.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { SEV_COLOR, bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
@@ -32,40 +34,54 @@ export async function cmdFix(flags, positional) {
     console.error(red('✗') + ` File not found: ${file}`);
     process.exit(EXIT_USAGE);
   }
-  await fixOneFile(target, { apiKey, url, flags });
+  const result = await fixOneFile(target, { apiKey, url, flags });
+  if (result === false && fixFailed.has(target)) process.exitCode = 1;
+}
+
+const fixFailed = new Set();
+
+function isSymlink(p) {
+  try {
+    return fs.lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
 }
 
 export async function fixOneFile(target, { apiKey, url, flags }) {
   const rel = path.relative(process.cwd(), target).split(path.sep).join('/');
-  let content;
-  try {
-    content = fs.readFileSync(target, 'utf8');
-  } catch (e) {
-    if (!flags.json) console.error(`  ${red('✗')} cannot read ${rel}: ${e.message}`);
+  const say = flags.silent ? () => {} : (line) => console.log(line);
+  const fail = (line) => {
+    fixFailed.add(target);
+    if (!flags.json && !flags.silent) console.error(line);
     return false;
-  }
+  };
+  if (isSymlink(target)) return fail(`  ${red('✗')} ${rel} is a symlink - Shomra will not write a fix through it. Fix the file it points at directly.`);
+  const read = readRegularFile(target);
+  if (read.skip) return fail(`  ${red('✗')} cannot read ${rel}: ${read.skip}`);
+  const { content } = read;
   const kind = flags.kind && GATE_KINDS.includes(String(flags.kind)) ? String(flags.kind) : undefined;
 
   let res;
   try {
-    if (!flags.json && !flags.quiet) process.stdout.write(dim(`  Generating fix for ${rel}… `));
+    if (!flags.json && !flags.quiet && !flags.silent) process.stdout.write(dim(`  Generating fix for ${rel}… `));
     res = await api(url, apiKey, '/gate/fix', {
       ...(kind ? { kind } : {}),
       path: rel,
       name: rel.split('/').pop(),
       content,
     });
-    if (!flags.json && !flags.quiet) console.log('');
+    if (!flags.json && !flags.quiet && !flags.silent) console.log('');
   } catch (e) {
-    if (flags.json) console.log(JSON.stringify({ path: rel, canFix: false, error: e.message }, null, 2));
-    else console.error(`  ${red('✗')} ${e.message}`);
-    return false;
+    if (flags.json && !flags.silent) console.log(JSON.stringify({ path: rel, canFix: false, error: e.message }, null, 2));
+    return fail(`  ${red('✗')} ${e.message}`);
   }
+  if (!res || typeof res !== 'object') return fail(`  ${red('✗')} the backend answered without a fix for ${rel}`);
 
-  if (flags.json) console.log(JSON.stringify({ path: rel, ...res }, null, 2));
+  if (flags.json && !flags.silent) console.log(JSON.stringify({ path: rel, ...res }, null, 2));
 
   if (!res.canFix) {
-    if (!flags.json) {
+    if (!flags.json && !flags.silent) {
       if (res.reason === 'clean') console.log(`  ${green('✓')} ${dim(rel + ' - nothing to fix.')}`);
       else if (res.reason === 'ai-disabled') {
         console.log(`  ${yellow('⚠')} ${res.message}`);
@@ -79,7 +95,7 @@ export async function fixOneFile(target, { apiKey, url, flags }) {
     return false;
   }
 
-  if (!flags.json) {
+  if (!flags.json && !flags.silent) {
     printDiff(res.diff);
     if (res.explanation) console.log(`  ${dim(res.explanation)}`);
     const conf = res.confidence != null ? `  ${dim('confidence ' + Math.round(res.confidence * 100) + '%')}` : '';
@@ -89,19 +105,23 @@ export async function fixOneFile(target, { apiKey, url, flags }) {
 
   const apply = flags.apply || flags.write || flags.yes;
   if (!apply) {
-    if (!flags.json) console.log(`  ${dim('Preview only - re-run with')} ${bold('--apply')} ${dim('to write this fix to ' + rel + '.')}\n`);
+    if (!flags.json) say(`  ${dim('Preview only - re-run with')} ${bold('--apply')} ${dim('to write this fix to ' + rel + '.')}\n`);
     return true;
   }
+  if (typeof res.fixedContent !== 'string') return fail(`  ${red('✗')} the backend sent no fixed content for ${rel} - nothing was written`);
   try {
-    fs.writeFileSync(target, res.fixedContent, 'utf8');
+    writeFileAtomic(target, res.fixedContent);
     if (!flags.json && !flags.quiet) {
-      console.log(`  ${green('✓ Applied')} ${dim('→ ' + rel + '  (' + (res.findingCount || (res.findings || []).length) + ' finding(s) addressed)')}\n`);
+      say(`  ${green('✓ Applied')} ${dim('→ ' + rel + '  (' + (res.findingCount || (res.findings || []).length) + ' finding(s) addressed)')}\n`);
     }
     return true;
   } catch (e) {
-    if (!flags.json) console.error(`  ${red('✗')} could not write ${rel}: ${e.message}`);
-    return false;
+    return fail(`  ${red('✗')} could not write ${rel}: ${e.message}`);
   }
+}
+
+export function fixDidFail(target) {
+  return fixFailed.has(target);
 }
 
 function printDiff(diff) {
