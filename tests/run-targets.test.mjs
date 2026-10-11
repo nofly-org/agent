@@ -118,3 +118,16 @@ test('a run target the local scan finds dangerous escalates; an ordinary one doe
   assert.deepEqual(runTargetsOf('Write', { file_path: 'x', content: 'npm test' }, { cwd: root }), { targets: [], risky: [] });
   fs.rmSync(root, { recursive: true, force: true });
 });
+
+test('sourcing an env file is never read as a script, and a key in a script is masked before it leaves', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-run-env-'));
+  const key = ['AKIA', 'Z7Q2', 'X9RT', 'K4WD', 'M8PV'].join('');
+  fs.writeFileSync(path.join(root, '.env'), `AWS_ACCESS_KEY_ID=${key}\n`);
+  fs.writeFileSync(path.join(root, 'deploy.sh'), `#!/bin/bash\nexport AWS_ACCESS_KEY_ID=${key}\naws s3 sync dist s3://site\n`);
+  assert.deepEqual(runTargets('set -a && source .env && set +a', root), []);
+  assert.deepEqual(runTargets('. ./.env', root), []);
+  const run = runTargetsOf('Bash', { command: 'bash deploy.sh' }, { cwd: root });
+  assert.equal(run.targets.length, 1);
+  assert.ok(!run.targets[0].text.includes(key), run.targets[0].text);
+  assert.deepEqual(run.risky, [], 'a credential is not a dangerous command');
+});

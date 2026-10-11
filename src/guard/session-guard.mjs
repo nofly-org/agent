@@ -1,9 +1,9 @@
-import fs from 'node:fs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { detectEnv, remoteRunner } from '../gate/environment.mjs';
 import { envFlag, resolveAgentFlag } from './options.mjs';
 import { baselineSessionContext } from './memory-report.mjs';
 import { applyPendingRestores, restoreSummary } from './memory-restore.mjs';
+import { readHookPayload as readPayload } from './payload.mjs';
 
 const PROBE_TIMEOUT_MS = 1500;
 
@@ -52,11 +52,7 @@ async function reachable(url) {
  * blocks: a session that refuses to start is a control nobody keeps installed.
  */
 function hookPayload() {
-  try {
-    return JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
-  } catch {
-    return {};
-  }
+  return readPayload() ?? {};
 }
 
 export async function cmdSessionGuard(flags) {

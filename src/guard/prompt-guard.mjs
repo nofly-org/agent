@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import { gateMachine } from '../core/api-client.mjs';
 import { breakerOpen, breakerReset, breakerTrip, guardTimeoutMs } from '../core/circuit-breaker.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
@@ -10,6 +9,7 @@ import { envFlag, guardWait, resolveAgentFlag } from './options.mjs';
 import { reportGuardDecision } from './report.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
 import { stoppedNote } from './emit.mjs';
+import { readHookPayload as readPayload } from './payload.mjs';
 
 export const PROMPT_HOOK_AGENTS = new Set(['claude', 'cursor']);
 
@@ -57,11 +57,7 @@ function emitPromptContext(agent, note) {
 }
 
 function readHookPayload() {
-  try {
-    return JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
-  } catch {
-    return process.exit(0);
-  }
+  return readPayload() ?? process.exit(0);
 }
 
 function localTierDisabled() {
@@ -99,7 +95,6 @@ async function requestServerDecision({ url, apiKey, body, agent, strict, injecti
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    clearTimeout(timer);
 
     if (!response.ok) {
       if (response.status === 401 || response.status === 403) {
@@ -110,6 +105,7 @@ async function requestServerDecision({ url, apiKey, body, agent, strict, injecti
       throw new Error(`HTTP ${response.status}`);
     }
     const decision = await response.json();
+    clearTimeout(timer);
     breakerReset();
     return decision;
   } catch (error) {

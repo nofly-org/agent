@@ -14,7 +14,6 @@ export const MAX_LINE_CHARS = 64 * 1024 * 1024;
 
 export function createLineFramer(onMessage, { maxLine = MAX_LINE_CHARS, onOverflow } = {}) {
   let buffer = '';
-  let scanFrom = 0;
   let dropping = false;
   const emit = (raw) => {
     const line = raw.trim();
@@ -29,22 +28,23 @@ export function createLineFramer(onMessage, { maxLine = MAX_LINE_CHARS, onOverfl
     onMessage(message, line);
   };
   return (chunk) => {
-    buffer += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
-    let start = 0;
-    let newline = buffer.indexOf('\n', scanFrom);
+    let text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+    let newline = text.indexOf('\n');
     while (newline !== -1) {
+      const line = buffer + text.slice(0, newline);
+      buffer = '';
       if (dropping) dropping = false;
-      else emit(buffer.slice(start, newline));
-      start = newline + 1;
-      newline = buffer.indexOf('\n', start);
+      else emit(line);
+      text = text.slice(newline + 1);
+      newline = text.indexOf('\n');
     }
-    if (start) buffer = buffer.slice(start);
+    if (dropping) return;
+    buffer += text;
     if (buffer.length > maxLine) {
-      if (!dropping) onOverflow?.(buffer.slice(0, 4096));
+      onOverflow?.(buffer.slice(0, 4096));
       dropping = true;
       buffer = '';
     }
-    scanFrom = buffer.length;
   };
 }
 

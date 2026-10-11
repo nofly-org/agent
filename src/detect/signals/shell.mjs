@@ -154,8 +154,11 @@ export function rmTargetClass(line, prose) {
 export function matchesShellSignal(sig, text) {
   if (!sig.refine) return sig.re.test(text);
   const g = new RegExp(sig.re.source, sig.re.flags.includes('g') ? sig.re.flags : sig.re.flags + 'g');
+  let lineEnd = -1;
   for (const m of text.matchAll(g)) {
-    if (m.index == null) continue;
+    if (m.index == null || m.index < lineEnd) continue;
+    const next = text.indexOf('\n', m.index);
+    lineEnd = next === -1 ? text.length : next;
     if (sig.refine(lineTextAt(text, m.index))) return true;
   }
   return false;

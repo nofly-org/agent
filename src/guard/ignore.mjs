@@ -41,7 +41,7 @@ function realOrNull(p) {
   return null;
 }
 
-export function guardPathAllowlisted(cwd, filePath) {
+export function guardPathAllowlisted(cwd, filePath, { repo: useRepo = true } = {}) {
   if (!filePath) return false;
   const root = cwd || process.cwd();
   let abs;
@@ -51,7 +51,7 @@ export function guardPathAllowlisted(cwd, filePath) {
   const { repo, env } = guardIgnoreGlobs(root);
   const hit = (re) => re.test(rel) || re.test(base);
   if (env.some(hit)) return true;
-  if (!inside(rel) || !repo.some(hit)) return false;
+  if (!useRepo || !inside(rel) || !repo.some(hit)) return false;
   const realRoot = realOrNull(root) ?? root;
   const realTarget = realOrNull(abs);
   return !realTarget || inside(relativeTo(realRoot, realTarget));

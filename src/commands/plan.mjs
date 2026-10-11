@@ -9,6 +9,7 @@ import { detectEnv } from '../gate/environment.mjs';
 import { emitGuardAsk } from '../guard/emit.mjs';
 import { envFlag, resolveAgentFlag } from '../guard/options.mjs';
 import { reportGuardDecision } from '../guard/report.mjs';
+import { readHookPayload } from '../guard/payload.mjs';
 
 function planAdvice(r, { maxControls = 5 } = {}) {
   if (r.verdict !== 'OPEN_PATH') return null;
@@ -52,8 +53,7 @@ export async function cmdPlanGuard(flags) {
   const agent = resolveAgentFlag(flags);
   if (envFlag('SHOMRA_PLAN_GUARD_OFF')) process.exit(0);
 
-  let payload = {};
-  try { payload = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); } catch { process.exit(0); }
+  const payload = readHookPayload() ?? process.exit(0);
 
   const input = payload.tool_input ?? payload.input ?? payload.arguments ?? payload;
   const text = [input.plan, input.content, input.text, input.message, payload.plan]

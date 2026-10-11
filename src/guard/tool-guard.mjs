@@ -19,12 +19,14 @@ import { SEV_RANK } from '../detect/signals/severity.mjs';
 import { SHELL_TOOLS_RE, WRITE_TOOLS, callSubjectTypes, guardNeedsServer, guardTargetPath, guardText } from './classify.mjs';
 import { shellCommandOf } from './command-text.mjs';
 import { runTargets } from './run-targets.mjs';
+import { redactLocally } from '../detect/local-redact.mjs';
 import { confirmationNote, emitGuardAsk, emitGuardDeny, stoppedNote } from './emit.mjs';
 import { guardPathAllowlisted } from './ignore.mjs';
 import { screenModelLoad } from './model-load.mjs';
 import { screenSkillInvocation } from './skill-check.mjs';
 import { activeArtifactsField } from './active-artifacts.mjs';
 import { normalizeGuardInput } from './normalize.mjs';
+import { readHookPayload as readPayload } from './payload.mjs';
 import { envFlag, guardWait, resolveAgentFlag } from './options.mjs';
 import { recordSelftest, selftestField } from './selftest-marker.mjs';
 import { buildGuardBody, reportGuardDecision } from './report.mjs';
@@ -93,11 +95,7 @@ function askUnscreened(agent, why, flagged = null) {
 }
 
 function readHookPayload() {
-  try {
-    return JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
-  } catch {
-    return process.exit(0);
-  }
+  return readPayload() ?? process.exit(0);
 }
 
 function localTierDisabled() {
@@ -220,7 +218,6 @@ async function requestServerDecision({ url, apiKey, agentId, body, agent, strict
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    clearTimeout(timer);
 
     if (!response.ok) {
       if (response.status === 401 || response.status === 403) {
@@ -242,6 +239,8 @@ async function requestServerDecision({ url, apiKey, agentId, body, agent, strict
       throw new Error(`HTTP ${response.status}`);
     }
     const decision = await response.json();
+    clearTimeout(timer);
+    if (!isGuardDecision(decision)) throw new Error('the backend answered without a guard decision');
     breakerReset();
     ackLedger();
     return decision;
@@ -251,6 +250,12 @@ async function requestServerDecision({ url, apiKey, agentId, body, agent, strict
     if (strict) emitGuardDeny(agent, `Shomra guard could not be reached (${error.message}); blocked by fail-closed policy.`);
     return onUnreachable(error.message, { breaker: true });
   }
+}
+
+const DECISIONS = new Set(['ALLOW', 'FLAG', 'BLOCK']);
+
+export function isGuardDecision(decision) {
+  return !!decision && typeof decision === 'object' && !Array.isArray(decision) && (DECISIONS.has(decision.decision) || decision.hold === true);
 }
 
 function retryAfterMs(response) {
@@ -298,13 +303,15 @@ export function postContentField(tool, input, normalized, read = boundedRead) {
   }
 }
 
+const RISKY_RUN_CATEGORIES = new Set(['shell', 'injection', 'egress']);
+
 export function runTargetsOf(tool, input, normalized, read) {
   try {
     if (!SHELL_TOOLS_RE.test(tool || '')) return { targets: [], risky: [] };
-    const targets = runTargets(shellCommandOf(input), normalized?.cwd, read);
+    const targets = runTargets(shellCommandOf(input), normalized?.cwd, read).map((t) => ({ ...t, text: redactLocally(t.text).text }));
     const risky = targets.flatMap((t) =>
       localScan(t.text).findings
-        .filter((f) => f.severity === 'CRITICAL' || f.severity === 'HIGH')
+        .filter((f) => (f.severity === 'CRITICAL' || f.severity === 'HIGH') && RISKY_RUN_CATEGORIES.has(f.category))
         .map((f) => ({ target: t.name, kind: t.kind, label: f.label ?? f.name ?? f.title, severity: f.severity })),
     );
     return { targets, risky };
