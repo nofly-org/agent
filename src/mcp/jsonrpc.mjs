@@ -10,23 +10,52 @@ export function safeJson(value) {
   }
 }
 
-export function createLineFramer(onMessage) {
+export const MAX_LINE_CHARS = 64 * 1024 * 1024;
+
+export function createLineFramer(onMessage, { maxLine = MAX_LINE_CHARS, onOverflow } = {}) {
   let buffer = '';
-  return (chunk) => {
-    buffer += chunk.toString('utf8');
-    let newline = buffer.indexOf('\n');
-    while (newline !== -1) {
-      const line = buffer.slice(0, newline).trim();
-      buffer = buffer.slice(newline + 1);
-      newline = buffer.indexOf('\n');
-      if (!line) continue;
-      try {
-        onMessage(JSON.parse(line), line);
-      } catch {
-        onMessage(null, line);
-      }
+  let scanFrom = 0;
+  let dropping = false;
+  const emit = (raw) => {
+    const line = raw.trim();
+    if (!line) return;
+    let message;
+    try {
+      message = JSON.parse(line);
+    } catch {
+      onMessage(null, line);
+      return;
     }
+    onMessage(message, line);
   };
+  return (chunk) => {
+    buffer += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+    let start = 0;
+    let newline = buffer.indexOf('\n', scanFrom);
+    while (newline !== -1) {
+      if (dropping) dropping = false;
+      else emit(buffer.slice(start, newline));
+      start = newline + 1;
+      newline = buffer.indexOf('\n', start);
+    }
+    if (start) buffer = buffer.slice(start);
+    if (buffer.length > maxLine) {
+      if (!dropping) onOverflow?.(buffer.slice(0, 4096));
+      dropping = true;
+      buffer = '';
+    }
+    scanFrom = buffer.length;
+  };
+}
+
+export function idInHead(head) {
+  const m = /"id"\s*:\s*("(?:[^"\\]|\\.)*"|-?\d+)/.exec(String(head ?? ''));
+  if (!m) return undefined;
+  try {
+    return JSON.parse(m[1]);
+  } catch {
+    return undefined;
+  }
 }
 
 export function writeMessage(message) {

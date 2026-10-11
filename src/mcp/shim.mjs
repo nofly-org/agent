@@ -1,3 +1,4 @@
+import os from 'node:os';
 import { gateMachine } from '../core/api-client.mjs';
 import { breakerOpen } from '../core/circuit-breaker.mjs';
 import { loadConfig, resolveSettings, storedAgentCredential } from '../core/config.mjs';
@@ -7,7 +8,7 @@ import { detectEnv } from '../gate/environment.mjs';
 import { envFlag } from '../guard/options.mjs';
 import { spawnGuardedServer } from './child-process.mjs';
 import { reportListing, requestConnectVerdict } from './connect-gate.mjs';
-import { createLineFramer, refusal, sendBlockedInitialize, writeMessage } from './jsonrpc.mjs';
+import { createLineFramer, idInHead, refusal, sendBlockedInitialize, writeMessage } from './jsonrpc.mjs';
 import { LISTING_KEY, RESULT_METHODS, screenInstructions, screenListing, screenResult, screenToolCallArguments } from './screening.mjs';
 import { resolveAgentIdentityHandle } from '../commands/agent-identity.mjs';
 import { resolveScreenMode, screenCallRemote, screenResultRemote, shimSessionId } from './backend-screen.mjs';
@@ -86,10 +87,25 @@ function launchServer(name, command, args) {
   }
 }
 
-function trackableMethod(message) {
-  return message.method
-    && 'id' in message
-    && (LISTING_KEY[message.method] || RESULT_METHODS.has(message.method) || message.method === 'tools/call' || message.method === 'initialize');
+const isObject = (m) => m !== null && typeof m === 'object' && !Array.isArray(m);
+
+const SCREENED_RESPONSE = (method) => !!LISTING_KEY[method] || RESULT_METHODS.has(method) || method === 'tools/call' || method === 'initialize';
+
+function wellFormedResponse(message) {
+  const hasResult = message.result !== undefined;
+  const hasError = message.error !== undefined;
+  if (hasResult === hasError) return false;
+  return hasResult ? isObject(message.result) : isObject(message.error);
+}
+
+function trackRequest(pending, message) {
+  if (message.method === 'notifications/cancelled' && isObject(message.params) && 'requestId' in message.params) {
+    pending.delete(JSON.stringify(message.params.requestId));
+    return;
+  }
+  if (typeof message.method !== 'string' || !('id' in message)) return;
+  if (pending.size >= MAX_PENDING_REQUESTS) pending.delete(pending.keys().next().value);
+  pending.set(JSON.stringify(message.id), { method: message.method, tool: message.params?.name, args: message.params?.arguments });
 }
 
 /**
@@ -99,14 +115,20 @@ function trackableMethod(message) {
  */
 function serial(handler, onError) {
   let chain = Promise.resolve();
-  return (message, line) => {
+  const push = (message, line) => {
     chain = chain
       .then(() => handler(message, line))
       .catch((error) => {
         note(`mcp-guard: screening error (${error?.message ?? error}).`);
-        onError(message, line);
+        try {
+          onError(message, line);
+        } catch (failure) {
+          note(`mcp-guard: ${failure?.message ?? failure}`);
+        }
       });
   };
+  push.idle = () => chain;
+  return push;
 }
 
 /**
@@ -114,13 +136,25 @@ function serial(handler, onError) {
  * A request gets an explicit refusal (the client is waiting on that id and would
  * hang); a notification, which nobody waits on, is passed through.
  */
-function refuseUnscreened(server, write) {
+function refuseUnscreenedClient(server, child) {
   return (message, line) => {
-    if (message && 'id' in message) {
+    if (isObject(message) && 'id' in message && typeof message.method === 'string') {
       writeMessage(refusal(message.id, 'Shomra could not screen this message, so it was not passed on.', { source: 'shomra-mcp-shim', server, refusedBy: 'error' }));
     } else {
-      write(line);
+      child.stdin.write(`${line}\n`);
     }
+  };
+}
+
+function refuseUnscreenedServer(server, child) {
+  return (message, line) => {
+    if (!isObject(message) || !('id' in message)) {
+      process.stdout.write(`${line}\n`);
+      return;
+    }
+    const error = refusal(message.id, 'Shomra could not screen this message, so it was not passed on.', { source: 'shomra-mcp-shim', server, refusedBy: 'error' });
+    if (typeof message.method === 'string') child.stdin.write(`${JSON.stringify(error)}\n`);
+    else writeMessage(error);
   };
 }
 
@@ -142,16 +176,22 @@ async function judgeItem({ ctx, remote, local }) {
   return { blocked: screen.blocked, label: screen.label, via: 'local' };
 }
 
-function createClientFilter({ child, pending, server, ctx }) {
-  return createLineFramer(serial(async (message, line) => {
-    if (!message) {
+function overflowNote(server, direction, refuse) {
+  return (head) => {
+    note(`mcp-guard: a ${direction} message for "${server}" was larger than the screen reads and was dropped.`);
+    const id = idInHead(head);
+    if (id !== undefined) refuse(id);
+  };
+}
+
+function createClientFilter({ child, pending, server, ctx, queue }) {
+  const onOverflow = overflowNote(server, 'client', (id) => writeMessage(refusal(id, 'Shomra refused this request: it was too large to screen.', { source: 'shomra-mcp-shim', server, refusedBy: 'size' })));
+  return createLineFramer(queue(async (message, line) => {
+    if (!isObject(message)) {
       child.stdin.write(`${line}\n`);
       return;
     }
-    if (trackableMethod(message)) {
-      if (pending.size >= MAX_PENDING_REQUESTS) pending.clear();
-      pending.set(JSON.stringify(message.id), { method: message.method, tool: message.params?.name, args: message.params?.arguments });
-    }
+    trackRequest(pending, message);
     if (message.method === 'tools/call' && 'id' in message) {
       const tool = message.params?.name;
       const args = message.params?.arguments;
@@ -173,7 +213,7 @@ function createClientFilter({ child, pending, server, ctx }) {
       }
     }
     child.stdin.write(`${line}\n`);
-  }, refuseUnscreened(server, (l) => child.stdin.write(`${l}\n`))));
+  }, refuseUnscreenedClient(server, child)), { onOverflow });
 }
 
 function listingTelemetry({ settings, server, agent, withheld, total }) {
@@ -249,15 +289,25 @@ function forwardListing({ message, method, server, deniedTools, settings, agent 
   writeMessage({ ...message, result: screened.result });
 }
 
-function createServerFilter({ child, pending, server, deniedTools, settings, agent, ctx }) {
-  return createLineFramer(serial(async (message, line) => {
-    const answers = !!message && (message.result !== undefined || message.error !== undefined);
+function createServerFilter({ child, pending, server, deniedTools, settings, agent, ctx, queue }) {
+  const onOverflow = overflowNote(server, 'server', (id) => {
+    const key = JSON.stringify(id);
+    if (!pending.has(key)) return;
+    pending.delete(key);
+    writeMessage(refusal(id, 'Shomra withheld this response: it was too large to screen. The content was not read into context.', { source: 'shomra-mcp-shim', server, refusedBy: 'size' }));
+  });
+  return createLineFramer(queue(async (message, line) => {
+    if (!isObject(message)) {
+      process.stdout.write(`${line}\n`);
+      return;
+    }
+    const answers = message.result !== undefined || message.error !== undefined;
     if (answers && typeof message.method === 'string') {
       note(`mcp-guard: "${server}" sent a message that is both a request and a response; it was dropped.`);
       return;
     }
     if (!answers) {
-      const verdict = message && 'id' in message && SCREENED_SERVER_METHODS.has(message.method) ? screenServerRequest(message) : null;
+      const verdict = 'id' in message && SCREENED_SERVER_METHODS.has(message.method) ? screenServerRequest(message) : null;
       if (verdict?.refused) {
         child.stdin.write(`${JSON.stringify(refusal(message.id, `Refused by Shomra: ${verdict.reason}.`, { source: 'shomra-mcp-guard', method: message.method, relayed: false }))}\n`);
         note(`mcp-guard: refused ${message.method} from "${server}": ${verdict.reason}.`);
@@ -268,22 +318,24 @@ function createServerFilter({ child, pending, server, deniedTools, settings, age
     }
     const key = 'id' in message ? JSON.stringify(message.id) : null;
     const entry = key ? pending.get(key) : null;
-    if (entry && message.error !== undefined) {
-      pending.delete(key);
-      forwardError({ message, line, entry, server });
-      return;
-    }
-    if (!entry || !message.result) {
-      if (key) pending.delete(key);
-      process.stdout.write(`${line}\n`);
+    if (!entry || !wellFormedResponse(message)) {
+      note(`mcp-guard: dropped a response from "${server}" that answers no pending request or is malformed (id ${key ?? 'missing'}).`);
       return;
     }
     pending.delete(key);
+    if (message.error !== undefined) {
+      forwardError({ message, line, entry, server });
+      return;
+    }
+    if (!SCREENED_RESPONSE(entry.method)) {
+      process.stdout.write(`${line}\n`);
+      return;
+    }
 
     if (entry.method === 'initialize') forwardInitialize({ message, line, server });
     else if (RESULT_METHODS.has(entry.method) || entry.method === 'tools/call') await forwardResultMethod({ message, line, entry, server, ctx });
     else forwardListing({ message, method: entry.method, server, deniedTools, settings, agent });
-  }, refuseUnscreened(server, (l) => process.stdout.write(`${l}\n`))));
+  }, refuseUnscreenedServer(server, child)), { onOverflow });
 }
 
 export async function runMcpShim(flags, positional) {
@@ -336,12 +388,57 @@ export async function runMcpShim(flags, positional) {
     note(`mcp-guard: failed to start "${command}": ${error.message}`);
     process.exit(1);
   });
-  child.on('exit', (code) => process.exit(code ?? 0));
+  for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
+    process.on(signal, () => {
+      try {
+        child.kill(signal);
+      } catch {
+      }
+    });
+  }
 
   const pending = new Map();
-  process.stdin.on('data', createClientFilter({ child, pending, server: name, ctx }));
-  child.stdout.on('data', createServerFilter({ child, pending, server: name, deniedTools, settings, agent, ctx }));
-  process.stdin.on('end', () => child.stdin.end());
+  const clientQueue = (handler, onError) => serial(handler, onError);
+  const serverQueue = (handler, onError) => serial(handler, onError);
+  let clientIdle = () => Promise.resolve();
+  let serverIdle = () => Promise.resolve();
+  const trackClient = (handler, onError) => {
+    const q = clientQueue(handler, onError);
+    clientIdle = q.idle;
+    return q;
+  };
+  const trackServer = (handler, onError) => {
+    const q = serverQueue(handler, onError);
+    serverIdle = q.idle;
+    return q;
+  };
+  process.stdin.setEncoding('utf8');
+  child.stdout.setEncoding('utf8');
+  child.stdin.on('error', (error) => note(`mcp-guard: could not write to "${name}": ${error.message}`));
+  const fromClient = createClientFilter({ child, pending, server: name, ctx, queue: trackClient });
+  const fromServer = createServerFilter({ child, pending, server: name, deniedTools, settings, agent, ctx, queue: trackServer });
+  process.stdin.on('data', (chunk) => {
+    fromClient(chunk);
+    if (child.stdin.writableNeedDrain) {
+      process.stdin.pause();
+      child.stdin.once('drain', () => process.stdin.resume());
+    }
+  });
+  child.stdout.on('data', (chunk) => {
+    fromServer(chunk);
+    if (process.stdout.writableNeedDrain) {
+      child.stdout.pause();
+      process.stdout.once('drain', () => child.stdout.resume());
+    }
+  });
+  process.stdin.on('end', () => {
+    clientIdle().then(() => child.stdin.end());
+  });
+  child.on('close', async (code, signal) => {
+    await serverIdle();
+    const status = signal ? 128 + (os.constants.signals[signal] ?? 0) : (code ?? 0);
+    process.stdout.write('', () => process.exit(status));
+  });
 
   await new Promise(() => {});
 }
