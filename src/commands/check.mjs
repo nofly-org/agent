@@ -213,10 +213,14 @@ export async function cmdBaseline(flags, positional) {
     apiKey, url, env, root, flags: { ...flags, json: true, 'no-suppress': true },
   });
 
-  const fingerprints = new Set();
+  const counts = {};
   for (const result of results) {
-    for (const finding of result.findings || []) fingerprints.add(findingFingerprint(result.path, finding));
+    for (const finding of result.findings || []) {
+      const fp = findingFingerprint(result.path, finding);
+      counts[fp] = (counts[fp] ?? 0) + 1;
+    }
   }
+  const fingerprints = new Set(Object.keys(counts));
 
   const directory = path.join(root, '.shomra');
   fs.mkdirSync(directory, { recursive: true });
@@ -226,6 +230,7 @@ export async function cmdBaseline(flags, positional) {
     agentVersion: VERSION,
     count: fingerprints.size,
     fingerprints: [...fingerprints],
+    counts,
   }, null, 2));
 
   const relative = path.relative(process.cwd(), file).split(path.sep).join('/');

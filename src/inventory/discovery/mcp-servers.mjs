@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { readText } from './fs-read.mjs';
+import { readTextBounded } from './fs-read.mjs';
 import { redactEnv } from './model-keys.mjs';
 import { PLAT, userDirs } from './platform.mjs';
 import { walkWorkspace } from './workspace.mjs';
-import { parseConfigDoc, readMcpServers } from '../../detect/signals/mcp-config.mjs';
+import { maskServerSecrets, parseConfigDoc, readMcpServers } from '../../detect/signals/mcp-config.mjs';
 import { claudeDataDir, jetbrainsOptionFiles, readClaudeExtensions, readJetbrainsMcpServers, readSqliteMcpServers, warpDatabases } from './mcp-stores.mjs';
 
 export function vendorFromPath(file) {
@@ -101,6 +101,8 @@ function projectMcpCandidates(roots) {
   return roots.flatMap((root) => rels.map((rel) => ({ vendor: vendorFromPath(path.join(root, ...rel)), file: path.join(root, ...rel) })));
 }
 
+const MAX_STORE_BYTES = 8 * 1024 * 1024;
+
 function readServers(file, store) {
   if (store === 'sqlite') {
     const { servers, state } = readSqliteMcpServers(file);
@@ -111,9 +113,14 @@ function readServers(file, store) {
     const servers = readJetbrainsMcpServers(file);
     return servers.length ? servers : null;
   }
-  const text = readText(file, 1_000_000);
-  if (!text) return null;
-  const doc = parseConfigDoc(text, file);
+  const read = readTextBounded(file, MAX_STORE_BYTES);
+  if (!read || !read.text.trim()) return null;
+  if (read.truncated) {
+    unreadStores.push({ file, state: `larger than ${MAX_STORE_BYTES / (1024 * 1024)} MB` });
+    return null;
+  }
+  const doc = parseConfigDoc(read.text, file);
+  if (!doc) unreadStores.push({ file, state: 'could not be parsed' });
   return doc ? readMcpServers(doc) : null;
 }
 
@@ -144,7 +151,8 @@ export function discoverMcpServers(roots = [process.cwd()], files = null, opts =
   for (const s of readClaudeExtensions(claudeDataDir(opts.home))) sources.push({ vendor: 'claude', file: s.file, servers: [s] });
 
   for (const { vendor, file, servers } of sources) {
-    for (const s of servers) {
+    for (const raw of servers) {
+      const s = maskServerSecrets(raw);
       const command = [s.command, ...(s.args ?? [])].filter(Boolean).join(' ');
       const identifier = s.url || command || s.name;
       const key = `${s.name}:${identifier}`;
@@ -159,7 +167,7 @@ export function discoverMcpServers(roots = [process.cwd()], files = null, opts =
           command,
           url: s.url || null,
           configFile: file,
-          env: redactEnv(s.env),
+          env: redactEnv(raw.env),
           ...(s.scope ? { projectScope: s.scope } : {}),
           ...(s.disabled ? { disabled: true } : {}),
         },

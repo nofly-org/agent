@@ -8,6 +8,7 @@ import { changedSinceBase, fetchCommit, fileAtRevision } from '../core/git-chang
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { gateArtifactList, gateExitCode, strictOutageOf } from '../gate/batch.mjs';
 import { detectEnv } from '../gate/environment.mjs';
+import { findingPath, locationBase, relativeToBase } from '../gate/locations.mjs';
 import { REPO_POLICY_FILES } from '../gate/repo-policy.mjs';
 import { toSarif } from '../gate/sarif.mjs';
 
@@ -35,8 +36,19 @@ function readGithubEvent() {
   try { return JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')); } catch { return {}; }
 }
 
+function githubApiBase() {
+  const raw = String(process.env.GITHUB_API_URL || '').trim();
+  if (!raw) return 'https://api.github.com';
+  try {
+    const u = new URL(raw);
+    if (u.protocol === 'https:' || (u.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(u.hostname))) return `${u.origin}${u.pathname.replace(/\/+$/, '')}`;
+  } catch {
+  }
+  throw new Error(`GITHUB_API_URL "${raw}" is not an https URL`);
+}
+
 async function githubApi(token, method, apiPath, body) {
-  const res = await fetch(`https://api.github.com${apiPath}`, {
+  const res = await fetch(`${githubApiBase()}${apiPath}`, {
     method,
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json', 'User-Agent': 'shomra-agent' },
     body: body ? JSON.stringify(body) : undefined,
@@ -135,12 +147,12 @@ function emitSarif(flags, results) {
   console.log(sarif);
 }
 
-function buildAnnotations(results) {
+function buildAnnotations(results, base) {
   const annotations = [];
   for (const result of results) {
     for (const finding of result.findings || []) {
-        annotations.push({
-        path: finding.file || result.path,
+      annotations.push({
+        path: relativeToBase(findingPath(result, finding), base) ?? (finding.file || result.path),
         start_line: finding.line || 1,
         end_line: finding.line || 1,
         annotation_level: GH_LEVEL[finding.severity] || 'warning',
@@ -204,7 +216,7 @@ function runNotes({ scope, base, outcome, strictOutage }) {
 async function postCheckRun(token, repo, checkRun, flags) {
   try {
     const run = await githubApi(token, 'POST', `/repos/${repo}/check-runs`, checkRun);
-    if (flags.json) return;
+    if (flags.json || flags.sarif === true) return;
     const mark = checkRun.conclusion === 'failure' ? red('✗') : checkRun.conclusion === 'neutral' ? yellow('⚠') : green('✓');
     console.log(`  ${mark} Check run posted → ${dim(run.html_url || '')}`);
   } catch (error) {
@@ -259,11 +271,11 @@ export async function cmdPr(flags, positional) {
   const strictOutage = strictOutageOf(flags, outcome);
   emitSarif(flags, results);
 
-  const annotations = buildAnnotations(results);
+  const annotations = buildAnnotations(results, locationBase(root));
   const notes = runNotes({ scope, base, outcome, strictOutage });
   const checkRun = buildCheckRun({ headSha, results, annotations, blocked, flagged, suppressed, strict: flags.strict, strictOutage, notes });
 
-  if (dryRun || flags.json) {
+  if ((dryRun || flags.json) && flags.sarif !== true) {
     console.log(JSON.stringify({
       repo,
       prNumber: prNumber ?? null,

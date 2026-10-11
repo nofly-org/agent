@@ -5,6 +5,8 @@ import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE, exitNotConfigured } from '../core/exit-codes.mjs';
 import { SEV_COLOR, VERDICT_COLOR, bold, dim, gray, green, red, yellow } from '../core/terminal.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
+import { currentUsername } from '../core/api-client.mjs';
+import { clampInt } from '../core/numbers.mjs';
 
 const MAX_POLICY_HITS_SHOWN = 3;
 
@@ -34,7 +36,7 @@ async function archiveBlob(target) {
 async function buildUploadForm(target, flags) {
   const form = new FormData();
   form.append('file', await archiveBlob(target), path.basename(target));
-  form.append('actor', `${os.hostname()}/${os.userInfo().username}`);
+  form.append('actor', `${os.hostname()}/${currentUsername()}`);
   if (flags.project) form.append('projectId', String(flags.project));
   return form;
 }
@@ -55,19 +57,26 @@ async function readResponse(response) {
 
 async function uploadArchive({ url, apiKey, target, flags }) {
   if (!flags.json) process.stdout.write(dim('\n  Uploading to Workspace Scan… '));
+  const timeoutMs = clampInt(process.env.SHOMRA_API_TIMEOUT_MS, 300000, 1000, 1800000);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const response = await keyedFetch(`${url}/bundle/agent-scan`, {
       method: 'POST',
       headers: { 'X-Shomra-Key': apiKey, Connection: 'close' },
       body: await buildUploadForm(target, flags),
+      signal: ctrl.signal,
     });
     const report = await readResponse(response);
     if (!flags.json) console.log(green('done'));
     return report;
   } catch (error) {
     if (!flags.json) console.log(red('failed'));
-    console.error(`  ${red('✗')} ${error.message}\n`);
+    const message = error?.name === 'AbortError' ? `no answer after ${Math.round(timeoutMs / 1000)}s (raise SHOMRA_API_TIMEOUT_MS or check the backend)` : error.message;
+    console.error(`  ${red('✗')} ${message}\n`);
     return process.exit(1);
+  } finally {
+    clearTimeout(timer);
   }
 }
 

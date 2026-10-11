@@ -6,7 +6,7 @@ import { reportUsername } from './user-homes.mjs';
 import { VERSION } from './version.mjs';
 import { keyedFetch } from './keyed-fetch.mjs';
 
-const RETRY_STATUSES = new Set([429, 503]);
+const RETRY_STATUSES = new Set([429, 502, 503, 504]);
 const MAX_RETRIES = 2;
 const MAX_RETRY_WAIT_MS = 5000;
 const MAX_ERROR_TEXT = 300;

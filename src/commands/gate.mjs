@@ -6,12 +6,13 @@ import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { localGate } from '../detect/guard-signals.mjs';
-import { gateArtifactList, gateExitCode, strictOutageOf } from '../gate/batch.mjs';
-import { GATE_KINDS, collectSiblings, detectEnv } from '../gate/environment.mjs';
+import { gateArtifactList, gateExitCode, readArtifactBounded, strictOutageOf, withUnreadMiddle } from '../gate/batch.mjs';
+import { collectSiblings, detectEnv, kindFlag } from '../gate/environment.mjs';
 import { isGateVerdict, localAsGateResult, printGateResult } from '../gate/result.mjs';
 import { toSarif } from '../gate/sarif.mjs';
 import { bundledFindings, bundledKind, byBundledPriority, collectLocalSast, mergeSastIntoResult } from '../gate/sast.mjs';
 import { withMcpAdvisories } from '../gate/advisories.mjs';
+import { maskSecrets } from '../detect/secret-mask.mjs';
 import { listZipEntries, normalizeZipName, readZipText } from '../core/zip-lite.mjs';
 
 const GATE_USAGE = 'shomra gate <file> [--kind mcp|skill|command|subagent|hook|rules|agent-card|memory|plugin|tool-manifest|extension|workflow|guardrail|framework] [--name x] [--strict] [--json]';
@@ -34,6 +35,7 @@ function resolveGateFile(file) {
   return target;
 }
 
+const MAX_BUNDLE_FILE_BYTES = 512 * 1024 * 1024;
 const MAX_BUNDLE_SOURCES = 60;
 const MAX_BUNDLE_BYTES = 16 * 1024 * 1024;
 const DEPENDENCY_DIR = /(^|\/)(node_modules|vendor|site-packages|\.venv|venv|__pycache__)\//i;
@@ -94,6 +96,10 @@ function readGateTarget(flags, positional) {
   
   if (/\.(?:dxt|mcpb)$/i.test(target)) {
     const bundleRel = path.relative(process.cwd(), target).split(path.sep).join('/');
+    if (fs.statSync(target).size > MAX_BUNDLE_FILE_BYTES) {
+      console.error(`${red('✗')} ${file} is larger than ${MAX_BUNDLE_FILE_BYTES / (1024 * 1024)} MB - too large to check as an extension bundle.`);
+      process.exit(EXIT_USAGE);
+    }
     const read = readBundle(fs.readFileSync(target), bundleRel);
     if (read.content == null) {
       console.error(`${red('✗')} ${file} is not a readable extension bundle (no manifest.json at its root).`);
@@ -101,8 +107,14 @@ function readGateTarget(flags, positional) {
     }
     return { content: read.content, relPath: `${bundleRel}!/manifest.json`, fullTarget: null, bundle: true, bundleFindings: read.findings };
   }
+  const read = readArtifactBounded(target);
+  if (read.skip) {
+    console.error(`${red('✗')} ${file} ${read.skip}.`);
+    process.exit(EXIT_USAGE);
+  }
   return {
-    content: fs.readFileSync(target, 'utf8'),
+    content: read.content,
+    unread: read.unread ?? 0,
     relPath: path.relative(process.cwd(), target).split(path.sep).join('/'),
     fullTarget: target,
   };
@@ -116,7 +128,7 @@ async function requestGateVerdict({ url, apiKey, flags, kind, relPath, content, 
       ...(kind ? { kind } : {}),
       ...(flags.name ? { name: String(flags.name) } : {}),
       ...(relPath ? { path: relPath } : {}),
-      content,
+      content: maskSecrets(content).text,
       ...(siblings.length ? { siblings } : {}),
       machine: gateMachine(),
       env: detectEnv(),
@@ -134,20 +146,26 @@ async function requestGateVerdict({ url, apiKey, flags, kind, relPath, content, 
   }
 }
 
-export async function cmdGate(flags, positional) {
+export async function cmdGate(rawFlags, positional) {
   const { apiKey, url } = resolveSettings(loadConfig());
-  if (flags.all) return cmdGateAll(flags, positional, { apiKey, url });
+  if (rawFlags.all) return cmdGateAll(rawFlags, positional, { apiKey, url });
+  const sarif = !!rawFlags.sarif;
+  const flags = sarif ? { ...rawFlags, json: true } : rawFlags;
 
-  const { content, relPath, fullTarget, bundle, bundleFindings: fromBundle = [] } = readGateTarget(flags, positional);
-  const kind = flags.kind && GATE_KINDS.includes(String(flags.kind)) ? String(flags.kind) : bundle ? 'mcp' : undefined;
+  const { content, relPath, fullTarget, bundle, bundleFindings: fromBundle = [], unread = 0 } = readGateTarget(flags, positional);
+  const kind = kindFlag(flags) ?? (bundle ? 'mcp' : undefined);
   const name = flags.name ? String(flags.name) : (relPath ? relPath.split('/').pop() : 'artifact');
-  const local = localGate(content, { kind, path: relPath });
+  const local = unread ? withUnreadMiddle(localGate(content, { kind, path: relPath }), unread) : localGate(content, { kind, path: relPath });
 
   let serverVerdict = null;
   if (apiKey) {
     ({ verdict: serverVerdict } = await requestGateVerdict({ url, apiKey, flags, kind, relPath, content, fullTarget }));
     if (!serverVerdict && flags.strict) {
-      printGateResult(localAsGateResult(local, name, kind), 'local', flags);
+      const fallback = localAsGateResult(local, name, kind);
+      if (sarif) {
+        console.log(JSON.stringify(toSarif([{ ...fallback, path: relPath ?? name, ...(fullTarget ? { full: fullTarget } : {}) }]), null, 2));
+        console.error(`  ${red('✗ Failing closed (--strict): backend unreachable, org policy unverified.')}`);
+      } else printGateResult(fallback, 'local', flags);
       if (!flags.json) console.log(`  ${red('✗ Failing closed (--strict): backend unreachable, org policy unverified.')}\n`);
       process.exitCode = 1;
       return;
@@ -164,7 +182,8 @@ export async function cmdGate(flags, positional) {
   }
   const base = serverVerdict || localAsGateResult(shownLocal, name, kind);
   const result = mergeSastIntoResult(base, [...collectLocalSast({ fullPath: fullTarget, relPath, kind, content }), ...fromBundle]);
-  printGateResult(result, serverVerdict ? 'server' : 'local', flags);
+  if (sarif) console.log(JSON.stringify(toSarif([{ ...result, path: relPath ?? name, ...(fullTarget ? { full: fullTarget } : {}) }]), null, 2));
+  else printGateResult(result, serverVerdict ? 'server' : 'local', flags);
 
   if (result.decision === 'BLOCK') process.exitCode = 1;
   else if (result.decision === 'FLAG' && flags.strict) process.exitCode = 2;

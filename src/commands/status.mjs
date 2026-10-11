@@ -18,7 +18,8 @@ export function cmdStatus() {
   if (enrolled) {
     console.log(`  ${dim('Mode     ')} ${green('● Enrolled')} ${dim(`(${keyScope(apiKey)} key)`)} - org policy, platform AI & dashboard telemetry active`);
   } else {
-    console.log(`  ${dim('Mode     ')} ${cyan('● Local')} ${dim('- on-machine analysis only; nothing leaves this machine')}`);
+    const offline = /^(1|true|yes)$/i.test(String(process.env.SHOMRA_OFFLINE ?? ''));
+    console.log(`  ${dim('Mode     ')} ${cyan('● Local')} ${dim(offline ? '- on-machine analysis only; nothing leaves this machine' : '- on-machine analysis; only pinned MCP package names are looked up on osv.dev (SHOMRA_OFFLINE=1 stops that)')}`);
     console.log(`  ${dim('         ')} ${dim('Run')} ${bold('shomra init --key shm_…')} ${dim('to add org policy, AI fixes, deep scans & the dashboard.')}`);
   }
   console.log(`  ${dim('Backend  ')} ${url || dim('none (local mode - set with shomra init --url)')}`);

@@ -1,5 +1,6 @@
-import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { VERSION } from '../core/version.mjs';
+import { findingPath, locationBase, relativeToBase } from './locations.mjs';
 
 const SARIF_LEVEL = { CRITICAL: 'error', HIGH: 'error', MEDIUM: 'warning', LOW: 'note', INFO: 'note' };
 
@@ -9,7 +10,13 @@ function sarifRuleId(f) {
   return f.ruleId || 'shomra.' + String(f.title || 'finding').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
 }
 
-export function toSarif(results) {
+function artifactLocation(r, f, base) {
+  const abs = findingPath(r, f);
+  const rel = relativeToBase(abs, base);
+  return rel === null ? { uri: pathToFileURL(abs).href } : { uri: rel.split('/').map(encodeURIComponent).join('/'), uriBaseId: 'SRCROOT' };
+}
+
+export function toSarif(results, { base = locationBase() } = {}) {
   const rules = new Map();
   const sarifResults = [];
   for (const r of results) {
@@ -20,7 +27,7 @@ export function toSarif(results) {
         ruleId: id,
         level: SARIF_LEVEL[f.severity] || 'warning',
         message: { text: f.remediationText ? `${f.title} - ${f.remediationText}` : String(f.title || id) },
-        locations: [{ physicalLocation: { artifactLocation: { uri: f.file || r.path }, ...(f.line ? { region: { startLine: f.line } } : {}) } }],
+        locations: [{ physicalLocation: { artifactLocation: artifactLocation(r, f, base), ...(f.line ? { region: { startLine: f.line } } : {}) } }],
         properties: { severity: f.severity, 'security-severity': SARIF_SEC[f.severity] || '5.0', ...(f.cwe ? { cwe: f.cwe } : {}) },
       });
     }
@@ -28,6 +35,10 @@ export function toSarif(results) {
   return {
     $schema: 'https://json.schemastore.org/sarif-2.1.0.json',
     version: '2.1.0',
-    runs: [{ tool: { driver: { name: 'Shomra', informationUri: 'https://shomra.dev', version: VERSION, rules: [...rules.values()] } }, results: sarifResults }],
+    runs: [{
+      tool: { driver: { name: 'Shomra', informationUri: 'https://shomra.dev', version: VERSION, rules: [...rules.values()] } },
+      originalUriBaseIds: { SRCROOT: { uri: pathToFileURL(base.endsWith('/') ? base : `${base}/`).href } },
+      results: sarifResults,
+    }],
   };
 }

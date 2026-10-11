@@ -123,6 +123,43 @@ export function gitBlobWindow(oid, { cwd, half, timeout = 20000 }) {
   });
 }
 
+export function gitLines(args, { cwd, timeout = 120000, onLine }) {
+  const bin = gitPath();
+  if (!bin) return Promise.resolve({ ok: false, reason: 'git is not installed' });
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(bin, args, { cwd, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+    } catch (error) {
+      resolve({ ok: false, reason: error.message });
+      return;
+    }
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, timeout);
+    let rest = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      const text = rest + chunk;
+      const lines = text.split('\n');
+      rest = lines.pop();
+      for (const line of lines) onLine(line);
+    });
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      resolve({ ok: false, reason: error.message });
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (rest) onLine(rest);
+      if (timedOut) resolve({ ok: false, reason: `timed out after ${Math.round(timeout / 1000)}s` });
+      else resolve(code === 0 ? { ok: true } : { ok: false, reason: `git exited with code ${code}` });
+    });
+  });
+}
+
 /**
  * A ref we are willing to pass as a REVISION argument.
  *

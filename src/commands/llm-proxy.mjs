@@ -5,6 +5,7 @@ import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { VERSION } from '../core/version.mjs';
 import { resolveAgentIdentityHandle } from './agent-identity.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
+import { currentUsername } from '../core/api-client.mjs';
 
 export const LLM_PROVIDERS = ['openai', 'anthropic', 'gemini', 'groq', 'mistral', 'xai', 'deepseek', 'openrouter', 'together', 'cohere', 'voyage', 'jina'];
 
@@ -211,7 +212,7 @@ export async function cmdLlmProxy(flags) {
 
   const port = parseInt(flags.port, 10) || DEFAULT_PORT;
   const project = flags.project ? String(flags.project) : null;
-  const actor = `${os.hostname()}/${os.userInfo().username}`;
+  const actor = `${os.hostname()}/${currentUsername()}`;
 
   const handler = createProxyHandler({
     url,

@@ -5,28 +5,39 @@ import { KNOWN_FLAGS, parseFlags } from './flags.mjs';
 import { ADMIN_VERBS, COMMANDS } from './registry.mjs';
 import { didYouMean } from './suggestions.mjs';
 
+const GUARD_COMMANDS = new Set(['tool-guard', 'result-guard', 'prompt-guard', 'plan-guard', 'session-guard']);
+const PASSTHROUGH_COMMANDS = new Set(['mcp-guard']);
+
 export async function main() {
   const [, , command, ...rest] = process.argv;
 
   const sep = rest.indexOf('--');
   const ours = sep === -1 ? rest : rest.slice(0, sep);
-  const { flags, positional, unknown } = parseFlags(ours);
+  const { flags, positional: before, unknown, invalid } = parseFlags(ours);
+  const positional = sep === -1 || PASSTHROUGH_COMMANDS.has(command) ? before : [...before, ...rest.slice(sep + 1)];
 
   if (command === 'help' || command === undefined || command === '--help' || command === '-h') {
-    return (await import('./help.mjs')).cmdHelp();
+    return (await import('./help.mjs')).cmdHelp(positional[0]);
   }
   if (command === '--version' || command === '-v' || command === 'version') {
     console.log(VERSION);
     return;
   }
 
-  const guardCmd = command === 'tool-guard' || command === 'result-guard' || command === 'prompt-guard' || command === 'plan-guard' || command === 'session-guard';
+  const guardCmd = GUARD_COMMANDS.has(command);
+  if (!guardCmd && command !== 'admin' && COMMANDS[command] && (flags.help || ours.includes('-h'))) {
+    return (await import('./help.mjs')).cmdHelp(command);
+  }
   if (unknown.length && !guardCmd) {
     for (const u of unknown) {
       const near = didYouMean(u, [...KNOWN_FLAGS]);
       console.error(red(`✗ Unknown flag: --${u}`) + (near ? dim(`  (did you mean --${near}?)`) : ''));
     }
     console.error(dim('Run `shomra help` for the full option list.'));
+    process.exit(EXIT_USAGE);
+  }
+  if (invalid.length && !guardCmd) {
+    for (const message of invalid) console.error(red(`✗ ${message}`));
     process.exit(EXIT_USAGE);
   }
 

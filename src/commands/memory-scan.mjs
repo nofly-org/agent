@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { MAX_ARTIFACT_BYTES, SKIP_DIRS } from '../artifacts/matchers.mjs';
-import { api } from '../core/api-client.mjs';
+import { api, currentUsername } from '../core/api-client.mjs';
 import { guardTimeoutMs } from '../core/circuit-breaker.mjs';
 import { getMachineId, loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE, exitNotConfigured } from '../core/exit-codes.mjs';
@@ -213,7 +213,7 @@ export async function cmdMemoryScan(flags, positional) {
   const machineId = getMachineId(cfg);
   const ingestFields = {
     scope: flags.scope ? String(flags.scope).toLowerCase() : undefined,
-    actor: `${os.hostname()}/${os.userInfo().username}`,
+    actor: `${os.hostname()}/${currentUsername()}`,
     machineId,
     hostname: os.hostname(),
     ...(flags.project ? { projectId: String(flags.project) } : {}),

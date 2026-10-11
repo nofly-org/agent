@@ -35,16 +35,31 @@ export function loadMachineConfig(file = MACHINE_CONFIG_FILE) {
   }
 }
 
+let warnedUnreadable = false;
+
+function warnUnreadable(reason) {
+  if (warnedUnreadable) return;
+  warnedUnreadable = true;
+  try {
+    process.stderr.write(`[shomra] ${CONFIG_FILE} could not be read (${reason}) - this machine is treated as not enrolled until it is fixed. Re-run shomra init.\n`);
+  } catch {
+  }
+}
+
 export function loadConfig() {
   let user;
   try {
     user = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
   } catch (e) {
-    if (e?.code !== 'ENOENT') return {};
+    if (e?.code !== 'ENOENT') warnUnreadable(e?.code ?? 'not valid JSON');
     const machine = loadMachineConfig();
     return machine ? markMachineConfig(machine) : {};
   }
-  if (!user || typeof user !== 'object') return {};
+  if (!user || typeof user !== 'object' || Array.isArray(user)) {
+    warnUnreadable('not a JSON object');
+    const machine = loadMachineConfig();
+    return machine ? markMachineConfig(machine) : {};
+  }
   if (!user.apiKey || !user.url) {
     const machine = loadMachineConfig();
     for (const k of ['apiKey', 'url']) {
@@ -115,12 +130,32 @@ export function getMachineSerial(cfg, read) {
   return serial;
 }
 
-export function resolveSettings(cfg) {
+export function parseBackendUrl(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text) return { error: 'no URL given' };
+  let u;
+  try {
+    u = new URL(text);
+  } catch {
+    return { error: `"${text}" is not a URL - include the scheme, e.g. https://shomra.example.com` };
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return { error: `the backend URL must start with http:// or https:// (got ${u.protocol})` };
+  if (u.username || u.password) return { error: 'the backend URL must not carry a user name or password' };
+  const host = u.protocol === 'http:' && u.hostname === 'localhost' ? `127.0.0.1${u.port ? `:${u.port}` : ''}` : u.host;
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname) || /^127\./.test(u.hostname);
+  return { url: `${u.protocol}//${host}${u.pathname.replace(/\/+$/, '')}`, cleartext: u.protocol === 'http:' && !loopback };
+}
 
+export function normalizeBackendUrl(raw) {
+  const parsed = parseBackendUrl(raw);
+  return parsed.url ?? (String(raw ?? '').trim().replace(/\/+$/, '') || null);
+}
+
+export function resolveSettings(cfg) {
   const raw = process.env.SHOMRA_URL || cfg.url || '';
   return {
     apiKey: process.env.SHOMRA_API_KEY || cfg.apiKey,
-    url: raw ? raw.replace(/\/$/, '').replace('://localhost', '://127.0.0.1') : null,
+    url: raw ? normalizeBackendUrl(raw) : null,
   };
 }
 

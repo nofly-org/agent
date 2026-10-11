@@ -30,9 +30,17 @@ npx @shomra/agent gate .mcp.json
 ## Auth (optional)
 
 Shomra is **local-first** - there is no built-in backend and no telemetry. `gate`,
-`check`, `models`, `secrets`, and the runtime firewall all run fully on your
-machine with no key and no network. You only connect to a Shomra org to layer on
-your **org policy**, cloud/deep scans, AI fixes, and the Model Security Index.
+`check`, `models`, `secrets`, and the runtime firewall all run on your machine
+with no key. The one lookup that goes out without a key is the name and version
+of each pinned MCP server package, checked against the public advisory database
+at osv.dev; set `SHOMRA_OFFLINE=1` (or pass `--offline`) to keep even that on the
+machine. You only connect to a Shomra org to layer on your **org policy**,
+cloud/deep scans, AI fixes, and the Model Security Index.
+
+When enrolled, artifact content goes to your backend for org policy - with every
+secret value replaced on the machine by a same-shape stand-in first, so the
+backend still sees that a credential is there, of which kind, but never the
+credential itself.
 
 - **Dev machine:** `shomra init --key shm_live_… --url https://shomra.your-co.com` (writes `~/.shomra/config.json`).
 - **CI / headless:** set env vars instead - no `init` needed:

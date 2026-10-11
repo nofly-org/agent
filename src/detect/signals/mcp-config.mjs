@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { assessUrl } from './egress.mjs';
 import { MALICIOUS_PACKAGE_SEED, POPULAR_PACKAGES, editDistance } from './packages.mjs';
 import { SECRET_PATTERNS, isPlaceholderSecret } from './secrets.mjs';
@@ -648,4 +649,153 @@ export function gradeMcpDocument(content, path = '') {
   const findings = [];
   for (const s of servers) for (const f of gradeServer(s)) findings.push({ ...f, server: s.name });
   return { servers, findings };
+}
+
+/* ─── masking what leaves the machine ────────────────────────────────────── */
+
+const MASK_KEY = 'shomra-mask-v1';
+const MAX_KEEP = 12;
+
+function shapeLike(value, keep) {
+  let bytes = Buffer.alloc(0);
+  for (let n = 0; bytes.length < value.length; n++) bytes = Buffer.concat([bytes, crypto.createHmac('sha256', MASK_KEY).update(`${n}:${value}`).digest()]);
+  let out = value.slice(0, keep);
+  for (let i = keep; i < value.length; i++) {
+    const c = value[i];
+    const b = bytes[i];
+    if (c >= 'a' && c <= 'z') out += String.fromCharCode(97 + (b % 26));
+    else if (c >= 'A' && c <= 'Z') out += String.fromCharCode(65 + (b % 26));
+    else if (c >= '0' && c <= '9') out += String.fromCharCode(48 + (b % 10));
+    else out += c;
+  }
+  return out;
+}
+
+const fresh = (re) => new RegExp(re.source, re.flags.replace(/[gy]/g, ''));
+
+function namedSecret(v) {
+  for (const { re } of SECRET_PATTERNS) {
+    const r = fresh(re);
+    const m = r.exec(v);
+    if (m && m[0].length >= 8 && !isPlaceholderSecret(m[0])) return { re: r, token: m[0] };
+  }
+  return null;
+}
+
+function maskToken(token, re) {
+  for (let keep = 0; keep <= Math.min(MAX_KEEP, Math.floor(token.length / 3)); keep++) {
+    const candidate = shapeLike(token, keep);
+    if (!re || re.test(candidate)) return candidate;
+  }
+  return shapeLike(token, Math.min(4, Math.floor(token.length / 3)));
+}
+
+export function maskSecretValue(raw, { key = null, header = false } = {}) {
+  if (typeof raw !== 'string' || !raw) return raw;
+  const named = namedSecret(raw);
+  if (named) return raw.split(named.token).join(maskToken(named.token, named.re));
+  if (key === null || !literalCredential(key, raw, header)) return raw;
+  const scheme = /^\s*(?:bearer|basic|token|apikey)\s+/i.exec(raw)?.[0] ?? '';
+  return scheme + maskToken(raw.slice(scheme.length), null);
+}
+
+function maskUrl(raw) {
+  if (typeof raw !== 'string' || !/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) return maskSecretValue(raw);
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    return maskSecretValue(raw);
+  }
+  let changed = false;
+  if (u.password && !REFERENCE_RE.test(decodeURIComponent(u.password)) && !isPlaceholderValue(u.password)) {
+    u.password = maskToken(decodeURIComponent(u.password), null);
+    changed = true;
+  }
+  for (const [k, v] of [...u.searchParams]) {
+    if (URL_CRED_PARAM_RE.test(k) && v.length >= 8 && !REFERENCE_RE.test(v) && !isPlaceholderValue(v)) {
+      u.searchParams.set(k, maskToken(v, null));
+      changed = true;
+    }
+  }
+  return maskSecretValue(changed ? u.href : raw);
+}
+
+function maskArgs(args) {
+  const out = [];
+  const toks = (args ?? []).map((a) => (typeof a === 'string' ? a : a));
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    if (typeof t !== 'string') {
+      out.push(t);
+      continue;
+    }
+    const eq = t.indexOf('=');
+    const flag = t.startsWith('-') && eq > 0 ? t.slice(0, eq) : t;
+    if (CRED_FLAG_RE.test(flag)) {
+      if (eq > 0) out.push(`${flag}=${maskSecretValue(t.slice(eq + 1), { key: `arg ${flag}`, header: true })}`);
+      else {
+        out.push(t);
+        if (i + 1 < toks.length && typeof toks[i + 1] === 'string') out.push(maskSecretValue(toks[++i], { key: `arg ${flag}`, header: true }));
+      }
+      continue;
+    }
+    if ((flag === '-e' || flag === '--env') && typeof toks[i + 1] === 'string' && /^[A-Za-z_][\w]*=/.test(toks[i + 1])) {
+      const next = toks[++i];
+      const k = next.slice(0, next.indexOf('='));
+      out.push(t, `${k}=${maskSecretValue(next.slice(k.length + 1), { key: k })}`);
+      continue;
+    }
+    if ((flag === '--header' || flag === '-H') && typeof toks[i + 1] === 'string') {
+      const next = toks[++i];
+      const m = /^(\s*([\w-]+)\s*:\s*)(.+)$/.exec(next);
+      out.push(t, m ? `${m[1]}${maskSecretValue(m[3], { key: m[2], header: true })}` : maskSecretValue(next));
+      continue;
+    }
+    out.push(maskUrl(t));
+  }
+  return out;
+}
+
+function maskBlock(block, header) {
+  if (!isObj(block)) return block;
+  const out = {};
+  for (const [k, v] of Object.entries(block)) out[k] = typeof v === 'string' ? maskSecretValue(v, { key: k, header }) : v;
+  return out;
+}
+
+export function maskServerSecrets(server) {
+  if (!isObj(server)) return server;
+  const out = { ...server };
+  if (isObj(server.env)) out.env = maskBlock(server.env, false);
+  if (isObj(server.headers)) out.headers = maskBlock(server.headers, true);
+  if (Array.isArray(server.args)) out.args = maskArgs(server.args);
+  for (const k of ['url', 'httpUrl', 'serverUrl', 'uri']) if (typeof server[k] === 'string') out[k] = maskUrl(server[k]);
+  if (typeof server.command === 'string') out.command = maskSecretValue(server.command);
+  return out;
+}
+
+const MAX_MASKED_MATCHES = 2000;
+
+export function maskNamedSecretsIn(text, remember = () => {}) {
+  let out = String(text ?? '');
+  for (const { re } of SECRET_PATTERNS) {
+    const once = fresh(re);
+    const all = new RegExp(once.source, `${once.flags}g`);
+    const seen = new Set();
+    for (const m of out.matchAll(all)) {
+      if (seen.size >= MAX_MASKED_MATCHES) break;
+      if (m[0].length >= 8 && !isPlaceholderSecret(m[0])) seen.add(m[0]);
+    }
+    for (const token of seen) {
+      const masked = maskToken(token, once);
+      remember(token, masked);
+      out = out.split(token).join(masked);
+    }
+  }
+  return out;
+}
+
+export function headerCredentialKey(key) {
+  return HEADER_CRED_KEY_RE.test(String(key ?? ''));
 }

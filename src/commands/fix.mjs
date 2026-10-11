@@ -6,7 +6,8 @@ import { writeFileAtomic } from '../core/json-file.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { SEV_COLOR, bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
-import { GATE_KINDS } from '../gate/environment.mjs';
+import { kindFlag } from '../gate/environment.mjs';
+import { maskSecrets } from '../detect/secret-mask.mjs';
 
 export async function cmdFix(flags, positional) {
   const file = positional[0];
@@ -60,16 +61,17 @@ export async function fixOneFile(target, { apiKey, url, flags }) {
   const read = readRegularFile(target);
   if (read.skip) return fail(`  ${red('✗')} cannot read ${rel}: ${read.skip}`);
   const { content } = read;
-  const kind = flags.kind && GATE_KINDS.includes(String(flags.kind)) ? String(flags.kind) : undefined;
+  const kind = kindFlag(flags);
 
   let res;
+  const masked = maskSecrets(content);
   try {
     if (!flags.json && !flags.quiet && !flags.silent) process.stdout.write(dim(`  Generating fix for ${rel}… `));
     res = await api(url, apiKey, '/gate/fix', {
       ...(kind ? { kind } : {}),
       path: rel,
       name: rel.split('/').pop(),
-      content,
+      content: masked.text,
     });
     if (!flags.json && !flags.quiet && !flags.silent) console.log('');
   } catch (e) {
@@ -77,6 +79,10 @@ export async function fixOneFile(target, { apiKey, url, flags }) {
     return fail(`  ${red('✗')} ${e.message}`);
   }
   if (!res || typeof res !== 'object') return fail(`  ${red('✗')} the backend answered without a fix for ${rel}`);
+  if (masked.masked) {
+    if (typeof res.fixedContent === 'string') res = { ...res, fixedContent: masked.restore(res.fixedContent) };
+    if (typeof res.diff === 'string') res = { ...res, diff: masked.restore(res.diff) };
+  }
 
   if (flags.json && !flags.silent) console.log(JSON.stringify({ path: rel, ...res }, null, 2));
 

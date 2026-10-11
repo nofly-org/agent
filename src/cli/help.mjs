@@ -1,8 +1,29 @@
 import { HELP_SECTIONS } from './help-sections.mjs';
 import { bold, cyan, dim } from '../core/terminal.mjs';
 
-export function cmdHelp() {
-  console.log(HELP_SECTIONS.map((section) => section()).join('\n'));
+const ANSI = /\x1b\[[0-9;]*m/g;
+
+function commandLines(full, command) {
+  const lines = full.split('\n');
+  const at = lines.findIndex((line) => line.replace(ANSI, '').startsWith(`  ${command} `));
+  if (at === -1) return null;
+  const out = [lines[at]];
+  for (let i = at + 1; i < lines.length; i++) {
+    const plain = lines[i].replace(ANSI, '');
+    if (!/^ {6,}\S/.test(plain)) break;
+    out.push(lines[i]);
+  }
+  return out;
+}
+
+export function cmdHelp(command) {
+  const full = HELP_SECTIONS.map((section) => section()).join('\n');
+  const lines = command ? commandLines(full, command) : null;
+  if (!lines) {
+    console.log(full);
+    return;
+  }
+  console.log(`\n${lines.join('\n')}\n\n  ${dim('Every command and option:')} ${bold('shomra help')}\n`);
 }
 
 export function cmdAdminHelp() {

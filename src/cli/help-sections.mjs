@@ -95,6 +95,8 @@ const GATE = () => `${bold('GATE')}
   ${bold('Works offline.')} Real static analysis (dangerous shell, prompt injection,
   secrets, exfil sinks, over-permissioned tool grants, install-lure prose) runs
   ON-MACHINE, so ${bold('gate')} returns a genuine verdict with no backend and no key.
+  Pinned MCP packages are checked against osv.dev by name and version; set
+  ${bold('SHOMRA_OFFLINE=1')} (or ${bold('--offline')}) to skip that lookup.
   When enrolled + reachable, the backend layers your ORG POLICY + governance on
   top. If the backend is down it falls back to the local verdict (and says so);
   ${bold('--strict')} instead fails closed (exit 1) because org policy couldn't be verified.

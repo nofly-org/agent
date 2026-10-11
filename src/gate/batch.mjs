@@ -8,6 +8,7 @@ import { applyRepoPolicy, loadRepoPolicy, parseRepoPolicy } from './repo-policy.
 import { isGateVerdict, localAsGateResult } from './result.mjs';
 import { collectLocalSast, mergeSastIntoResult } from './sast.mjs';
 import { withMcpAdvisories } from './advisories.mjs';
+import { maskSecrets } from '../detect/secret-mask.mjs';
 import { loadBaseline, loadIgnoreRules, parseBaseline, parseIgnoreRules, suppressResult } from './suppressions.mjs';
 
 const DEFAULT_CONCURRENCY = 8;
@@ -47,7 +48,7 @@ export function readArtifactBounded(full) {
   }
 }
 
-function withUnreadMiddle(local, unread) {
+export function withUnreadMiddle(local, unread) {
   const findings = [...local.findings, {
     severity: 'HIGH',
     title: `Artifact too large to read whole - ${unread} bytes in the middle were not analyzed`,
@@ -111,7 +112,7 @@ async function requestServerVerdicts(prepared, { apiKey, url, env, flags, quiet 
         const verdict = await api(url, apiKey, '/gate/check', {
           kind: artifact.kind,
           path: artifact.rel,
-          content,
+          content: maskSecrets(content).text,
           machine: gateMachine(),
           env,
           ...(flags.project ? { projectId: String(flags.project) } : {}),
