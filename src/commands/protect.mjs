@@ -5,10 +5,12 @@ import { discoverAll } from '../inventory/discovery.mjs';
 export function cmdProtect(flags) {
   const assets = discoverAll();
   const labelToKey = Object.fromEntries(Object.entries(AGENT_LABELS).map(([k, v]) => [v, k]));
+  const vendorKey = (a) => (a.vendor === 'claude-code' ? 'claude' : AGENT_INSTALLERS[a.vendor] ? a.vendor : labelToKey[a.name]);
+  const seen = new Set();
   const detected = assets
     .filter((a) => a.type === 'AI_AGENT')
-    .map((a) => ({ label: a.name, key: labelToKey[a.name], guarded: !!a.metadata?.guarded }))
-    .filter((a) => a.key && AGENT_INSTALLERS[a.key]);
+    .map((a) => ({ label: a.name, key: vendorKey(a), guarded: !!a.metadata?.guarded }))
+    .filter((a) => a.key && AGENT_INSTALLERS[a.key] && !seen.has(a.key) && seen.add(a.key));
 
   if (!detected.length) {
     console.log(dim('\n  No supported coding agents detected on this machine.'));

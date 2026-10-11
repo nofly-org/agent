@@ -270,3 +270,20 @@ test('an agent that rewrites or deletes the Cline guard script is caught as hook
     fs.rmSync(box.root, { recursive: true, force: true });
   }
 });
+
+test('shomra protect wires every detected agent, Copilot and Claude Code included', () => {
+  const box = sandbox();
+  try {
+    fs.mkdirSync(path.join(box.home, '.copilot'), { recursive: true });
+    fs.mkdirSync(path.join(box.home, '.claude'), { recursive: true });
+    fs.mkdirSync(path.join(box.home, '.codex'), { recursive: true });
+    const out = cli(box, ['protect']);
+    assert.equal(out.status, 0, out.stderr + out.stdout);
+    assert.match(out.stdout, /Protected .*GitHub Copilot CLI/);
+    assert.match(out.stdout, /Protected .*Claude Code/);
+    assert.match(out.stdout, /Protected .*OpenAI Codex CLI/);
+    assert.equal(read(path.join(box.home, '.copilot', 'hooks', 'shomra.json')).version, 1);
+  } finally {
+    fs.rmSync(box.root, { recursive: true, force: true });
+  }
+});
