@@ -172,7 +172,7 @@ async function recordMemoryWrite({ url, apiKey, tool, input, normalized }) {
       source: os.hostname(),
       contentBasis: w.basis,
     });
-    recordLedger(w.path, [w.before != null ? sha256(w.before) : null, w.basis === 'whole' ? sha256(w.content) : null]);
+    recordLedger(w.path, [w.before != null ? sha256(w.before) : null, w.basis === 'whole' ? sha256(w.content) : null], undefined, { pending: typeof w.likely === 'string' ? [sha256(w.likely)] : [] });
   }
 }
 

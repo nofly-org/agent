@@ -58,6 +58,35 @@ function replaceIn(text, oldStr, newStr, all) {
   return text.slice(0, hits[0]) + newStr + text.slice(hits[0] + oldStr.length);
 }
 
+const CURLY = { '\u2018': "'", '\u2019': "'", '\u201C': '"', '\u201D': '"' };
+const straighten = (t) => t.replace(/[\u2018\u2019\u201C\u201D]/g, (c) => CURLY[c]);
+
+function curled(text) {
+  let out = '';
+  for (let k = 0; k < text.length; k++) {
+    const c = text[k];
+    if (c !== '"' && c !== "'") {
+      out += c;
+      continue;
+    }
+    const prev = text[k - 1] ?? '';
+    const next = text[k + 1] ?? '';
+    const opens = !prev || /[\s([{<\u2014\u2013-]/.test(prev);
+    if (c === '"') out += opens ? '\u201C' : '\u201D';
+    else out += /[\p{L}\p{N}]/u.test(prev) && /[\p{L}\p{N}]/u.test(next) ? '\u2019' : opens ? '\u2018' : '\u2019';
+  }
+  return out;
+}
+
+function replaceCurly(text, oldStr, newStr) {
+  if (typeof oldStr !== 'string' || typeof newStr !== 'string' || !oldStr || !/[\u2018\u2019\u201C\u201D]/.test(text)) return null;
+  const hits = occurrences(straighten(text), straighten(oldStr), 2);
+  if (hits.length !== 1) return null;
+  const at = hits[0];
+  const actual = text.slice(at, at + oldStr.length);
+  return text.slice(0, at) + (actual === oldStr ? newStr : curled(newStr)) + text.slice(at + oldStr.length);
+}
+
 function applySearchReplace(text, diff) {
   const blocks = [...String(diff).matchAll(/(?:-{3,} SEARCH|<{3,} SEARCH)\r?\n([\s\S]*?)\r?\n={3,}\r?\n([\s\S]*?)\r?\n(?:\+{3,} REPLACE|>{3,} REPLACE)/g)];
   if (!blocks.length) return null;
@@ -157,7 +186,7 @@ function seqAt(lines, seq, at, eq) {
  * and a rebuild of the wrong occurrence is graded as the truth. `null` here
  * means "send nothing": the server grades the fragment as a fragment.
  */
-function findBlock(lines, seq, from, eof) {
+function findBlock(lines, seq, from, eof, firstMatch = false) {
   for (const eq of LINE_EQ) {
     if (eof) {
       const at = lines.length - seq.length;
@@ -166,13 +195,13 @@ function findBlock(lines, seq, from, eof) {
     }
     const hits = [];
     for (let at = from; at + seq.length <= lines.length && hits.length < 2; at++) if (seqAt(lines, seq, at, eq)) hits.push(at);
-    if (hits.length === 1) return hits[0];
+    if (hits.length === 1 || (firstMatch && hits.length)) return hits[0];
     if (hits.length > 1) return -1;
   }
   return -1;
 }
 
-function applyHunks(text, hunks) {
+function applyHunks(text, hunks, firstMatch = false) {
   const crlf = text.includes('\r\n');
   const lines = text.split(/\r?\n/);
   const endsWithNewline = lines.length > 1 && lines[lines.length - 1] === '';
@@ -180,7 +209,7 @@ function applyHunks(text, hunks) {
   let cursor = 0;
   for (const h of hunks) {
     for (const anchor of h.anchors) {
-      const at = findBlock(lines, [anchor], cursor, false);
+      const at = findBlock(lines, [anchor], cursor, false, firstMatch);
       if (at < 0) return null;
       cursor = at + 1;
     }
@@ -190,7 +219,7 @@ function applyHunks(text, hunks) {
       cursor = lines.length;
       continue;
     }
-    const at = findBlock(lines, h.before, cursor, h.eof);
+    const at = findBlock(lines, h.before, cursor, h.eof, firstMatch);
     if (at < 0) return null;
     lines.splice(at, h.before.length, ...h.after);
     cursor = at + h.after.length;
@@ -235,11 +264,7 @@ export function memoryWritesFor(tool, input, { cwd, read = readUtf8 } = {}) {
     if (!fact) return [];
     const file = section.file();
     const current = readOr(read, file) ?? '';
-    const bullet = `- ${fact.trim()}`;
-    const content = current.includes(section.heading)
-      ? current.replace(section.heading, `${section.heading}\n${bullet}`)
-      : `${current}${current && !current.endsWith('\n') ? '\n' : ''}\n${section.heading}\n${bullet}\n`;
-    return [{ path: file, content, before: current, basis: 'whole' }];
+    return [{ path: file, content: sectionAppend(current, section.heading, fact), before: current, basis: 'whole' }];
   }
 
   if (/^apply_patch$/i.test(name)) {
@@ -259,7 +284,10 @@ export function memoryWritesFor(tool, input, { cwd, read = readUtf8 } = {}) {
       const current = readOr(read, abs);
       const next = current == null ? null : applyHunks(current, f.hunks);
       if (next != null) out.push({ path: destAbs, name: dest, content: next, before: f.moveTo ? readOr(read, destAbs) : current, basis: 'whole' });
-      else out.push({ path: destAbs, name: dest, content: f.hunks.map((h) => h.after.join('\n')).join('\n'), before: current, basis: 'fragment' });
+      else {
+        const likely = current == null ? null : applyHunks(current, f.hunks, true);
+        out.push({ path: destAbs, name: dest, content: f.hunks.map((h) => h.after.join('\n')).join('\n'), before: current, basis: 'fragment', ...(likely != null ? { likely } : {}) });
+      }
     }
     return out;
   }
@@ -275,21 +303,27 @@ export function memoryWritesFor(tool, input, { cwd, read = readUtf8 } = {}) {
   const whole = (content) => [{ path: target, content, before: current, basis: 'whole' }];
   const fragment = (content) => (typeof content === 'string' && content ? [{ path: target, content, before: current, basis: 'fragment' }] : []);
 
+  const claudeEdit = /^(?:Edit|MultiEdit)$/.test(name);
+  const withLikely = (rows, likely) => (likely != null && rows.length ? rows.map((r) => ({ ...r, likely })) : rows);
   if (typeof i.new_string === 'string') {
     // ⚠ An Edit with an empty `old_string` on a file that does not exist CREATES it with `new_string`.
     if (current == null && i.old_string === '') return whole(i.new_string);
     const next = current == null ? null : replaceOnce(current, i.old_string, i.new_string, !!i.replace_all);
-    return next != null ? whole(next) : fragment(i.new_string);
+    if (next != null) return whole(next);
+    return withLikely(fragment(i.new_string), claudeEdit && current != null && !i.replace_all ? replaceCurly(current, i.old_string, i.new_string) : null);
   }
   if (Array.isArray(i.edits)) {
     // ⚠ `oldText` / `newText` is the filesystem MCP server's `edit_file` shape.
     const oldOf = (e) => e?.old_string ?? e?.old_str ?? e?.oldText;
     const newOf = (e) => e?.new_string ?? e?.new_str ?? e?.newText;
     let next = current;
+    let likely = claudeEdit ? current : null;
     for (const e of i.edits) {
       next = next == null ? null : replaceOnce(next, oldOf(e), newOf(e), !!e?.replace_all);
+      if (likely != null) likely = replaceOnce(likely, oldOf(e), newOf(e), !!e?.replace_all) ?? (e?.replace_all ? null : replaceCurly(likely, oldOf(e), newOf(e)));
     }
-    return next != null ? whole(next) : fragment(i.edits.map((e) => newOf(e) ?? '').join('\n'));
+    if (next != null) return whole(next);
+    return withLikely(fragment(i.edits.map((e) => newOf(e) ?? '').join('\n')), likely);
   }
   if (command === 'str_replace' || typeof i.new_str === 'string') {
     const next = current == null ? null : replaceOnce(current, i.old_str, i.new_str ?? '', false);
@@ -361,6 +395,22 @@ export function postEditContents(tool, input, { cwd, read = readUtf8, keep = () 
   return out;
 }
 
+export function sectionAppend(current, heading, fact) {
+  const item = `- ${String(fact).trim().replace(/^(-+\s*)+/, '').trim()}`;
+  const at = current.indexOf(heading);
+  if (at === -1) {
+    const sep = !current.length ? '' : current.endsWith('\n\n') || current.endsWith('\r\n\r\n') ? '' : current.endsWith('\n') || current.endsWith('\r\n') ? '\n' : '\n\n';
+    return `${current}${sep}${heading}\n${item}\n`;
+  }
+  const start = at + heading.length;
+  let end = current.indexOf('\n## ', start);
+  if (end === -1) end = current.length;
+  const before = current.slice(0, start).trimEnd();
+  const body = `${current.slice(start, end).trimEnd()}\n${item}`;
+  const after = current.slice(end);
+  return `${`${before}\n${body.trimStart()}\n${after}`.trimEnd()}\n`;
+}
+
 export const MEMORY_LEDGER_DIR = path.join(CONFIG_DIR, 'memory-ledger');
 
 export const sha256 = (s) => crypto.createHash('sha256').update(String(s ?? ''), 'utf8').digest('hex');
@@ -379,18 +429,25 @@ export function readLedger(p, dir = MEMORY_LEDGER_DIR) {
   }
 }
 
-export function recordLedger(p, hashes, dir = MEMORY_LEDGER_DIR) {
+export function recordLedger(p, hashes, dir = MEMORY_LEDGER_DIR, { pending = [] } = {}) {
   try {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const prev = readLedger(p, dir);
     const merged = [...new Set([...hashes.filter(Boolean), ...(prev?.hashes ?? [])])].slice(0, 6);
+    const waiting = [...new Set([...pending.filter(Boolean), ...(Array.isArray(prev?.pending) ? prev.pending : [])])].filter((h) => !merged.includes(h)).slice(0, 6);
     const file = ledgerFile(p, dir);
     const tmp = `${file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify({ path: path.resolve(p), hashes: merged, at: new Date().toISOString() }), { mode: 0o600 });
+    fs.writeFileSync(tmp, JSON.stringify({ path: path.resolve(p), hashes: merged, ...(waiting.length ? { pending: waiting } : {}), at: new Date().toISOString() }), { mode: 0o600 });
     fs.renameSync(tmp, file);
   } catch {
     return;
   }
+}
+
+export function pendingWrite(p, currentContent, dir = MEMORY_LEDGER_DIR) {
+  if (currentContent == null) return false;
+  const row = readLedger(p, dir);
+  return !!row && Array.isArray(row.pending) && row.pending.includes(sha256(currentContent));
 }
 
 export function outOfBandChange(p, currentContent, dir = MEMORY_LEDGER_DIR) {

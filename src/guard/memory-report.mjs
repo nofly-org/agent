@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { isMemoryPath, reportMemoryWrite } from '../commands/memory-scan.mjs';
-import { outOfBandChange, readLedger, recordLedger, sha256 } from './memory-write.mjs';
+import { outOfBandChange, pendingWrite, readLedger, recordLedger, sha256 } from './memory-write.mjs';
 import { gateMachine } from '../core/api-client.mjs';
 
 export const OUT_OF_BAND = 'changed outside any agent write the Shomra hook observed';
@@ -35,6 +35,11 @@ export async function reportFirstSight(url, apiKey, filePath, current, normalize
 export async function reportOutOfBand(url, apiKey, filePath, current, normalized, firstSource = FIRST_SIGHT) {
   if (current == null) return;
   if (await reportFirstSight(url, apiKey, filePath, current, normalized, firstSource)) return;
+  if (pendingWrite(filePath, current)) {
+    await reportMemoryWrite(url, apiKey, { ...memoryReportBase(filePath, normalized), content: current, writer: 'AGENT', source: os.hostname(), contentBasis: 'whole' });
+    recordLedger(filePath, [sha256(current)]);
+    return;
+  }
   if (!outOfBandChange(filePath, current)) return;
   await reportMemoryWrite(url, apiKey, { ...memoryReportBase(filePath, normalized), content: current, writer: 'UNKNOWN', source: OUT_OF_BAND });
   recordLedger(filePath, [sha256(current)]);
