@@ -1,17 +1,12 @@
 import fs from 'node:fs';
+import { parseJsonc } from '../../core/jsonc.mjs';
 
 export function readJson(file) {
   try {
-    return JSON.parse(stripJsonComments(fs.readFileSync(file, 'utf8')));
+    return parseJsonc(fs.readFileSync(file, 'utf8'));
   } catch {
     return null;
   }
-}
-
-function stripJsonComments(s) {
-  return String(s)
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
 export function readText(file, cap = 200_000) {

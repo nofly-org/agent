@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { parseJsonc } from '../../core/jsonc.mjs';
 import { MAX_FILE_BYTES } from './limits.mjs';
 
 export function readJsonAt(file) {
@@ -9,7 +10,7 @@ export function readJsonAt(file) {
     return null;
   }
   try {
-    return JSON.parse(stripJsonComments(raw));
+    return parseJsonc(raw);
   } catch {
     return undefined;
   }
@@ -35,8 +36,4 @@ export function readText(file, cap = MAX_FILE_BYTES) {
   }
 }
 
-export function stripJsonComments(s) {
-  return String(s)
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:])\/\/.*$/gm, '$1');
-}
+export { stripJsonc as stripJsonComments } from '../../core/jsonc.mjs';

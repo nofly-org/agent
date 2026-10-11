@@ -4,11 +4,11 @@ import { api, gateMachine } from '../core/api-client.mjs';
 import { clampInt } from '../core/numbers.mjs';
 import { SEV_COLOR, bold, dim, gray, green, red, yellow } from '../core/terminal.mjs';
 import { grade, localGate } from '../detect/guard-signals.mjs';
-import { applyRepoPolicy, loadRepoPolicy } from './repo-policy.mjs';
+import { applyRepoPolicy, loadRepoPolicy, parseRepoPolicy } from './repo-policy.mjs';
 import { isGateVerdict, localAsGateResult } from './result.mjs';
 import { collectLocalSast, mergeSastIntoResult } from './sast.mjs';
 import { withMcpAdvisories } from './advisories.mjs';
-import { loadBaseline, loadIgnoreRules, suppressResult } from './suppressions.mjs';
+import { loadBaseline, loadIgnoreRules, parseBaseline, parseIgnoreRules, suppressResult } from './suppressions.mjs';
 
 const DEFAULT_CONCURRENCY = 8;
 const MIN_CONCURRENCY = 1;
@@ -72,7 +72,7 @@ function notAnalyzedResult(artifact, why) {
 function analyseLocally(artifacts, quiet) {
   const prepared = [];
   for (const artifact of artifacts) {
-    const read = artifact.skip ? { skip: artifact.skip } : readArtifactBounded(artifact.full);
+    const read = artifact.skip ? { skip: artifact.skip } : artifact.read ?? readArtifactBounded(artifact.full);
     if (read.skip) {
       if (!quiet) console.log(`  ${gray('•')} ${dim(artifact.rel)} ${yellow(`not analyzed - ${read.skip}`)}`);
       prepared.push({ artifact, skipped: read.skip });
@@ -83,7 +83,7 @@ function analyseLocally(artifacts, quiet) {
       artifact,
       content: read.content,
       local: read.unread ? withUnreadMiddle(local, read.unread) : local,
-      sast: collectLocalSast({ fullPath: artifact.full, relPath: artifact.rel, kind: artifact.kind, content: read.content }),
+      sast: collectLocalSast({ fullPath: artifact.full, relPath: artifact.rel, kind: artifact.kind, content: read.content, scripts: artifact.scripts }),
     });
   }
   return prepared;
@@ -156,21 +156,30 @@ function printResult(result, artifact, source) {
   if (remaining > 0) console.log(`      ${dim(`… and ${remaining} more (run with --json for all)`)}`);
 }
 
-function resolveSuppression(flags, root) {
+function resolveSuppression(flags, root, trusted) {
   const enabled = !flags['no-suppress'];
+  const useBaseline = enabled && !flags['no-baseline'];
   return {
     enabled,
-    rules: enabled ? loadIgnoreRules(root) : { fileGlobs: [], findingRules: [] },
-    baseline: enabled && !flags['no-baseline'] ? loadBaseline(root) : null,
+    rules: !enabled ? parseIgnoreRules('') : trusted ? parseIgnoreRules(trusted.ignore) : loadIgnoreRules(root),
+    baseline: !useBaseline ? null : trusted ? parseBaseline(trusted.baseline) : loadBaseline(root),
     lineCache: new Map(),
+    trustedMarks: trusted?.markLines ?? null,
+    markNote: trusted?.markNote,
   };
 }
 
-export async function gateArtifactList(artifacts, { apiKey, url, env, flags, root }) {
+function resolvePolicy(flags, root, trusted) {
+  if (flags['no-policy']) return null;
+  if (!trusted) return loadRepoPolicy(root);
+  return trusted.policy ? parseRepoPolicy(trusted.policy.text, trusted.policy.file) : null;
+}
+
+export async function gateArtifactList(artifacts, { apiKey, url, env, flags, root, trusted }) {
   const quiet = flags.json || flags.sarif;
   const workingRoot = root || process.cwd();
-  const suppression = resolveSuppression(flags, workingRoot);
-  const policy = flags['no-policy'] ? null : loadRepoPolicy(workingRoot);
+  const suppression = resolveSuppression(flags, workingRoot, trusted);
+  const policy = resolvePolicy(flags, workingRoot, trusted);
 
   const prepared = analyseLocally(artifacts, quiet);
   const { verdicts, rejected, backendDown, authFailed } = await requestServerVerdicts(prepared, { apiKey, url, env, flags, quiet });
@@ -196,8 +205,9 @@ export async function gateArtifactList(artifacts, { apiKey, url, env, flags, roo
     const merged = skipped ? base : mergeSastIntoResult(base, sast);
 
     const raw = { path: artifact.rel, full: artifact.full, kind: artifact.kind, source, ...merged, ...(serverVerdict ? { orgDecision: serverVerdict.decision } : {}) };
+    if (typeof artifact.read?.content === 'string') suppression.lineCache.set(artifact.full, artifact.read.content.split(/\r?\n/));
     const withSuppressions = suppression.enabled
-      ? suppressResult(raw, suppression.rules, suppression.baseline, suppression.lineCache)
+      ? suppressResult(raw, suppression.rules, suppression.baseline, suppression.lineCache, suppression.trustedMarks, suppression.markNote)
       : raw;
     const result = applyRepoPolicy(withSuppressions, policy);
 

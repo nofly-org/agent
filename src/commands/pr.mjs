@@ -1,12 +1,14 @@
-import { git, safeRef } from '../core/git-exec.mjs';
+import { git } from '../core/git-exec.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ARTIFACT_MATCHERS, walkArtifacts } from '../artifacts/matchers.mjs';
+import { walkArtifacts } from '../artifacts/matchers.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
+import { changedSinceBase, fetchCommit, fileAtRevision } from '../core/git-changes.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
-import { gateArtifactList } from '../gate/batch.mjs';
+import { gateArtifactList, gateExitCode, strictOutageOf } from '../gate/batch.mjs';
 import { detectEnv } from '../gate/environment.mjs';
+import { REPO_POLICY_FILES } from '../gate/repo-policy.mjs';
 import { toSarif } from '../gate/sarif.mjs';
 
 const PR_WORKFLOW = `name: Shomra AI Security
@@ -43,18 +45,38 @@ async function githubApi(token, method, apiPath, body) {
   return res.json();
 }
 
-function gitChangedVsBase(root, base) {
-  const run = (args) => git(args, { cwd: root });
-  let out = null;
-  const ref = safeRef(base);
-  for (const b of ref ? [`origin/${ref}`, ref] : []) {
-    out = run(['diff', '--name-only', '--relative', '--diff-filter=ACM', `${b}...HEAD`]);
-    if (out !== null) break;
+function pullRequestScope(root, { base, baseSha }) {
+  const scope = changedSinceBase(root, { base, baseSha });
+  if (scope || process.env.GITHUB_ACTIONS !== 'true' || !fetchCommit(root, baseSha)) return scope;
+  return changedSinceBase(root, { base, baseSha });
+}
+
+const UNVERIFIED_MARK_NOTE = 'the base branch could not be read, so a shomra-ignore mark here could not be checked against it';
+
+function trustedConfig(root, scope) {
+  if (!scope) return { ignore: '', baseline: null, policy: null, markLines: () => new Set(), markNote: UNVERIFIED_MARK_NOTE };
+  const read = (rel) => fileAtRevision(root, scope.baseRev, rel);
+  let policy = null;
+  for (const file of REPO_POLICY_FILES) {
+    const text = read(`.shomra/${file}`);
+    if (text !== null) {
+      policy = { text, file };
+      break;
+    }
   }
-  if (out === null) out = run(['diff', 'HEAD~1', '--name-only', '--relative', '--diff-filter=ACM']);
-  if (out === null) return null;
-  const files = out.split('\n').map((s) => s.trim()).filter(Boolean);
-  return files.filter((rel) => ARTIFACT_MATCHERS.some((m) => m.re.test(rel)));
+  const marks = new Map();
+  return {
+    ignore: read('.shomraignore') ?? '',
+    baseline: read('.shomra/baseline.json'),
+    policy,
+    markLines: (rel) => {
+      if (!marks.has(rel)) {
+        const lines = (read(rel) ?? '').split(/\r?\n/).filter((line) => /shomra-ignore/i.test(line)).map((line) => line.trim());
+        marks.set(rel, new Set(lines));
+      }
+      return marks.get(rel);
+    },
+  };
 }
 
 const GH_LEVEL = { CRITICAL: 'failure', HIGH: 'failure', MEDIUM: 'warning', LOW: 'notice', INFO: 'notice' };
@@ -84,6 +106,7 @@ function resolvePrContext(flags) {
     repo: flags.repo || process.env.GITHUB_REPOSITORY,
     token: flags.token || process.env.SHOMRA_GH_TOKEN || process.env.GITHUB_TOKEN,
     base: flags.base || process.env.GITHUB_BASE_REF || event.pull_request?.base?.ref || 'main',
+    baseSha: flags.base ? null : event.pull_request?.base?.sha || null,
     headSha: flags.sha || event.pull_request?.head?.sha || process.env.GITHUB_SHA || headShaFromGit(),
     prNumber: flags.pr || event.pull_request?.number || (String(process.env.GITHUB_REF || '').match(/refs\/pull\/(\d+)\//) || [])[1],
     root: path.resolve(flags.path || '.'),
@@ -116,7 +139,7 @@ function buildAnnotations(results) {
   const annotations = [];
   for (const result of results) {
     for (const finding of result.findings || []) {
-      annotations.push({
+        annotations.push({
         path: finding.file || result.path,
         start_line: finding.line || 1,
         end_line: finding.line || 1,
@@ -125,6 +148,7 @@ function buildAnnotations(results) {
         message: [
           finding.title,
           finding.remediationText ? `Fix: ${finding.remediationText}` : '',
+          finding.suppressionRefused ? `Not suppressed: ${finding.suppressionRefused}.` : '',
           `Run \`shomra fix ${result.path}\` to remediate.`,
         ].filter(Boolean).join('\n'),
       });
@@ -133,18 +157,19 @@ function buildAnnotations(results) {
   return annotations;
 }
 
-function checkRunConclusion(blocked, flagged, strict) {
-  if (blocked) return 'failure';
+function checkRunConclusion(blocked, flagged, strict, strictOutage) {
+  if (blocked || strictOutage) return 'failure';
   if (flagged) return strict ? 'failure' : 'neutral';
   return 'success';
 }
 
-function checkRunSummary({ results, annotations, blocked, flagged, suppressed }) {
+function checkRunSummary({ results, annotations, blocked, flagged, suppressed, notes }) {
   const headline = blocked ? `**${blocked} blocked**` : flagged ? `**${flagged} flagged**` : '**All clear**';
   const suppressedNote = suppressed ? ` · ${suppressed} suppressed` : '';
   return [
     headline,
     `· ${results.length} artifact(s) changed · ${annotations.length} finding(s)${suppressedNote}`,
+    ...notes.map((note) => `\n> ${note}`),
     '',
     '| Artifact | Kind | Verdict | Findings |',
     '| --- | --- | --- | --- |',
@@ -153,19 +178,27 @@ function checkRunSummary({ results, annotations, blocked, flagged, suppressed })
   ].join('\n');
 }
 
-function buildCheckRun({ headSha, results, annotations, blocked, flagged, suppressed, strict }) {
-  const verdict = blocked ? `${blocked} blocked` : flagged ? `${flagged} flagged` : 'Clean';
+function buildCheckRun({ headSha, results, annotations, blocked, flagged, suppressed, strict, strictOutage, notes }) {
+  const verdict = blocked ? `${blocked} blocked` : flagged ? `${flagged} flagged` : strictOutage ? 'Org policy unverified' : 'Clean';
   return {
     name: CHECK_RUN_NAME,
     head_sha: headSha,
     status: 'completed',
-    conclusion: checkRunConclusion(blocked, flagged, strict),
+    conclusion: checkRunConclusion(blocked, flagged, strict, strictOutage),
     output: {
       title: `${verdict} - ${results.length} changed artifact(s)`,
-      summary: checkRunSummary({ results, annotations, blocked, flagged, suppressed }),
+      summary: checkRunSummary({ results, annotations, blocked, flagged, suppressed, notes }),
       annotations: annotations.slice(0, MAX_ANNOTATIONS),
     },
   };
+}
+
+function runNotes({ scope, base, outcome, strictOutage }) {
+  const notes = [];
+  if (!scope) notes.push(`The base branch "${base}" was not found in this checkout, so every AI artifact was checked and no suppression, baseline or repo policy was trusted. Check out full history (fetch-depth: 0) to check only what the pull request changed.`);
+  if (outcome.backendDown || outcome.authFailed) notes.push(`Org policy was not applied: the Shomra backend was unreachable or refused the credential${strictOutage ? ', so this check fails closed (--strict)' : ''}.`);
+  for (const entry of outcome.rejected || []) notes.push(`The backend refused \`${entry.path}\` (${entry.reason}), so org policy was not applied to it.`);
+  return notes;
 }
 
 async function postCheckRun(token, repo, checkRun, flags) {
@@ -203,26 +236,32 @@ export async function cmdPr(flags, positional) {
   }
 
   const { apiKey, url } = resolveSettings(loadConfig());
-  const { repo, token, base, headSha, prNumber, root, dryRun } = resolvePrContext(flags);
+  const { repo, token, base, baseSha, headSha, prNumber, root, dryRun } = resolvePrContext(flags);
+  const quiet = flags.json || flags.sarif === true;
 
-  const changed = gitChangedVsBase(root, base);
+  const scope = pullRequestScope(root, { base, baseSha });
+  if (!scope && !quiet) {
+    console.error(`  ${yellow('⚠')} ${dim(`base branch "${base}" not found in this checkout - checking every AI artifact, without trusting suppressions or repo policy. Use fetch-depth: 0 to check only the pull request's changes.`)}`);
+  }
   const allArtifacts = walkArtifacts(root);
-  const artifacts = changed === null
-    ? allArtifacts
-    : allArtifacts.filter((artifact) => new Set(changed).has(artifact.rel));
+  const changedSet = scope ? new Set(scope.files) : null;
+  const artifacts = changedSet ? allArtifacts.filter((artifact) => changedSet.has(artifact.rel)) : allArtifacts;
 
   if (!artifacts.length) {
     await reportNothingChanged({ flags, token, dryRun, repo, headSha });
     return;
   }
 
-  const { results, blocked, flagged, suppressed } = await gateArtifactList(artifacts, {
-    apiKey, url, root, env: detectEnv(), flags: { ...flags, json: true },
+  const outcome = await gateArtifactList(artifacts, {
+    apiKey, url, root, env: detectEnv(), flags: { ...flags, json: true }, trusted: trustedConfig(root, scope),
   });
+  const { results, blocked, flagged, suppressed } = outcome;
+  const strictOutage = strictOutageOf(flags, outcome);
   emitSarif(flags, results);
 
   const annotations = buildAnnotations(results);
-  const checkRun = buildCheckRun({ headSha, results, annotations, blocked, flagged, suppressed, strict: flags.strict });
+  const notes = runNotes({ scope, base, outcome, strictOutage });
+  const checkRun = buildCheckRun({ headSha, results, annotations, blocked, flagged, suppressed, strict: flags.strict, strictOutage, notes });
 
   if (dryRun || flags.json) {
     console.log(JSON.stringify({
@@ -230,17 +269,21 @@ export async function cmdPr(flags, positional) {
       prNumber: prNumber ?? null,
       headSha,
       base,
+      comparedWith: scope?.against ?? null,
       conclusion: checkRun.conclusion,
       artifacts: results.length,
       findings: annotations.length,
+      backendDown: !!outcome.backendDown,
+      rejected: outcome.rejected,
+      notes,
       checkRun: dryRun ? checkRun : undefined,
     }, null, 2));
   } else if (flags.sarif !== true) {
     console.log(bold(cyan('\n  Shomra pr')) + dim(` - ${repo} #${prNumber ?? '?'} · ${results.length} changed artifact(s) · ${annotations.length} finding(s)`));
+    for (const note of notes) console.log(`  ${yellow('⚠')} ${dim(note)}`);
   }
 
   if (token && !dryRun) await postCheckRun(token, repo, checkRun, flags);
 
-  if (blocked) process.exitCode = 1;
-  else if (flagged && flags.strict) process.exitCode = 2;
+  process.exitCode = gateExitCode(flags, outcome);
 }

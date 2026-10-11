@@ -1,25 +1,19 @@
-import { git, safeRef } from '../core/git-exec.mjs';
 import path from 'node:path';
 import { api } from '../core/api-client.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
+import { changedSinceBase, diffNames, stagedNames } from '../core/git-changes.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 
 function gitChangedPaths(root, { staged, base }) {
-  const run = (args) => git(args, { cwd: root });
-  let out = null;
   if (staged) {
-    out = run(['diff', '--cached', '--name-only', '--relative', '--diff-filter=ACM']);
-  } else if (safeRef(base)) {
-    const ref = safeRef(base);
-    for (const b of [`origin/${ref}`, ref]) {
-      out = run(['diff', '--name-only', '--relative', '--diff-filter=ACM', `${b}...HEAD`]);
-      if (out !== null) break;
-    }
+    const files = stagedNames(root);
+    return files === null ? null : { files, range: 'staged' };
   }
-  if (out === null) out = run(['diff', 'HEAD~1', '--name-only', '--relative', '--diff-filter=ACM']);
-  if (out === null) return null;
-  return out.split('\n').map((s) => s.trim()).filter(Boolean);
+  const scope = base ? changedSinceBase(root, { base }) : null;
+  if (scope) return { files: scope.files, range: `${scope.against}...HEAD` };
+  const files = diffNames(root, ['HEAD~1', 'HEAD']);
+  return files === null ? null : { files, range: 'HEAD~1..HEAD', fallback: true };
 }
 
 export async function cmdProvenance(flags, positional) {
@@ -27,11 +21,13 @@ export async function cmdProvenance(flags, positional) {
   const staged = !!flags.staged;
   const base = flags.base || (staged ? null : process.env.GITHUB_BASE_REF || 'main');
 
-  const paths = gitChangedPaths(root, { staged, base });
-  if (paths === null) {
+  const changed = gitChangedPaths(root, { staged, base });
+  if (changed === null) {
     console.error(red('✗') + ' Not a git repository (or no diff available). Run inside a repo, or pass --base <ref>.');
     process.exit(EXIT_USAGE);
   }
+  const paths = changed.files;
+  if (changed.fallback && !flags.json && !flags.trailer) console.error(`${yellow('!')} ${dim(`base "${base}" not found - attributing only the last commit (${changed.range}).`)}`);
   if (!paths.length) {
     if (flags.json) console.log(JSON.stringify({ files: [], agentAuthored: 0, coverage: 'NO_TELEMETRY', summary: 'no changed files' }, null, 2));
     else console.log(green('\n  ✓ No changed files to attribute.\n'));

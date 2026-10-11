@@ -3,6 +3,7 @@ import { MALICIOUS_PACKAGE_SEED, POPULAR_PACKAGES, editDistance } from './packag
 import { SECRET_PATTERNS, isPlaceholderSecret } from './secrets.mjs';
 import { parseLooseToml } from '../../inventory/grant-extract.mjs';
 import { parseYaml } from '../../core/yaml-lite.mjs';
+import { parseJsonc } from '../../core/jsonc.mjs';
 
 const MAX_SERVERS = 200;
 const MAX_ARGS = 64;
@@ -12,15 +13,11 @@ const strList = (v) => (Array.isArray(v) ? v.filter((x) => x != null && typeof x
 
 /* ─── documents ──────────────────────────────────────────────────────────── */
 
-function stripJsonComments(s) {
-  return String(s).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:"])\/\/.*$/gm, '$1').replace(/,(\s*[}\]])/g, '$1');
-}
-
 export function parseConfigDoc(text, path = '') {
   if (typeof text !== 'string' || !text.trim()) return null;
   if (/\.toml$/i.test(path)) return parseLooseToml(text);
   if (/\.ya?ml$/i.test(path)) return parseYaml(text);
-  try { return JSON.parse(stripJsonComments(text)); } catch { /* fall through */ }
+  try { return parseJsonc(text); } catch { /* fall through */ }
   if (/^\s*\[/m.test(text) && /=/.test(text)) return parseLooseToml(text);
   return null;
 }

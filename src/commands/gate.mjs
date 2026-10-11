@@ -10,9 +10,9 @@ import { gateArtifactList, gateExitCode, strictOutageOf } from '../gate/batch.mj
 import { GATE_KINDS, collectSiblings, detectEnv } from '../gate/environment.mjs';
 import { isGateVerdict, localAsGateResult, printGateResult } from '../gate/result.mjs';
 import { toSarif } from '../gate/sarif.mjs';
-import { collectLocalSast, mergeSastIntoResult } from '../gate/sast.mjs';
+import { bundledFindings, bundledKind, byBundledPriority, collectLocalSast, mergeSastIntoResult } from '../gate/sast.mjs';
 import { withMcpAdvisories } from '../gate/advisories.mjs';
-import { readZipEntry } from '../core/zip-lite.mjs';
+import { listZipEntries, normalizeZipName, readZipText } from '../core/zip-lite.mjs';
 
 const GATE_USAGE = 'shomra gate <file> [--kind mcp|skill|command|subagent|hook|rules|agent-card|memory|plugin|tool-manifest|extension|workflow|guardrail|framework] [--name x] [--strict] [--json]';
 
@@ -34,6 +34,52 @@ function resolveGateFile(file) {
   return target;
 }
 
+const MAX_BUNDLE_SOURCES = 60;
+const MAX_BUNDLE_BYTES = 16 * 1024 * 1024;
+const DEPENDENCY_DIR = /(^|\/)(node_modules|vendor|site-packages|\.venv|venv|__pycache__)\//i;
+const SEVERITY_RANK = { INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 };
+
+function readBundle(buf, bundleRel) {
+  const entries = listZipEntries(buf);
+  if (!entries) return { content: null, findings: [] };
+  const findings = [];
+  const manifests = entries.filter((e) => !e.directory && e.path.toLowerCase() === 'manifest.json');
+  const renamed = entries.filter((e) => e.localName !== null && normalizeZipName(e.localName) !== e.path);
+  if (manifests.length > 1 || renamed.length) {
+    findings.push({
+      severity: 'CRITICAL',
+      title: manifests.length > 1
+        ? `Bundle carries ${manifests.length} copies of manifest.json - an installer may read a different one than this check did`
+        : `Bundle entry names disagree (${renamed[0].path} is stored as ${renamed[0].localName}) - an installer may unpack different files than this check read`,
+      remediationText: 'Rebuild the bundle from source so every file appears once, under one name.',
+    });
+  }
+  const content = manifests.length ? readZipText(buf, manifests[manifests.length - 1]) : null;
+  if (manifests.length > 1 && content !== null) {
+    const first = readZipText(buf, manifests[0]);
+    if (first !== null && first !== content) {
+      for (const f of localGate(first, { kind: 'mcp', path: `${bundleRel}!/manifest.json` }).findings) findings.push({ ...f, title: `${f.title} (in another copy of manifest.json)` });
+    }
+  }
+  let budget = MAX_BUNDLE_BYTES;
+  const sources = entries
+    .filter((e) => !e.directory && !DEPENDENCY_DIR.test(e.path) && bundledKind(e.path) && bundledKind(e.path) !== 'reference')
+    .map((e) => ({ ...e, rel: e.path }))
+    .sort(byBundledPriority)
+    .slice(0, MAX_BUNDLE_SOURCES);
+  for (const entry of sources) {
+    if (entry.usize > budget) continue;
+    const text = readZipText(buf, entry);
+    if (text === null) continue;
+    budget -= entry.usize;
+    for (const f of bundledFindings({ rel: `${bundleRel}!/${entry.path}`, content: text })) {
+      const capped = bundledKind(entry.path) === 'code' && SEVERITY_RANK[f.severity] > SEVERITY_RANK.HIGH ? 'HIGH' : f.severity;
+      findings.push({ ...f, severity: capped });
+    }
+  }
+  return { content, findings };
+}
+
 function readGateTarget(flags, positional) {
   if (flags.stdin) {
     return { content: fs.readFileSync(0, 'utf8'), relPath: flags.path || null, fullTarget: null };
@@ -47,17 +93,13 @@ function readGateTarget(flags, positional) {
   const target = resolveGateFile(file);
   
   if (/\.(?:dxt|mcpb)$/i.test(target)) {
-    const manifest = readZipEntry(fs.readFileSync(target), 'manifest.json');
-    if (manifest == null) {
+    const bundleRel = path.relative(process.cwd(), target).split(path.sep).join('/');
+    const read = readBundle(fs.readFileSync(target), bundleRel);
+    if (read.content == null) {
       console.error(`${red('✗')} ${file} is not a readable extension bundle (no manifest.json at its root).`);
       process.exit(EXIT_USAGE);
     }
-    return {
-      content: manifest,
-      relPath: `${path.relative(process.cwd(), target).split(path.sep).join('/')}!/manifest.json`,
-      fullTarget: null,
-      bundle: true,
-    };
+    return { content: read.content, relPath: `${bundleRel}!/manifest.json`, fullTarget: null, bundle: true, bundleFindings: read.findings };
   }
   return {
     content: fs.readFileSync(target, 'utf8'),
@@ -96,7 +138,7 @@ export async function cmdGate(flags, positional) {
   const { apiKey, url } = resolveSettings(loadConfig());
   if (flags.all) return cmdGateAll(flags, positional, { apiKey, url });
 
-  const { content, relPath, fullTarget, bundle } = readGateTarget(flags, positional);
+  const { content, relPath, fullTarget, bundle, bundleFindings: fromBundle = [] } = readGateTarget(flags, positional);
   const kind = flags.kind && GATE_KINDS.includes(String(flags.kind)) ? String(flags.kind) : bundle ? 'mcp' : undefined;
   const name = flags.name ? String(flags.name) : (relPath ? relPath.split('/').pop() : 'artifact');
   const local = localGate(content, { kind, path: relPath });
@@ -121,7 +163,7 @@ export async function cmdGate(flags, positional) {
     if (advisories === 'unavailable' && !flags.json) console.error(`  ${yellow('⚠')} ${dim('Advisory lookup (OSV) unreachable - pinned MCP packages were not checked for published CVEs.')}`);
   }
   const base = serverVerdict || localAsGateResult(shownLocal, name, kind);
-  const result = mergeSastIntoResult(base, collectLocalSast({ fullPath: fullTarget, relPath, kind, content }));
+  const result = mergeSastIntoResult(base, [...collectLocalSast({ fullPath: fullTarget, relPath, kind, content }), ...fromBundle]);
   printGateResult(result, serverVerdict ? 'server' : 'local', flags);
 
   if (result.decision === 'BLOCK') process.exitCode = 1;

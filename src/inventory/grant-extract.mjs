@@ -1,3 +1,4 @@
+import { parseToml } from '../core/toml-lite.mjs';
 
 const MAX_DEPTH = 12;
 const MAX_NODES = 5000;
@@ -314,45 +315,7 @@ export function grantIsEmpty(g) {
   );
 }
 
-function scanJson(raw, onChar) {
-  let out = '';
-  let inStr = false;
-  for (let i = 0; i < raw.length; i++) {
-    const c = raw[i];
-    if (inStr) {
-      out += c;
-      if (c === '\\') out += raw[++i] ?? '';
-      else if (c === '"') inStr = false;
-      continue;
-    }
-    if (c === '"') { inStr = true; out += c; continue; }
-    const r = onChar(raw, i);
-    if (r === undefined) out += c;
-    else { out += r.emit; i = r.next; }
-  }
-  return out;
-}
-
-export function stripJsonc(raw) {
-  const noComments = scanJson(String(raw).replace(/^﻿/, ''), (s, i) => {
-    if (s[i] === '/' && s[i + 1] === '/') {
-      let j = i;
-      while (j < s.length && s[j] !== '\n') j++;
-      return { emit: '\n', next: j };
-    }
-    if (s[i] === '/' && s[i + 1] === '*') {
-      const end = s.indexOf('*/', i + 2);
-      return { emit: ' ', next: end === -1 ? s.length : end + 1 };
-    }
-    return undefined;
-  });
-  return scanJson(noComments, (s, i) => {
-    if (s[i] !== ',') return undefined;
-    let j = i + 1;
-    while (j < s.length && /\s/.test(s[j])) j++;
-    return s[j] === '}' || s[j] === ']' ? { emit: '', next: i } : undefined;
-  });
-}
+export { stripJsonc } from '../core/jsonc.mjs';
 
 function yamlScalar(raw) {
   const hash = raw.search(/\s#/);
@@ -410,54 +373,6 @@ export function parseLooseYaml(text) {
   return sawAny ? root : null;
 }
 
-function tomlValue(raw) {
-  const v = raw.trim();
-  if (/^(true|false)$/.test(v)) return v === 'true';
-  if (/^-?\d+(\.\d+)?$/.test(v)) return Number(v);
-  if (/^"(?:[^"\\]|\\.)*"$/.test(v)) {
-    try { return JSON.parse(v); } catch { return v.slice(1, -1); }
-  }
-  if (/^'[^']*'$/.test(v)) return v.slice(1, -1);
-  if (v.startsWith('[')) {
-    const out = [];
-    for (const m of v.matchAll(/"((?:[^"\\]|\\.)*)"|'([^']*)'/g)) out.push(m[1] !== undefined ? m[1] : m[2]);
-    return out;
-  }
-  return undefined;
-}
-
-function tomlKey(raw) {
-  const parts = [];
-  for (const m of raw.trim().matchAll(/"((?:[^"\\]|\\.)*)"|'([^']*)'|([^.\s"']+)/g)) parts.push(m[1] ?? m[2] ?? m[3]);
-  return parts;
-}
-
 export function parseLooseToml(text) {
-  if (typeof text !== 'string' || text.length > 512 * 1024) return null;
-  const root = {};
-  let cur = root;
-  let pending = null;
-  const lines = text.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i].replace(/(^|\s)#.*$/, '').trim();
-    if (!line) continue;
-    const section = /^\[\[?\s*(.+?)\s*\]\]?$/.exec(line);
-    if (section && !line.includes('=')) {
-      cur = root;
-      for (const k of tomlKey(section[1])) cur = isObj(cur[k]) ? cur[k] : (cur[k] = {});
-      continue;
-    }
-    const eq = line.indexOf('=');
-    if (eq === -1) continue;
-    const keys = tomlKey(line.slice(0, eq));
-    let rhs = line.slice(eq + 1).trim();
-    if (rhs.startsWith('[') && !rhs.includes(']')) {
-      while (++i < lines.length && !rhs.includes(']')) rhs += ' ' + lines[i].replace(/(^|\s)#.*$/, '').trim();
-    }
-    pending = cur;
-    for (const k of keys.slice(0, -1)) pending = isObj(pending[k]) ? pending[k] : (pending[k] = {});
-    const val = tomlValue(rhs);
-    if (val !== undefined && keys.length) pending[keys[keys.length - 1]] = val;
-  }
-  return root;
+  return parseToml(text);
 }

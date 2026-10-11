@@ -26,12 +26,19 @@ function parseSimpleYaml(text) {
 
 function unquote(s) { return String(s).replace(/^["']|["']$/g, ''); }
 
+export const REPO_POLICY_FILES = ['policy.yml', 'policy.yaml', 'policy.json'];
+
 export function loadRepoPolicy(root) {
-  let text, file;
-  for (const f of ['policy.yml', 'policy.yaml', 'policy.json']) {
-    try { text = fs.readFileSync(path.join(root, '.shomra', f), 'utf8'); file = f; break; } catch {  }
+  for (const f of REPO_POLICY_FILES) {
+    let text;
+    try { text = fs.readFileSync(path.join(root, '.shomra', f), 'utf8'); } catch { continue; }
+    return parseRepoPolicy(text, f);
   }
-  if (text === undefined) return null;
+  return null;
+}
+
+export function parseRepoPolicy(text, file) {
+  if (typeof text !== 'string') return null;
   let raw;
   if (file.endsWith('.json')) { try { raw = JSON.parse(text); } catch { return null; } }
   else raw = parseSimpleYaml(text);

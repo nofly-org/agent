@@ -49,6 +49,20 @@ export function descendInto(parentRel, name) {
   return String(parentRel ?? '').split('/').some((segment) => AGENT_CONFIG_SEGMENT.test(segment));
 }
 
+export function walkablePath(rel) {
+  const parts = String(rel ?? '').split('/');
+  let parent = '';
+  for (const name of parts.slice(0, -1)) {
+    if (!name || !descendInto(parent, name)) return false;
+    parent = parent ? `${parent}/${name}` : name;
+  }
+  return parts.length > 0 && parts[parts.length - 1] !== '';
+}
+
+export function artifactKindOf(rel) {
+  return ARTIFACT_MATCHERS.find((m) => m.re.test(rel))?.kind ?? null;
+}
+
 function realOr(p) {
   try {
     return fs.realpathSync(p);
