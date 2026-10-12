@@ -110,4 +110,4 @@ export function disguisedWords(text) {
   return [...out];
 }
 
-export const INVISIBLE_CHARS_RE = /[؜ᅟᅠ᠎​‌‎‏‪-‮⁠-⁤⁦-⁩ㅤ﻿ﾠ￹-￻]|[\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/u;
+export { INVISIBLE_CHARS_RE } from './invisible-chars.mjs';

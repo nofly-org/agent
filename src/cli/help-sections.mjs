@@ -20,7 +20,7 @@ const MODES = () => `${bold('MODES')}  ${dim('- local-first: everything that can
 
 const COMMANDS = () => `${bold('COMMANDS')}
   ${dim('Daily - the verbs you live in')}
-  ${cyan('check')}         ${bold('Is my repo safe?')} Gate every AI artifact  ${dim('[dir] [--staged|--changed] [--fix] [--strict] [--json]')}
+  ${cyan('check')}         ${bold('Is my repo safe?')} Gate every AI artifact  ${dim('[dir] [--staged|--changed|--rev <sha>] [--fix] [--strict] [--json]')}
   ${cyan('fix')}           Remediate an artifact in place (AI)    ${dim('<file> [--apply] [--kind …] [--json]')}
   ${cyan('why')}           Explain a finding + false-positive read ${dim('<file> [--kind …] [--json]')}
   ${cyan('gate')}          Vet ONE AI artifact before install     ${dim('<file> [--kind …] [--strict] [--json]  ·  --all for a whole repo (CI)')}
@@ -36,7 +36,7 @@ const COMMANDS = () => `${bold('COMMANDS')}
   ${cyan('init')}          Configure + enroll this machine       ${dim('--key shm_live_… [--url <backend>]  ·  --machine for a root-only machine-wide config')}
   ${cyan('schedule')}      Re-report on a timer (launchd / Task Scheduler / systemd / cron) ${dim('install [--every 6h] [--all-users] · remove · status')}
   ${cyan('protect')}       Wire the runtime firewall for every coding agent ${dim('[--project] [--force]')}
-  ${cyan('install-hook')}  Wire the runtime firewall into ONE agent ${dim('[--agent claude|cursor|windsurf|gemini|codex|copilot|cline|aider|all] [--global]')}
+  ${cyan('install-hook')}  Wire the runtime firewall into ONE agent ${dim('[--agent claude|cursor|windsurf|gemini|codex|copilot|cline|aider|all] [--global|--managed] [--uninstall]')}
   ${cyan('selftest')}      ${bold('Prove the firewall is really in path')} ${dim('[--agent <name>|all] [--json] [--strict]')}
                 ${dim('Reads each installed agent\'s own settings, then drives its REAL hook with')}
                 ${dim('inert canaries in that vendor\'s wire shape - a shell install, a Dockerfile')}
@@ -95,6 +95,8 @@ const GATE = () => `${bold('GATE')}
   ${bold('Works offline.')} Real static analysis (dangerous shell, prompt injection,
   secrets, exfil sinks, over-permissioned tool grants, install-lure prose) runs
   ON-MACHINE, so ${bold('gate')} returns a genuine verdict with no backend and no key.
+  Pinned MCP packages are checked against osv.dev by name and version; set
+  ${bold('SHOMRA_OFFLINE=1')} (or ${bold('--offline')}) to skip that lookup.
   When enrolled + reachable, the backend layers your ORG POLICY + governance on
   top. If the backend is down it falls back to the local verdict (and says so);
   ${bold('--strict')} instead fails closed (exit 1) because org policy couldn't be verified.
@@ -113,6 +115,7 @@ const CHECK = () => `${bold('CHECK')}  ${dim('- the one command a developer runs
     ${dim('shomra check')}            every AI artifact under the repo
     ${dim('shomra check --staged')}   only what's git-staged  ${dim('(wire into pre-commit / on-save)')}
     ${dim('shomra check --changed')}  only what changed vs HEAD
+    ${dim('shomra check --rev <sha>')} a commit, read straight from git  ${dim('(--base-rev <sha>: only what changed since)')}
     ${dim('shomra check --fix')}      gate, then remediate what isn't clean, in place
     ${dim('shomra check --json')}     machine-readable - what an IDE extension calls
     ${dim('shomra check --sarif')}    SARIF 2.1.0 - upload for native GitHub/GitLab PR annotations
@@ -273,6 +276,11 @@ const RUNTIME_FIREWALL = () => `${bold('RUNTIME FIREWALL (multi-agent)')}
   e.g. ${dim('shomra install-hook --agent cursor,windsurf')} or ${dim('shomra install-hook --agent all')}.
   Windsurf's post-hooks can flag/log but not withhold a result (vendor limit).
 
+  ${bold('--managed')} (root or Administrator) installs the hooks machine-wide, where a
+  developer cannot remove or switch them off: Claude Code managed settings
+  (managed-settings.d/50-shomra.json), /etc/codex/hooks.json, and Copilot CLI's
+  policy.d. ${bold('shomra admin mdm-script --guard')} adds it to the MDM bootstrap.
+
   Risky calls/results are blocked and every decision lands in Gate Activity,
   tagged with which agent triggered it.
 
@@ -317,6 +325,9 @@ const ENV = () => `${bold('ENV')}
   SHOMRA_GATE_CONCURRENCY=8   Parallel backend gate/model-lookup calls in batch runs (1-32)
   SHOMRA_GH_TOKEN             GitHub token for \`shomra pr\` (falls back to GITHUB_TOKEN)
   SHOMRA_GUARD_STRICT=1       Fail-closed on the server tier if the backend is unreachable
+  SHOMRA_GUARD_LOCAL_FLAG=ask What a call the on-machine rules flag does when no server verdict arrives:
+                              ask (default), allow or deny
+  SHOMRA_GUARD_FAILOPEN_SEVERE=1  Let destructive calls run unscreened when no server verdict arrives
   SHOMRA_GUARD_LOCAL=0        Disable the on-machine Tier-0 guard (route everything to the server)
   SHOMRA_GUARD_IGNORE=<globs> Comma-separated file globs the runtime guard treats as known-safe (never
                              withheld) - plus any .shomraignore in the working dir. For files with
@@ -324,7 +335,8 @@ const ENV = () => `${bold('ENV')}
   SHOMRA_GUARD_ALWAYS_ESCALATE=1  Send every call to the server (full telemetry, higher overhead)
   SHOMRA_GUARD_TIMEOUT_MS=2000    Per-call server timeout budget (default 2000); the server answers inside it
   SHOMRA_GUARD_TIER=fast          Ask for a 100ms screen: every enrichment pass is skipped and the verdict says so
-  SHOMRA_GUARD_BREAKER_MS=30000   Skip the server for this long after a failure (0 disables)
+  SHOMRA_GUARD_BREAKER_MS=30000   Skip the server for this long after repeated failures (0 disables)
+  SHOMRA_GUARD_BREAKER_FAILURES=3 Failures in a row before the server is skipped (strict mode never skips it)
   SHOMRA_LLM_PROXY_BASE       Proxy base URL install-hook writes for Aider (default http://127.0.0.1:4141/openai/v1)
   SHOMRA_MODEL_GUARD=0        Disable the model-load screen in the PreToolUse hook
   SHOMRA_MODEL_CACHE=0        Disable the on-machine model-index verdict cache

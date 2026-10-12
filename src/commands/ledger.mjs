@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { agentHookInstalled } from '../agents/hook-files.mjs';
 import { AGENT_KEYS } from '../agents/installers.mjs';
-import { mcpConfigCandidates } from '../mcp/config-wrapping.mjs';
+import { mcpConfigCandidates, serverEntries } from '../mcp/config-wrapping.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { bold, cyan, dim, gray, green, red, yellow } from '../core/terminal.mjs';
 import { VERSION } from '../core/version.mjs';
@@ -24,13 +24,11 @@ function mcpReach() {
   let files = 0;
   const selfHints = ['mcp-guard', 'shomra'];
 
-  for (const file of mcpConfigCandidates()) {
-    const config = readJson(file);
-    const servers = config?.mcpServers || config?.servers;
-    if (!servers || typeof servers !== 'object') continue;
+  for (const { file } of mcpConfigCandidates()) {
+    const entries = serverEntries(readJson(file));
+    if (!entries.length) continue;
     files++;
-    for (const entry of Object.values(servers)) {
-      if (!entry || typeof entry !== 'object') continue;
+    for (const entry of entries) {
       total++;
       const argv = [entry.command, ...(entry.args ?? [])].map((x) => String(x ?? '')).join(' ');
       const guarded = selfHints.some((h) => argv.includes(h));

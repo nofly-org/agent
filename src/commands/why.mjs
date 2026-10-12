@@ -5,7 +5,8 @@ import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { SEV_COLOR, bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { localGate } from '../detect/guard-signals.mjs';
-import { GATE_KINDS } from '../gate/environment.mjs';
+import { kindFlag } from '../gate/environment.mjs';
+import { maskSecrets } from '../detect/secret-mask.mjs';
 
 export async function cmdWhy(flags, positional) {
   const file = positional[0];
@@ -28,7 +29,7 @@ export async function cmdWhy(flags, positional) {
   }
   const content = fs.readFileSync(target, 'utf8');
   const rel = path.relative(process.cwd(), target).split(path.sep).join('/');
-  const kind = flags.kind && GATE_KINDS.includes(String(flags.kind)) ? String(flags.kind) : undefined;
+  const kind = kindFlag(flags);
 
   const cfg = loadConfig();
   const { apiKey, url } = resolveSettings(cfg);
@@ -36,7 +37,7 @@ export async function cmdWhy(flags, positional) {
   if (apiKey) {
     try {
       if (!flags.json) process.stdout.write(dim(`  Explaining ${rel}… `));
-      const res = await api(url, apiKey, '/gate/explain', { ...(kind ? { kind } : {}), path: rel, name: rel.split('/').pop(), content });
+      const res = await api(url, apiKey, '/gate/explain', { ...(kind ? { kind } : {}), path: rel, name: rel.split('/').pop(), content: maskSecrets(content).text });
       if (!flags.json) console.log('');
       if (flags.json) console.log(JSON.stringify({ path: rel, ...res }, null, 2));
       else printWhy(res);

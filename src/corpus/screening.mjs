@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { MAX_ARTIFACT_BYTES, SKIP_DIRS } from '../artifacts/matchers.mjs';
-import { INVISIBLE_CHARS_RE, downrankCodeContext, localScan } from '../detect/guard-signals.mjs';
+import { downrankCodeContext, localScan } from '../detect/guard-signals.mjs';
+import { suspiciousInvisible } from '../detect/signals/invisible-chars.mjs';
 
 export const CORPUS_TEXT_RE = /\.(md|markdown|txt|rst|adoc|html?|json|jsonl|ya?ml|csv|tsv|tex)$/i;
 export const CORPUS_OPAQUE_RE = /\.(pdf|docx?|pptx?|xlsx?|epub|rtf|odt|pages|key|numbers)$/i;
@@ -101,7 +102,7 @@ export function screenCorpus(files, opaque, chunkSize) {
 
     const scan = localScan(read.text, { categories: SCAN_CATEGORIES });
     const ranked = downrankCodeContext(scan.findings || []);
-    const hasInvisibleChars = INVISIBLE_CHARS_RE.test(read.text);
+    const hasInvisibleChars = !!suspiciousInvisible(read.text);
     const verdict = documentVerdict(scan.findings, ranked, hasInvisibleChars);
 
     if (verdict === 'ALLOW') {

@@ -30,9 +30,17 @@ npx @shomra/agent gate .mcp.json
 ## Auth (optional)
 
 Shomra is **local-first** - there is no built-in backend and no telemetry. `gate`,
-`check`, `models`, `secrets`, and the runtime firewall all run fully on your
-machine with no key and no network. You only connect to a Shomra org to layer on
-your **org policy**, cloud/deep scans, AI fixes, and the Model Security Index.
+`check`, `models`, `secrets`, and the runtime firewall all run on your machine
+with no key. The one lookup that goes out without a key is the name and version
+of each pinned MCP server package, checked against the public advisory database
+at osv.dev; set `SHOMRA_OFFLINE=1` (or pass `--offline`) to keep even that on the
+machine. You only connect to a Shomra org to layer on your **org policy**,
+cloud/deep scans, AI fixes, and the Model Security Index.
+
+When enrolled, artifact content goes to your backend for org policy - with every
+secret value replaced on the machine by a same-shape stand-in first, so the
+backend still sees that a credential is there, of which kind, but never the
+credential itself.
 
 - **Dev machine:** `shomra init --key shm_live_… --url https://shomra.your-co.com` (writes `~/.shomra/config.json`).
 - **CI / headless:** set env vars instead - no `init` needed:
@@ -83,6 +91,7 @@ shomra fix .mcp.json --apply           # AI-fix one artifact and write it back
 shomra why .mcp.json                   # why each finding matters + is-it-a-false-positive
 shomra install-precommit               # block risky staged AI artifacts on git commit
 shomra install-hook --agent claude     # wire the runtime firewall into Claude Code
+shomra install-hook --uninstall        # take it out again (your own hooks are kept)
 shomra selftest --agent all            # prove the firewall is really in path on THIS machine
 shomra rules --write                   # teach the agent what gets blocked, so it never writes it
 shomra mcp install                     # let the agent gate its own content BEFORE writing it
@@ -175,7 +184,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with: { node-version: 22 }
       - name: Vet AI artifacts
         env:
           SHOMRA_API_KEY: ${{ secrets.SHOMRA_API_KEY }}
@@ -212,7 +221,7 @@ jobs:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }   # need the base ref to diff changed artifacts
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with: { node-version: 22 }
       - run: npx @shomra/agent pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -304,12 +313,58 @@ Add `--json` anywhere to get machine-readable output for custom reporting.
 ## Runtime firewall
 
 `shomra install-hook [--agent claude|cursor|windsurf|gemini|codex|copilot|cline|aider|all]`
-wires Shomra into a coding agent's own hooks. It is **tiered**: catastrophic tool
+wires Shomra into a coding agent's own hooks. `shomra install-hook --uninstall`
+(add `--global` for your user settings) takes it out again: only Shomra's entries
+are removed, your own hooks and settings are left as they were, and a settings
+file Shomra cannot parse (comments, trailing commas) is reported and never
+rewritten. It is **tiered**: catastrophic tool
 calls (`curl|sh`, reverse shells, base64 RCE, live secrets, injection) are
 blocked on-machine with zero network; only policy-relevant calls escalate to the
 backend, behind a short timeout + circuit breaker - so a slow or down backend
 never freezes the agent. Fail-open by default; `SHOMRA_GUARD_STRICT=1` fails
 closed on the server tier.
+
+Each agent gets its hooks in the format it actually loads:
+
+| Agent | Where | Notes |
+| :- | :- | :- |
+| Claude Code | `~/.claude/settings.json`, or `.claude/settings.json` in a repo | Covers `Bash`, `PowerShell`, `Monitor`, file writes, skills and MCP calls. |
+| Codex CLI | `~/.codex/hooks.json`, or `.codex/hooks.json`, under its `"hooks"` key | Codex runs a new user or project hook only after you trust it in the review it shows at its next start. |
+| GitHub Copilot CLI | `~/.copilot/hooks/shomra.json` (or `$COPILOT_HOME/hooks/`), or `.github/hooks/shomra.json` | Version 1 format, with separate bash and PowerShell commands. |
+| Cline | `PreToolUse` and `PostToolUse` scripts in `~/Documents/Cline/Hooks` (or `~/.cline/hooks`), or `.clinerules/hooks` | Cline cannot pause a call for approval, so a call Shomra would ask about is refused with the reason. |
+| Gemini CLI, Cursor, Windsurf | their own settings or hooks file | |
+
+Running the install again repairs an older install written in a shape the agent
+ignored, and a hook left pointing at a Node or Shomra install that was removed.
+
+**Managed install, for organizations.** `sudo shomra install-hook --managed`
+(or an elevated Administrator on Windows) writes the hooks where a developer
+cannot remove or switch them off: Claude Code's managed settings
+(`managed-settings.d/50-shomra.json`, read by Claude Code 2.1.83 or later), `/etc/codex/hooks.json` (Codex runs these
+without a trust review), and Copilot CLI's `policy.d`. Add `--guard` to
+`shomra admin mdm-script` to include it in the Jamf, Intune or Kandji bootstrap,
+which installs Shomra in a root-owned location so nobody can quietly replace
+what the hooks run. If you also deliver Claude Code settings from the admin
+console or an MDM profile, set `managedSourcesBehavior: "merge"` there, or Claude
+Code skips the managed settings folder; check with `/status`. Set
+`SHOMRA_MANAGED_ROOT` to write the same files under a staging folder, for
+example when building a golden image.
+A symlinked settings file stays a symlink, and a file installed by root for
+another user keeps that user as its owner.
+
+When the guard blocks a tool result, Claude Code (2.1.121 or later), Copilot CLI,
+Gemini CLI and Cline get the result replaced or withheld, so the model never
+reads it; Codex replaces MCP results. Where an agent cannot replace a result, it
+stays visible with a note telling the model to treat it as untrusted data.
+
+A call the on-machine rules flag as high risk (a reverse tunnel, a netcat shell,
+data posted to the network) is never run silently just because no server
+answered. With no backend configured, or when the backend is unreachable or
+rejects the credential, the agent **asks you** and names what matched. Set
+`SHOMRA_GUARD_LOCAL_FLAG=allow` to let flagged calls through or `=deny` to refuse
+them. A `.shomraignore` committed in a repo only quiets paths that really resolve
+inside that repo, so it can never silence a write to `~/.bashrc` or a symlinked
+path outside it.
 
 A command that names a script runs what the script says, so the hook reads it:
 the package.json script behind `npm test` / `npm run x` / `yarn x` / `pnpm x`
@@ -332,7 +387,7 @@ Three channels are screened:
 |---|---|---|
 | **Tool call** | PreToolUse / `beforeShellExecution` | the shell command, artifact write or MCP call, before it runs |
 | **Tool result** | PostToolUse / `afterMCPExecution` | injection, exfil sinks and hidden payloads in what a fetch/read brings *back* |
-| **Prompt** | `UserPromptSubmit` (Claude Code) / `beforeSubmitPrompt` (Cursor) | what **you** paste, before it leaves the machine |
+| **Prompt** | `UserPromptSubmit` (Claude Code, Codex) / `beforeSubmitPrompt` (Cursor) / `BeforeAgent` (Gemini CLI) | what **you** paste, before it leaves the machine |
 | **Plan** | `PreToolUse` on `ExitPlanMode` (Claude Code) | nothing - it *informs*. See [`shomra plan`](#shomra-plan--threat-model-what-the-agent-is-about-to-build) |
 
 **Skills are checked when they are invoked (Claude Code).** The `Skill` tool is
@@ -603,9 +658,10 @@ reported as *ignored locally, still blocked by org policy*. Accept the risk or
 add an exception in the platform instead:
 
 - **`shomra baseline`** records every current finding (line-independent
-  fingerprints) in `.shomra/baseline.json` - commit it so the whole team shares
-  it. From then on only findings introduced *after* the baseline fail; re-run it
-  to refresh after cleanups. Skip it per-run with `--no-baseline`.
+  fingerprints, with how many of each) in `.shomra/baseline.json` - commit it so
+  the whole team shares it. From then on only findings introduced *after* the
+  baseline fail, including a new copy of one it accepted; re-run it to refresh
+  after cleanups. Skip it per-run with `--no-baseline`.
 - **`.shomraignore`** - a repo file of `path/glob` lines (skip the file) or
   `path/glob :: title-substring` lines (skip one finding class in those files).
   The runtime firewall honors it too, so test fixtures and detection source
@@ -613,6 +669,11 @@ add an exception in the platform instead:
   `# shomra-ignore`) on the finding's line or the line above, or opt a whole
   file out with `shomra-ignore-file` in its first lines (works in JSON as a
   `"_shomra": "shomra-ignore-file"` key). `--no-suppress` ignores all of this.
+- **In `shomra pr` these waivers come from the base branch**, never from the
+  pull request itself: a `.shomraignore`, baseline, policy or ignore mark the
+  pull request adds takes effect once it is merged, so nobody can approve their
+  own findings by committing a waiver beside them. With no base branch in the
+  checkout, `pr` checks every artifact and trusts no waiver.
 - **`.shomra/policy.yml`** - policy-as-code, reviewed in PRs like any code:
 
   ```yaml
@@ -638,11 +699,14 @@ add an exception in the platform instead:
 | `SHOMRA_GH_TOKEN` | GitHub token for `shomra pr` (falls back to `GITHUB_TOKEN`) |
 | `SHOMRA_ENVIRONMENT` | Declare where this runs: `LOCAL` \| `CI` \| `REMOTE`. Set `REMOTE` on a cloud agent runtime whose markers Shomra does not yet detect (Codex cloud, Jules, Cursor background agents, Devin…), so its sessions are not counted as developer machines. ⚠ It may only ever RAISE — it can never relabel a detected cloud container as a laptop. |
 | `SHOMRA_GUARD_STRICT` | `1` = firewall fails closed on the server tier |
+| `SHOMRA_GUARD_LOCAL_FLAG` | What a call the on-machine rules flag does when no server verdict arrives: `ask` (default), `allow`, or `deny`. Defaults to `allow` when `SHOMRA_GUARD_FAILOPEN_SEVERE=1` |
+| `SHOMRA_GUARD_FAILOPEN_SEVERE` | `1` = let destructive calls through unscreened when no server verdict arrives (default: ask) |
 | `SHOMRA_GUARD_LOCAL` | `0` = disable the on-machine Tier-0 guard |
 | `SHOMRA_GUARD_IGNORE` | Comma-separated file globs the runtime guard treats as known-safe (adds to `.shomraignore`) |
 | `SHOMRA_GUARD_ALWAYS_ESCALATE` | `1` = send every call to the server (full telemetry, higher overhead) |
 | `SHOMRA_GUARD_TIMEOUT_MS` | Firewall per-call server timeout (default 2000) |
-| `SHOMRA_GUARD_BREAKER_MS` | Skip the server this long after a failure (default 30000; `0` disables) |
+| `SHOMRA_GUARD_BREAKER_MS` | Skip the server this long after repeated failures (default 30000; `0` disables) |
+| `SHOMRA_GUARD_BREAKER_FAILURES` | Failures in a row before the server is skipped (default 3). One slow or failed screen no longer switches the server off for every later call, and `SHOMRA_GUARD_STRICT` never skips it. |
 | `SHOMRA_LLM_PROXY_BASE` | Proxy base URL `install-hook` writes for Aider (default `http://127.0.0.1:4141/openai/v1`) |
 | `SHOMRA_MODEL_GUARD` | `0` = disable the model-load screen in the PreToolUse hook |
 | `SHOMRA_PROMPT_GUARD_OFF` | `1` = disable the prompt channel only (tool-call and tool-result guards stay on) |

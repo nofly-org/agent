@@ -28,11 +28,12 @@ export const VENDOR_TOOLS = {
     settings: { file: 'settings.json', dirs: ['~/.claude', './.claude'], shape: 'claude' },
     probes: ['~/.claude', '~/.claude.json'],
     event: 'PreToolUse',
-    matcher: 'Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|Skill|mcp__.*',
+    matcher: 'Bash|PowerShell|Monitor|Write|Edit|MultiEdit|NotebookEdit|Skill|mcp__.*',
     required: [
       { name: 'Bash', kind: 'shell' },
       /** ⚠ The shell on Windows. Missing here once, so every `npm install` an agent ran there reached no hook. */
       { name: 'PowerShell', kind: 'shell' },
+      { name: 'Monitor', kind: 'shell' },
       { name: 'Write', kind: 'write' },
       { name: 'Edit', kind: 'edit' },
       { name: 'MultiEdit', kind: 'edit' },
@@ -81,15 +82,16 @@ export const VENDOR_TOOLS = {
 
   cline: {
     label: 'Cline',
-    settings: { file: 'hooks.json', dirs: ['~/.cline', './.cline'], shape: 'claude' },
-    probes: ['~/.cline'],
-    event: 'PreToolUse',
-    matcher: 'execute_command|write_to_file|replace_in_file|new_rule|use_mcp_tool',
+    settings: { file: 'PreToolUse', dirs: ['~/Documents/Cline/Hooks', '~/.cline/hooks', './.clinerules/hooks', './.cline/hooks'], shape: 'cline-scripts' },
+    probes: ['~/.cline', '~/Documents/Cline'],
+    matcher: null,
+    /** ⚠ Cline runs ONE script per event for every tool, so the event is the coverage, not a matcher. */
+    events: [{ name: 'PreToolUse', kind: 'all' }],
+    postEvents: [],
     required: [
       { name: 'execute_command', kind: 'shell' },
       { name: 'write_to_file', kind: 'write' },
       { name: 'replace_in_file', kind: 'edit' },
-      { name: 'new_rule', kind: 'write' },
       { name: 'use_mcp_tool', kind: 'mcp', sample: 'use_mcp_tool' },
     ],
     env: () => ({}),
@@ -133,6 +135,7 @@ export const VENDOR_TOOLS = {
   copilot: {
     label: 'GitHub Copilot CLI',
     settings: { file: 'shomra.json', dirs: ['~/.copilot/hooks', './.github/hooks'], shape: 'copilot' },
+    /** ⚠ `{ version: 1, hooks: { preToolUse: [...] } }` - a file without both is rejected whole by Copilot CLI. */
     probes: ['~/.copilot'],
     matcher: null,
     events: [{ name: 'preToolUse', kind: 'all' }],

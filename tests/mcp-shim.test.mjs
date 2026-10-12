@@ -160,7 +160,19 @@ test('review_change passes the proposed content on stdin, never as an argument',
   const invocation = mcpToolInvocation('shomra_review_change', { content: 'body', path: 'SKILL.md', kind: 'skill' });
 
   assert.equal(invocation.stdin, 'body');
-  assert.deepEqual(invocation.args, ['gate', '--stdin', '--path', 'SKILL.md', '--kind', 'skill']);
+  assert.deepEqual(invocation.args, ['gate', '--stdin', '--path=SKILL.md', '--kind=skill']);
+});
+
+test('a path the model supplies can never become a CLI flag', async () => {
+  const path = await import('node:path');
+  const cwd = path.resolve('/work/repo');
+  assert.deepEqual(mcpToolInvocation('shomra_rules', { path: '--write' }, cwd).args, ['rules', path.resolve(cwd, '--write')]);
+  assert.deepEqual(mcpToolInvocation('shomra_check', { path: '--fix' }, cwd).args, ['check', path.resolve(cwd, '--fix')]);
+  assert.deepEqual(mcpToolInvocation('shomra_fix', { file: '--apply', apply: 'yes' }, cwd).args, ['fix', path.resolve(cwd, '--apply')], 'only a real true asks for --apply');
+  assert.deepEqual(mcpToolInvocation('shomra_review_change', { content: 'x', path: '--strict' }, cwd).args, ['gate', '--stdin', '--path=strict']);
+  for (const [name, args] of [['shomra_check', { path: '--fix' }], ['shomra_rules', { path: '--write' }], ['shomra_fix', { file: '--apply' }]]) {
+    assert.ok(mcpToolInvocation(name, args, cwd).args.slice(1).every((a) => !a.startsWith('--') || a.startsWith('--path=') || a === '--apply' && args.apply === true));
+  }
 });
 
 // ── screening mode (backend | local) ─────────────────────────────────────

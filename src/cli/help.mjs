@@ -1,8 +1,29 @@
 import { HELP_SECTIONS } from './help-sections.mjs';
 import { bold, cyan, dim } from '../core/terminal.mjs';
 
-export function cmdHelp() {
-  console.log(HELP_SECTIONS.map((section) => section()).join('\n'));
+const ANSI = /\x1b\[[0-9;]*m/g;
+
+function commandLines(full, command) {
+  const lines = full.split('\n');
+  const at = lines.findIndex((line) => line.replace(ANSI, '').startsWith(`  ${command} `));
+  if (at === -1) return null;
+  const out = [lines[at]];
+  for (let i = at + 1; i < lines.length; i++) {
+    const plain = lines[i].replace(ANSI, '');
+    if (!/^ {6,}\S/.test(plain)) break;
+    out.push(lines[i]);
+  }
+  return out;
+}
+
+export function cmdHelp(command) {
+  const full = HELP_SECTIONS.map((section) => section()).join('\n');
+  const lines = command ? commandLines(full, command) : null;
+  if (!lines) {
+    console.log(full);
+    return;
+  }
+  console.log(`\n${lines.join('\n')}\n\n  ${dim('Every command and option:')} ${bold('shomra help')}\n`);
 }
 
 export function cmdAdminHelp() {
@@ -23,7 +44,7 @@ ${bold(cyan('shomra admin'))} ${dim('- governance & advanced security operations
   ${cyan('llm-proxy')}     Guardrail live LLM traffic             ${dim('[--port 4141] [--project <id>] [--agent-id <handle>]')}
 
   ${dim('Fleet rollout')}
-  ${cyan('mdm-script')}    Print a Jamf/Intune/Kandji bootstrap script ${dim('--os macos|windows|linux [--url <url>] [--key <key>] [--every 6h]')}
+  ${cyan('mdm-script')}    Print a Jamf/Intune/Kandji bootstrap script ${dim('--os macos|windows|linux [--url <url>] [--key <key>] [--every 6h] [--guard]')}
                 ${dim('Without --key the script reads SHOMRA_API_KEY from the MDM secret variables.')}
 
   ${dim('Each also runs as a bare top-level verb (e.g.')} ${dim(bold('shomra redteam'))}${dim(') for back-compat.')}

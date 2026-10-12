@@ -1,41 +1,41 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { ARTIFACT_MATCHERS, walkArtifacts } from '../artifacts/matchers.mjs';
+import { resolveScanTarget, walkArtifacts } from '../artifacts/matchers.mjs';
+import { EXIT_USAGE } from '../core/exit-codes.mjs';
+import { diffNames, stagedNames, workingChanges } from '../core/git-changes.mjs';
 import { git } from '../core/git-exec.mjs';
+import { listTree, resolveRev } from '../core/git-tree.mjs';
+import { touchedArtifacts, treeArtifacts } from '../gate/scope.mjs';
+import { trustedConfig } from '../gate/trusted.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { VERSION } from '../core/version.mjs';
-import { failOnHit, gateArtifactList } from '../gate/batch.mjs';
+import { gateArtifactList, gateExitCode, strictOutageOf } from '../gate/batch.mjs';
 import { detectEnv } from '../gate/environment.mjs';
 import { toSarif } from '../gate/sarif.mjs';
 import { findingFingerprint } from '../gate/suppressions.mjs';
 import { fixOneFile } from './fix.mjs';
 
-const GIT_TIMEOUT_MS = 3000;
-
-function gitChangedArtifacts(root, { staged }) {
-  const output = staged
-    ? git(['diff', '--cached', '--name-only', '--relative', '--diff-filter=ACM'], { cwd: root, timeout: GIT_TIMEOUT_MS })
-    : git(['diff', 'HEAD', '--name-only', '--relative', '--diff-filter=ACM'], { cwd: root, timeout: GIT_TIMEOUT_MS });
-  if (output === null) return null;
-
-  return output
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((relativePath) => ARTIFACT_MATCHERS.some((matcher) => matcher.re.test(relativePath)));
+async function stagedArtifacts(root, single) {
+  const changed = stagedNames(root);
+  if (changed === null) return null;
+  const tree = listTree(root);
+  if (tree === null) return null;
+  return treeArtifacts(root, tree, { changed, single });
 }
 
-function narrowToChanged(artifacts, root, flags) {
-  if (!flags.staged && !flags.changed) return artifacts;
-
-  const changed = gitChangedArtifacts(root, { staged: !!flags.staged });
-  if (changed === null) {
-    if (!flags.json) console.error(`  ${yellow('⚠')} ${dim('not a git repo (or git unavailable) - checking the whole tree')}`);
-    return artifacts;
+async function artifactsInScope(root, single, flags) {
+  const everything = () => (single ? [single] : walkArtifacts(root));
+  if (!flags.staged && !flags.changed) return everything();
+  if (flags.staged) {
+    const staged = await stagedArtifacts(root, single);
+    if (staged !== null) return staged;
+  } else {
+    const changed = workingChanges(root);
+    if (changed !== null) return touchedArtifacts(root, everything(), changed);
   }
-  const changedSet = new Set(changed);
-  return artifacts.filter((artifact) => changedSet.has(artifact.rel));
+  if (!flags.json) console.error(`  ${yellow('⚠')} ${dim('not a git repo (or git unavailable) - checking the whole tree')}`);
+  return everything();
 }
 
 function printNothingToCheck(flags, root) {
@@ -43,14 +43,14 @@ function printNothingToCheck(flags, root) {
     console.log(JSON.stringify({ scanned: 0, blocked: 0, flagged: 0, results: [] }, null, 2));
     return;
   }
-  const where = flags.staged || flags.changed ? ' in the changed set.' : ` under ${root}.`;
+  const where = flags.rev !== undefined ? ` in ${flags.rev}.` : flags.staged || flags.changed ? ' in the changed set.' : ` under ${root}.`;
   console.log(`${green('\n  ✓ No AI artifacts to check')}${dim(where)}\n`);
 }
 
 function printHeader({ flags, artifacts, env, apiKey }) {
   if (flags.json || flags.sarif) return;
 
-  const scope = flags.staged ? 'staged' : flags.changed ? 'changed' : env.environment;
+  const scope = flags.rev !== undefined ? `commit ${flags.rev}` : flags.staged ? 'staged' : flags.changed ? 'changed' : env.environment;
   const provider = env.ciProvider ? ` · ${env.ciProvider}` : '';
   console.log(bold(cyan('\n  Shomra check')) + dim(` - ${artifacts.length} artifact${artifacts.length > 1 ? 's' : ''} · ${scope}${provider}`));
   if (!apiKey) console.error(`  ${dim('On-machine analysis only - run')} ${bold('shomra init')} ${dim('to also apply org policy.')}`);
@@ -69,8 +69,8 @@ async function applyFixes({ results, flags, apiKey, url, blocked, flagged }) {
   if (!flags.json) console.log(dim('\n  Fixing flagged artifacts…'));
   let fixed = 0;
   for (const result of results) {
-    if (result.decision === 'ALLOW') continue;
-    const done = await fixOneFile(result.full, { apiKey, url, flags: { ...flags, apply: true, quiet: flags.json } });
+    if (result.decision === 'ALLOW' || result.notAnalyzed) continue;
+    const done = await fixOneFile(result.full, { apiKey, url, flags: { ...flags, apply: true, quiet: flags.json, silent: !!flags.json } });
     if (done) fixed += 1;
   }
   return fixed;
@@ -99,34 +99,74 @@ function printSummary({ results, blocked, flagged, suppressed, backendDown, reje
   } else if (!flags.fix && (blocked || flagged)) {
     console.log(dim('  Run ') + bold('shomra fix <file>') + dim(' or ') + bold('shomra check --fix') + dim(' to remediate.'));
   }
-  if (strictOutage) console.log(`  ${red('✗ Failing closed (--strict): backend unreachable, org policy unverified.')}`);
+  if (strictOutage) console.log(`  ${red('✗ Failing closed (--strict): backend unreachable or the credential was refused, org policy unverified.')}`);
   console.log('');
+}
+
+function scanTargetOrExit(flags, positional) {
+  const target = resolveScanTarget(positional[0] ?? flags.path);
+  if (target.error) {
+    console.error(`${red('✗')} ${target.error}`);
+    process.exit(EXIT_USAGE);
+  }
+  return target;
+}
+
+function usageExit(message) {
+  console.error(`${red('✗')} ${message}`);
+  process.exit(EXIT_USAGE);
+}
+
+async function revisionScope(flags, positional) {
+  if (flags.staged || flags.changed || flags.fix) usageExit('--rev checks a commit, so it cannot be combined with --staged, --changed or --fix.');
+  const dir = path.resolve(typeof positional[0] === 'string' ? positional[0] : typeof flags.path === 'string' ? flags.path : '.');
+  const top = git(['rev-parse', '--show-toplevel'], { cwd: dir, timeout: 5000 })?.trim();
+  const root = top ? path.resolve(top) : dir;
+  const sha = resolveRev(root, flags.rev);
+  if (!sha) usageExit(`${flags.rev} is not a commit in the repository at ${root}.`);
+  const base = flags['base-rev'] === undefined ? null : resolveRev(root, flags['base-rev']);
+  if (flags['base-rev'] !== undefined && !base) usageExit(`${flags['base-rev']} is not a commit in the repository at ${root}.`);
+  const tree = listTree(root, { rev: sha });
+  const changed = base ? diffNames(root, [base, sha]) : null;
+  if (!tree || (base && changed === null)) {
+    console.error(`${red('✗')} Could not read ${sha} from git.`);
+    process.exit(1);
+  }
+  const artifacts = await treeArtifacts(root, tree, { changed, carrier: `commit ${sha.slice(0, 12)}` });
+  return { root, artifacts, trusted: trustedConfig(root, { baseRev: base ?? sha, fromTop: true }) };
 }
 
 export async function cmdCheck(flags, positional) {
   const { apiKey, url } = resolveSettings(loadConfig());
-  const root = path.resolve(positional[0] || flags.path || '.');
   const env = detectEnv();
-
-  const artifacts = narrowToChanged(walkArtifacts(root), root, flags);
+  let root;
+  let artifacts;
+  let trusted;
+  if (flags.rev !== undefined) {
+    ({ root, artifacts, trusted } = await revisionScope(flags, positional));
+  } else {
+    const target = scanTargetOrExit(flags, positional);
+    root = target.root;
+    artifacts = await artifactsInScope(root, target.single, flags);
+  }
   if (!artifacts.length) {
     printNothingToCheck(flags, root);
     return;
   }
 
   printHeader({ flags, artifacts, env, apiKey });
-  const { results, blocked, flagged, suppressed, backendDown, rejected } =
-    await gateArtifactList(artifacts, { apiKey, url, env, flags, root });
+  const outcome = await gateArtifactList(artifacts, { apiKey, url, env, flags, root, trusted });
+  const { results, blocked, flagged, suppressed, backendDown, rejected } = outcome;
+  const strictOutage = strictOutageOf(flags, outcome);
 
   if (flags.sarif) {
     console.log(JSON.stringify(toSarif(results), null, 2));
-    if (blocked) process.exitCode = 1;
-    else if (flagged && flags.strict) process.exitCode = 2;
+    if (strictOutage) console.error(`  ${red('✗ Failing closed (--strict): backend unreachable or the credential was refused, org policy unverified.')}`);
+    process.exitCode = gateExitCode(flags, outcome);
     return;
   }
 
   const fixed = await applyFixes({ results, flags, apiKey, url, blocked, flagged });
-  const strictOutage = backendDown && flags.strict;
 
   if (flags.json) {
     console.log(JSON.stringify({
@@ -137,14 +177,16 @@ export async function cmdCheck(flags, positional) {
     printSummary({ results, blocked, flagged, suppressed, backendDown, rejected, fixed, flags, strictOutage });
   }
 
-  if (blocked > 0 || strictOutage) process.exitCode = 1;
-  else if (failOnHit(flags, blocked, flagged)) process.exitCode = 1;
-  else if (flagged > 0 && flags.strict) process.exitCode = 2;
+  process.exitCode = gateExitCode(flags, outcome);
 }
 
 export async function cmdBaseline(flags, positional) {
   const { apiKey, url } = resolveSettings(loadConfig());
-  const root = path.resolve(positional[0] || flags.path || '.');
+  const { root, single } = scanTargetOrExit(flags, positional);
+  if (single) {
+    console.error(`${red('✗')} baseline takes a folder, not a file.`);
+    process.exit(EXIT_USAGE);
+  }
   const env = detectEnv();
 
   const artifacts = walkArtifacts(root);
@@ -160,10 +202,14 @@ export async function cmdBaseline(flags, positional) {
     apiKey, url, env, root, flags: { ...flags, json: true, 'no-suppress': true },
   });
 
-  const fingerprints = new Set();
+  const counts = {};
   for (const result of results) {
-    for (const finding of result.findings || []) fingerprints.add(findingFingerprint(result.path, finding));
+    for (const finding of result.findings || []) {
+      const fp = findingFingerprint(result.path, finding);
+      counts[fp] = (counts[fp] ?? 0) + 1;
+    }
   }
+  const fingerprints = new Set(Object.keys(counts));
 
   const directory = path.join(root, '.shomra');
   fs.mkdirSync(directory, { recursive: true });
@@ -173,6 +219,7 @@ export async function cmdBaseline(flags, positional) {
     agentVersion: VERSION,
     count: fingerprints.size,
     fingerprints: [...fingerprints],
+    counts,
   }, null, 2));
 
   const relative = path.relative(process.cwd(), file).split(path.sep).join('/');

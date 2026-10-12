@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -61,6 +61,103 @@ export function git(args, { cwd, timeout = 5000, maxBuffer = 16 * 1024 * 1024 } 
   } catch {
     return null;
   }
+}
+
+export function gitBuffer(args, { cwd, input, timeout = 5000, maxBuffer = 16 * 1024 * 1024 } = {}) {
+  const bin = gitPath();
+  if (!bin) return null;
+  try {
+    return execFileSync(bin, args, { cwd, input, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'ignore'], timeout, maxBuffer, windowsHide: true });
+  } catch {
+    return null;
+  }
+}
+
+export function gitBlobWindow(oid, { cwd, half, timeout = 20000 }) {
+  const bin = gitPath();
+  if (!bin || !/^[0-9a-f]{40,64}$/.test(String(oid))) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(bin, ['cat-file', 'blob', oid], { cwd, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+    } catch {
+      resolve(null);
+      return;
+    }
+    const head = [];
+    let headLength = 0;
+    const tail = [];
+    let tailLength = 0;
+    let total = 0;
+    const timer = setTimeout(() => child.kill('SIGKILL'), timeout);
+    child.stdout.on('data', (chunk) => {
+      total += chunk.length;
+      let rest = chunk;
+      if (headLength < half) {
+        const take = rest.subarray(0, half - headLength);
+        head.push(take);
+        headLength += take.length;
+        rest = rest.subarray(take.length);
+      }
+      if (!rest.length) return;
+      tail.push(rest);
+      tailLength += rest.length;
+      while (tail.length > 1 && tailLength - tail[0].length >= half) tailLength -= tail.shift().length;
+    });
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolve(null);
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        resolve(null);
+        return;
+      }
+      const first = Buffer.concat(head);
+      const last = Buffer.concat(tail);
+      const end = last.subarray(Math.max(0, last.length - half));
+      const unread = Math.max(0, total - first.length - end.length);
+      resolve({ content: unread ? `${first.toString('utf8')}\n${end.toString('utf8')}` : Buffer.concat([first, last]).toString('utf8'), unread, size: total });
+    });
+  });
+}
+
+export function gitLines(args, { cwd, timeout = 120000, onLine }) {
+  const bin = gitPath();
+  if (!bin) return Promise.resolve({ ok: false, reason: 'git is not installed' });
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(bin, args, { cwd, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+    } catch (error) {
+      resolve({ ok: false, reason: error.message });
+      return;
+    }
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, timeout);
+    let rest = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      const text = rest + chunk;
+      const lines = text.split('\n');
+      rest = lines.pop();
+      for (const line of lines) onLine(line);
+    });
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      resolve({ ok: false, reason: error.message });
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (rest) onLine(rest);
+      if (timedOut) resolve({ ok: false, reason: `timed out after ${Math.round(timeout / 1000)}s` });
+      else resolve(code === 0 ? { ok: true } : { ok: false, reason: `git exited with code ${code}` });
+    });
+  });
 }
 
 /**

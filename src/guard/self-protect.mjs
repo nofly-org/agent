@@ -11,12 +11,41 @@ const MUTATE_VERB = /(?:^|[\s;&|(])(?:rm|rmdir|unlink|shred|truncate|mv|cp|insta
 const STATE_REF = /(?:~|\$HOME|\$\{HOME\}|%USERPROFILE%|\$env:USERPROFILE)[\\/]\.shomra(?=[\\/\s"';|&)]|$)/i;
 const ASK_CAPABLE = new Set(['claude', 'cursor', 'copilot', 'gemini', 'codex', 'cline']);
 const MUTATING_LEAVES = new Set(['move_file', 'delete_file', 'remove_file', 'rename_file', 'copy_file']);
-const HOOK_FILE_RE = /(?:^|[\\/])(?:\.claude[\\/]settings(?:\.local)?\.json|\.codex[\\/]hooks\.json|\.gemini[\\/]settings\.json|\.cursor[\\/]hooks\.json|\.codeium[\\/]windsurf[\\/]hooks\.json|\.windsurf[\\/]hooks\.json|\.copilot[\\/]hooks[\\/][^\\/]+\.json|\.github[\\/]hooks[\\/][^\\/]+\.json|\.cline[\\/]hooks\.json)$/i;
+const HOOK_FILE_RE = /(?:^|[\\/])(?:\.claude[\\/]settings(?:\.local)?\.json|\.codex[\\/]hooks\.json|\.gemini[\\/]settings\.json|\.cursor[\\/]hooks\.json|\.codeium[\\/]windsurf[\\/]hooks\.json|\.windsurf[\\/]hooks\.json|\.copilot[\\/]hooks[\\/][^\\/]+\.json|\.github[\\/]hooks[\\/][^\\/]+\.json|\.cline[\\/]hooks\.json|(?:\.clinerules|\.cline)[\\/]hooks[\\/](?:PreToolUse|PostToolUse)(?:\.\w+)?|Cline[\\/]Hooks[\\/](?:PreToolUse|PostToolUse)(?:\.\w+)?)$/i;
+const CLINE_MARK_RE = /\/\/ shomra cline hook/;
+const ours = (text) => SHOMRA_ANY_HOOK_RE.test(text) || CLINE_MARK_RE.test(text);
 const IGNORE_FILE_RE = /(?:^|[\\/])\.shomraignore$/i;
 const DISABLE_HOOKS_RE = /["']?disableAllHooks["']?\s*:\s*true\b/i;
 const GUARD_ENV_RE = /["']?SHOMRA_(?:GUARD_LOCAL|GUARD_IGNORE|MODEL_GUARD|MCP_SCREEN|URL|GUARD_TIMEOUT_MS|GUARD_BREAKER_MS)["']?\s*:|\bSHOMRA_(?:GUARD_LOCAL|GUARD_IGNORE|MODEL_GUARD|MCP_SCREEN|URL|GUARD_TIMEOUT_MS|GUARD_BREAKER_MS)=/gi;
 const HOOK_COMMAND_RE = /"command"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+const SELF_UNINSTALL_RE = /(?:\bshomra(?:\.mjs)?["']?|@shomra\/agent(?:@[\w.-]+)?)\s+install-hook\b[^\n;&|]*\s--uninstall\b/i;
 const CHAINED_SHELL_RE = /[;&|`<>()]|\$\(/;
+
+function deshelled(command) {
+  return String(command).replace(/\\\r?\n/g, ' ').replace(/\$(?=['"])/g, '').replace(/["'\\]/g, '');
+}
+
+const REMOVERS = new Set(['rm', 'unlink', 'shred', 'truncate', 'mv', 'trash', 'trash-put', 'gio', 'del', 'erase', 'remove-item', 'ri', 'move-item', 'mi', 'rename-item', 'rni']);
+const PREFIXES = new Set(['sudo', 'doas', 'env', 'command', 'nohup', 'nice', 'time', 'xargs']);
+
+export function shellRemovedPaths(command) {
+  const out = [];
+  for (const segment of String(command ?? '').split(/\r?\n|&&|\|\||[;|&]/)) {
+    const toks = [...(segment.trim().match(/"[^"]*"|'[^']*'|\S+/g) ?? [])].map((t) => t.replace(/^(["'])([\s\S]*)\1$/, '$2'));
+    let i = 0;
+    while (i < toks.length && (/^[A-Za-z_]\w*=/.test(toks[i]) || PREFIXES.has(toks[i]))) i++;
+    const verb = String(toks[i] ?? '').split(/[\\/]/).pop().toLowerCase();
+    if (!REMOVERS.has(verb)) continue;
+    const operands = toks.slice(i + 1).filter((t) => !t.startsWith('-'));
+    const moved = verb === 'mv' || verb === 'move-item' || verb === 'mi' || verb === 'rename-item' || verb === 'rni';
+    out.push(...(moved && operands.length > 1 ? operands.slice(0, -1) : operands));
+  }
+  return out;
+}
+
+export function selfUninstall(command) {
+  return !!command && (SELF_UNINSTALL_RE.test(command) || SELF_UNINSTALL_RE.test(deshelled(command)));
+}
 
 function guardEnvCount(text) {
   return String(text).match(GUARD_ENV_RE)?.length ?? 0;
@@ -99,11 +128,13 @@ export function guardHookTamper(tool, input = {}, { cwd = process.cwd(), home = 
   const abs = (p) => path.resolve(cwd || process.cwd(), String(p).trim().replace(/^["']|["']$/g, '').replace(HOME_PREFIX, home));
   const command = SHELL_TOOLS_RE.test(tool || '') || typeof input?.command === 'string' || Array.isArray(input?.argv) ? shellCommandOf(input) : '';
   const direct = mutatesPaths(tool) || patchTextOf(tool, input) ? guardTouchedPaths(tool, input) : [];
-  const viaShell = command ? shellWritePaths(command) : [];
+  const removed = command ? shellRemovedPaths(command) : [];
+  const viaShell = command ? [...shellWritePaths(command), ...removed] : [];
   const hits = [];
   const note = (p, why) => {
     if (!hits.some((h) => h.path === p)) hits.push({ path: p, why });
   };
+  if (selfUninstall(command)) note('the coding agents\' hook settings', 'uninstall');
   for (const p of [...direct, ...viaShell]) {
     const target = abs(p);
     if (IGNORE_FILE_RE.test(target)) {
@@ -117,10 +148,11 @@ export function guardHookTamper(tool, input = {}, { cwd = process.cwd(), home = 
     } catch {
       continue;
     }
-    if (!SHOMRA_ANY_HOOK_RE.test(current)) continue;
+    if (!ours(current)) continue;
     const next = direct.includes(p) ? proposedText(tool, input, target, cwd, read) : null;
-    if (next === null) note(p, 'rewrites');
-    else if (!SHOMRA_ANY_HOOK_RE.test(next)) note(p, 'removes-hook');
+    if (removed.includes(p)) note(p, 'removes-hook');
+    else if (next === null) note(p, 'rewrites');
+    else if (!ours(next)) note(p, 'removes-hook');
     else if (DISABLE_HOOKS_RE.test(next) && !DISABLE_HOOKS_RE.test(current)) note(p, 'disables-hooks');
     else if (guardEnvCount(next) > guardEnvCount(current)) note(p, 'guard-env');
     else if (chainedGuardCount(next) > chainedGuardCount(current)) note(p, 'chains-hook');
@@ -135,6 +167,7 @@ const HOOK_TAMPER_WHY = {
   'chains-hook': 'wraps the Shomra guard hook in other commands, which then run on every screened call, in',
   rewrites: 'rewrites, with no way to check the Shomra guard hook survives,',
   'ignore-list': 'edits the list of paths the Shomra guard skips,',
+  uninstall: 'runs `shomra install-hook --uninstall`, which removes the Shomra guard hook from',
 };
 
 export function hookTamperReason(hit) {

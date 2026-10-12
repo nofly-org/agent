@@ -6,6 +6,200 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Worth knowing before you upgrade
+- **`shomra pr` with no base branch in the checkout now checks every AI
+  artifact and trusts no waiver.** It used to fall back to the last commit, so a
+  multi-commit pull request could hide a file in an earlier commit. In GitHub
+  Actions it first fetches the base commit itself; elsewhere use
+  `fetch-depth: 0`.
+- **A pull request can no longer excuse its own findings.** `.shomraignore`,
+  `.shomra/baseline.json`, `.shomra/policy.yml` and `shomra-ignore` marks are
+  read from the base branch in `shomra pr`; a mark the pull request adds applies
+  once it is merged, and the check run says so on the finding.
+- **Flags are stricter.** `--apply=false` now means off (it meant on), a value
+  flag given no value (`init --key --url …`) is refused with exit 3, words after
+  `--` are kept, and `<command> --help` shows help instead of running the
+  command.
+- **The baseline counts.** A new copy of an accepted finding now fails; run
+  `shomra baseline` again to accept it.
+- **The pre-receive hook reads pushed commits straight from git** with the new
+  `shomra check --rev <sha> [--base-rev <sha>]`. It checks what a push changes,
+  takes waivers only from before the push, and cannot be blinded by a pushed
+  `.gitattributes`. Re-run `shomra install-precommit --pre-receive` to upgrade an
+  existing hook (a backup is kept).
+- **A `shomra-ignore` mark covers only the line it governs.** In a pull request
+  it counts only together with the line it covered on the base branch, a file
+  mark only if the base branch had it in the first five lines, and the same
+  problem on another line of the file is still reported.
+- **`check --changed` includes files git does not track yet.**
+- **`install-hook` adds a prompt hook for Codex and Gemini CLI**, and the
+  GitHub Action and the `pr --init` workflow now run on Node 22 (Node 20 is
+  past end of life).
+- **`https://localhost` stays `localhost`.** Only plain-http localhost is
+  rewritten to 127.0.0.1, so TLS names keep matching.
+
+### Runtime firewall
+- **A flagged call never runs silently when no server answers.** On a machine
+  with no key, during an outage, or when the credential is refused, a call the
+  on-machine tier flags now asks the person and names what matched
+  (`SHOMRA_GUARD_LOCAL_FLAG=ask|allow|deny`).
+- **One slow screen no longer switches org policy off.** The breaker opens after
+  3 failures in a row (`SHOMRA_GUARD_BREAKER_FAILURES`), not after one - a slow
+  screen is something content can cause, so a poisoned page could buy a window
+  with no server checks.
+- **You are told when policy is off.** When the server cannot be reached the
+  firewall says so once every 30 minutes (Claude Code, Codex, Gemini CLI)
+  instead of only writing to a log nobody sees.
+- **Refusals made offline reach the server later.** A local refusal or a tamper
+  attempt whose report failed is kept in a small outbox under `~/.shomra` and
+  sent once the server answers again; a 5xx no longer counts as delivered.
+- **A blocked tool result is withheld, not just annotated.** Claude Code gets a
+  same-shape replacement (`updatedToolOutput`, and `updatedMCPToolOutput` for MCP
+  tools), Codex and Copilot CLI theirs, and every agent's block text says what to
+  do if the original is still visible.
+- **Strict mode refuses on a crash.** Under `SHOMRA_GUARD_STRICT` an unexpected
+  error in a hook answers with a refusal instead of an error exit the agent
+  ignores.
+- **Hooks cannot hang.** Every timer covers the response body, so a backend that
+  sends headers and stalls no longer holds a tool call.
+- **What an MCP tool types into a running process is screened as text**, and
+  Gemini CLI MCP calls are read as MCP calls.
+- **Agent memory edits are rebuilt the way each agent writes them** (Gemini
+  `save_memory`, Claude Code curly-quote edits, Codex `apply_patch`), so they no
+  longer read as changes made outside the agent; a refused memory write is never
+  recorded as landed; a rollback writes through a symlinked memory file only
+  when the file it names is itself a memory or rules file.
+- **Long prompts stay private.** Prompts over 200,000 characters skipped
+  on-machine masking; masking now covers the whole prompt, and at most 4 MB is
+  sent.
+- **Codex and Gemini CLI get the prompt guard**, so a pasted live credential is
+  refused before it reaches the model, as in Claude Code and Cursor.
+- **The tool hook loads only what it needs**, about 55 ms faster per call.
+
+### Agent installs
+- **Hooks are written in the format each agent loads.** Codex reads hooks only
+  under `"hooks"` in hooks.json (and asks you to trust them at its next start);
+  Copilot CLI needs `{ version: 1, hooks: { preToolUse, postToolUse } }`; Cline
+  runs one script per event. All three were written in shapes the agent ignored.
+- **`shomra protect` now wires Copilot CLI**, and status reports guarded agents
+  from the real hook files.
+- **`install-hook --uninstall`** removes exactly Shomra's entries and keeps
+  yours; one malformed settings file no longer stops `--agent all` or `protect`
+  from protecting the rest; settings writes are atomic, follow symlinks and keep
+  their owner and permissions.
+- **Claude Code's Monitor tool** is screened like Bash.
+- **Windows hook commands are shell-neutral**, and re-running an install repairs
+  hooks left pointing at a removed Node or Shomra install.
+- **An Aider config that already sets `openai-api-base` is left alone** with a
+  note, instead of being shadowed by a second key.
+
+### Organization rollout
+- **`sudo shomra install-hook --managed`** writes hooks a developer cannot remove:
+  Claude Code's managed-settings.d (2.1.83 or later), `/etc/codex/hooks.json` and
+  Copilot CLI's policy.d. It warns when the Node or Shomra install those hooks
+  run could be changed by a non-root user. `shomra admin mdm-script --guard`
+  adds it to the Jamf, Intune or Kandji bootstrap.
+
+### MCP
+- **The shim's reply-id bypass is closed.** A server could get a poisoned
+  `tools/call` result or a denied `tools/list` past every screen by answering
+  with an id that looked different (`"5"` for `5`). Replies are now matched to a
+  pending request or dropped.
+- **JSON-RPC batches are refused** in both directions, UTF-8 survives chunk
+  boundaries, the shim forwards signals, flushes before exiting, applies
+  backpressure and caps a line, and a refused server answers the client's own
+  initialize id.
+- **`shomra mcp guard` covers every config**: servers kept per project in
+  `~/.claude.json`, Claude Desktop, VS Code, Cline and Gemini; a server guarded
+  by an install that moved is repointed, never wrapped twice; backups keep the
+  original's permissions.
+- **Secrets in launch lines stay on the machine.** The connect check masks
+  secret flags and URL credentials, and inventory reports replace each secret
+  with a stable same-shape stand-in, so the backend still sees that a credential
+  is there without seeing it.
+- **Padding no longer hides content from the screen**: large results are read at
+  both ends in linear time, base64 text blobs are decoded, and tool descriptors
+  and arguments are screened in full.
+- **Windows launches work**: `npx` resolves to `npx.cmd` (not the extensionless
+  script beside it), only absolute PATH folders are searched, and arguments
+  through cmd.exe keep trailing backslashes and quotes.
+- **`shomra mcp serve` never turns a model-supplied path into a CLI flag.**
+- **`mcp add`** keeps comma lists in `--env`, honours quotes in `--command`,
+  accepts arguments after `--`, and will not rewrite a commented config.
+
+### CI gates
+- **Gates fail on what they could not analyze.** Skill folders named build or
+  dist, namespaced commands, oversized, unreadable or symlinked artifacts, an
+  HTML page from a wrong `SHOMRA_URL`, and a mistyped target all passed before.
+- **`check --staged` checks what the commit carries**: the staged copy (not the
+  working copy), renamed files, non-ASCII paths, staged symlinks and the scripts
+  a staged skill ships.
+- **`--strict` fails closed in every output mode**, including `--sarif`, a
+  refused credential, and `pr`.
+- **The pre-receive hook cannot be blinded** by a pushed `.gitattributes`
+  `export-ignore`, and refuses a push it cannot read.
+- **SARIF paths are right**: one base (the repo root), encoded segments, and the
+  same base for pull request annotations. `gate <file> --sarif` works, and
+  `report --json` and `pr --sarif` print one clean document.
+- **`pr` uses `GITHUB_API_URL`** on GitHub Enterprise Server.
+- **Edits to what an artifact pulls in count as edits to it.** `--staged`,
+  `--changed` and `pr` now check a skill when only its scripts change, and a
+  symlinked artifact when only its target changes. Staged links through a
+  linked folder, and linked skill scripts, are read from the index; a staged
+  link to nothing is reported, not dropped.
+- **Limits report what they skipped.** A bundled file over 1 MB is read at both
+  ends with a HIGH note on the middle, and files past the 200-file or 16 MB
+  limit (skills and extension bundles) each raise a HIGH "not analyzed" finding.
+- **An enrolled verdict is never weaker than the offline one.** Masked secrets
+  keep their fixed parts (`AWS_SECRET_ACCESS_KEY=`, PEM headers, webhook hosts)
+  and JSON escapes, and anything masking still hid from the server, plus the
+  "not read whole" warning, is added to its verdict.
+- **A config cannot reach the object prototype** (`__proto__` keys in TOML,
+  YAML or frontmatter are refused), so a crafted `.mcp.json` can no longer make
+  other files read as clean.
+- **`pr --json` prints JSON when nothing changed**, the Action passes every line
+  of a multi-line `args`, `secrets` skips devices like `/dev/zero` and reports
+  files too large to scan, and launching MCP servers on Windows stays fast on
+  long runs of backslashes.
+- **Large rules files check fast.** A long paragraph no longer takes seconds to
+  split into sentences.
+- **The GitHub Action no longer pastes its inputs into a shell script.**
+
+### Detection
+- **Scripts and reference docs bundled with a skill are graded**, as the backend
+  grades them; a skill shipping an `install.sh` with a download-and-run line
+  used to pass.
+- **Extension bundles (`.mcpb`, `.dxt`) are read whole**: duplicate or
+  disagreeing entry names block, every manifest copy is graded, and the scripts
+  and server code inside are checked.
+- **Configs are parsed the way the agents parse them**: comment markers inside
+  JSONC and TOML strings, TOML multi-line strings and inline tables, and YAML
+  crafted to take quadratic time.
+- **Invisible characters are judged by their neighbours, as on the server.** A
+  zero-width non-joiner in Persian or Hindi, a joiner in an emoji, a
+  right-to-left mark beside Arabic, a BOM at the start of a file and a flag's tag
+  sequence no longer raise a row offline. Text hidden in Unicode tag characters,
+  variation selectors, invisible operators or zero-width alphabets is decoded and
+  graded: an instruction or payload is HIGH, a secret CRITICAL, and invisible
+  characters inside a link are flagged as ASCII smuggling. An instruction whose
+  letters are interleaved with invisible marks is read with them removed.
+
+### CLI
+- **`secrets`** exits 1 on a find in every mode, refuses a missing path, scans a
+  single file, streams git history, says when a scan was incomplete and reports
+  each line once.
+- **`init`** validates the URL and key, warns on plain http to another machine,
+  and keeps a working config when the new one fails.
+- **Large or broken MCP stores are reported**, not shown as empty (a
+  `~/.claude.json` over 1 MB is read whole).
+- **Artifacts sent for org policy have their secret values replaced** by
+  same-shape stand-ins; `shomra fix` restores the real values in the returned
+  fix.
+- **The docs and `status` say exactly what leaves the machine without a key**:
+  only pinned MCP package names, checked against osv.dev (`SHOMRA_OFFLINE=1`
+  stops that).
+
+
 ### Agent identity registration
 - **`agent-identity register` works with the key `shomra init` stores.** The
   server refused every org endpoint key as "an agent credential"; it now refuses

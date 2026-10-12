@@ -3,6 +3,7 @@ import { breakerOpen, breakerReset, breakerTrip, guardTimeoutMs } from '../core/
 import { detectEnv } from '../gate/environment.mjs';
 import { resolveCommand } from './command-resolve.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
+import { drainReports, queueReport } from './report-outbox.mjs';
 
 export function buildGuardBody(norm, agent, clientDecision, clientReason) {
   const command = norm.tool_input?.command ?? norm.tool_input?.cmd ?? norm.tool_input?.script;
@@ -21,20 +22,43 @@ export function buildGuardBody(norm, agent, clientDecision, clientReason) {
   };
 }
 
-export async function reportGuardDecision(url, apiKey, agentId, body) {
-  if (!apiKey || breakerOpen()) return;
+async function postReport(url, apiKey, agentId, body) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), Math.min(guardTimeoutMs(), 1000));
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), Math.min(guardTimeoutMs(), 1000));
-    await keyedFetch(`${url}/gate/tool-call`, {
+    const res = await keyedFetch(`${url}/gate/tool-call`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Shomra-Key': apiKey, ...(agentId ? { 'X-Shomra-Agent': agentId } : {}), Connection: 'close' },
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });
-    clearTimeout(timer);
-    breakerReset();
+    res.body?.cancel?.().catch(() => {});
+    if (res.status >= 500 || res.status === 429 || res.status === 408) return 'failed';
+    return res.ok ? 'sent' : 'rejected';
   } catch {
-    breakerTrip();
+    return 'failed';
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+export async function reportGuardDecision(url, apiKey, agentId, body) {
+  if (!apiKey || !url) return;
+  if (breakerOpen()) {
+    queueReport(url, agentId, body);
+    return;
+  }
+  const outcome = await postReport(url, apiKey, agentId, body);
+  if (outcome === 'failed') {
+    breakerTrip();
+    queueReport(url, agentId, body);
+    return;
+  }
+  breakerReset();
+  await flushQueuedReports(url, apiKey);
+}
+
+export async function flushQueuedReports(url, apiKey) {
+  if (!apiKey || !url) return;
+  await drainReports(url, (entry) => postReport(url, apiKey, entry.agentId ?? undefined, entry.body));
 }

@@ -1,4 +1,5 @@
 const MAX_BYTES = 1024 * 1024;
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const MAX_DEPTH = 64;
 const MAX_ALIASES = 1000;
 const MAX_EXPANDED = 100_000;
@@ -74,7 +75,7 @@ function parseFlow(src, ctx) {
         ws();
         let v = null;
         if (src[i] === ':') { i++; v = value(depth + 1); }
-        out[String(k ?? '')] = v;
+        if (!UNSAFE_KEYS.has(String(k ?? ''))) out[String(k ?? '')] = v;
         ws();
         if (src[i] === ',') i++;
         else if (src[i] !== '}') throw new YamlError('flow map');
@@ -113,17 +114,41 @@ function parseFlow(src, ctx) {
   return out;
 }
 
-function balanced(s) {
+function flowTracker() {
   let depth = 0;
   let q = null;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (q) { if (q === '"' && c === '\\') i++; else if (c === q) q = null; continue; }
-    if (c === '"' || c === "'") q = c;
-    else if (c === '[' || c === '{') depth++;
-    else if (c === ']' || c === '}') depth--;
+  let skip = false;
+  return {
+    feed(s) {
+      for (let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if (skip) { skip = false; continue; }
+        if (q) { if (q === '"' && c === '\\') skip = true; else if (c === q) q = null; continue; }
+        if (c === '"' || c === "'") q = c;
+        else if (c === '[' || c === '{') depth++;
+        else if (c === ']' || c === '}') depth--;
+      }
+    },
+    closed: () => depth <= 0,
+  };
+}
+
+const QUOTED_KEY_RE = /^(?:"((?:[^"\\]|\\.)*)"|'((?:[^']|'')*)')\s*:(?:\s+(.*)|$)/;
+
+function keyMatch(text) {
+  const c = text[0];
+  if (c === undefined) return null;
+  if (c === '"' || c === "'") {
+    const m = QUOTED_KEY_RE.exec(text);
+    if (!m) return null;
+    return { key: m[1] != null ? doubleQuoted(`"${m[1]}"`) : m[2].replace(/''/g, "'"), rest: m[3] };
   }
-  return depth <= 0;
+  if (/[\s#'"{[]/.test(c)) return null;
+  const idx = text.indexOf(':', 1);
+  if (idx === -1) return null;
+  const after = text[idx + 1];
+  if (after !== undefined && !/\s/.test(after)) return null;
+  return { key: text.slice(0, idx).trim(), rest: after === undefined ? undefined : text.slice(idx + 1).replace(/^\s+/, '') };
 }
 
 export function parseYaml(text) {
@@ -174,8 +199,6 @@ export function parseYaml(text) {
   let i = 0;
   const peek = () => { while (i < lines.length && lines[i].indent === -1) i++; return lines[i]; };
 
-  const KEY_RE = /^(?:"((?:[^"\\]|\\.)*)"|'((?:[^']|'')*)'|([^\s#'"{[][^:]*?|[^\s#'"{[]))\s*:(?:\s+(.*)|$)/;
-
   function blockScalar(header, parentIndent) {
     const style = header[0];
     const chomp = /-/.test(header) ? 'strip' : /\+/.test(header) ? 'keep' : 'clip';
@@ -222,23 +245,35 @@ export function parseYaml(text) {
     } else if (/^[|>][-+0-9]*$/.test(v)) out = blockScalar(v, parentIndent);
     else if (v[0] === '*') out = ctx.alias(v.slice(1).trim());
     else if (v[0] === '[' || v[0] === '{') {
-      let src = v;
-      while (!balanced(src) && i < lines.length) { const l = lines[i++]; if (l.indent !== -1) src += ' ' + l.text; }
-      out = parseFlow(src, ctx);
+      const parts = [v];
+      const tracker = flowTracker();
+      tracker.feed(v);
+      while (!tracker.closed() && i < lines.length) {
+        const l = lines[i++];
+        if (l.indent === -1) continue;
+        parts.push(l.text);
+        tracker.feed(` ${l.text}`);
+      }
+      out = parseFlow(parts.join(' '), ctx);
     } else if ((v[0] === '"' && !/"$/.test(v.slice(1))) || (v[0] === "'" && !/'$/.test(v.slice(1)))) {
-      let src = v;
-      const q = v[0];
-      while (i < lines.length && !new RegExp(`${q}\\s*$`).test(src.slice(1))) { const l = lines[i++]; src += ' ' + (l.indent === -1 ? '' : l.text); }
-      out = scalar(src);
+      const parts = [v];
+      const close = v[0] === '"' ? /"\s*$/ : /'\s*$/;
+      while (i < lines.length) {
+        const l = lines[i++];
+        const text = l.indent === -1 ? '' : l.text;
+        parts.push(text);
+        if (close.test(text)) break;
+      }
+      out = scalar(parts.join(' '));
     } else {
-      let src = v;
+      const parts = [v];
       while (i < lines.length) {
         const l = lines[i];
-        if (l.indent === -1 || l.indent <= parentIndent || KEY_RE.test(l.text) || /^-(?:\s|$)/.test(l.text)) break;
-        src += ' ' + l.text;
+        if (l.indent === -1 || l.indent <= parentIndent || keyMatch(l.text) || /^-(?:\s|$)/.test(l.text)) break;
+        parts.push(l.text);
         i++;
       }
-      out = scalar(src);
+      out = scalar(parts.join(' '));
     }
     if (anchor) anchors.set(anchor, out);
     return out;
@@ -249,7 +284,7 @@ export function parseYaml(text) {
     const l = peek();
     if (!l) return null;
     if (/^-(?:\s|$)/.test(l.text)) return seq(l.indent, depth);
-    if (KEY_RE.test(l.text)) return map(l.indent, depth);
+    if (keyMatch(l.text)) return map(l.indent, depth);
     i++;
     return inlineValue(l.text, indent - 1, depth);
   }
@@ -261,7 +296,7 @@ export function parseYaml(text) {
       if (!l || l.indent !== indent || !/^-(?:\s|$)/.test(l.text)) break;
       const content = l.text.replace(/^-\s*/, '');
       const offset = l.text.length - content.length;
-      if (content && (KEY_RE.test(content) || /^-(?:\s|$)/.test(content)) && !/^[[{"']/.test(content)) {
+      if (content && (keyMatch(content) || /^-(?:\s|$)/.test(content)) && !/^[[{"']/.test(content)) {
         lines[i] = { ...l, indent: indent + offset, text: content };
         out.push(node(indent + offset, depth + 1));
       } else {
@@ -278,15 +313,15 @@ export function parseYaml(text) {
     for (;;) {
       const l = peek();
       if (!l || l.indent !== indent) break;
-      const m = KEY_RE.exec(l.text);
+      const m = keyMatch(l.text);
       if (!m) break;
       i++;
-      const key = m[1] != null ? doubleQuoted(`"${m[1]}"`) : m[2] != null ? m[2].replace(/''/g, "'") : m[3].trim();
-      const val = inlineValue(m[4] ?? '', indent, depth);
+      const key = m.key;
+      const val = inlineValue(m.rest ?? '', indent, depth);
       if (key === '<<') merges.push(...(Array.isArray(val) ? val : [val]));
-      else out[key] = val;
+      else if (!UNSAFE_KEYS.has(key)) out[key] = val;
     }
-    for (const src of merges) if (src && typeof src === 'object' && !Array.isArray(src)) for (const [k, v] of Object.entries(src)) if (!(k in out)) out[k] = v;
+    for (const src of merges) if (src && typeof src === 'object' && !Array.isArray(src)) for (const [k, v] of Object.entries(src)) if (!Object.hasOwn(out, k) && !UNSAFE_KEYS.has(k)) out[k] = v;
     return out;
   }
 

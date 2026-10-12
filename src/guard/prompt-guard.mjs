@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import { gateMachine } from '../core/api-client.mjs';
 import { breakerOpen, breakerReset, breakerTrip, guardTimeoutMs } from '../core/circuit-breaker.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
@@ -10,8 +9,9 @@ import { envFlag, guardWait, resolveAgentFlag } from './options.mjs';
 import { reportGuardDecision } from './report.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
 import { stoppedNote } from './emit.mjs';
+import { readHookPayload as readPayload } from './payload.mjs';
 
-export const PROMPT_HOOK_AGENTS = new Set(['claude', 'cursor']);
+export const PROMPT_HOOK_AGENTS = new Set(['claude', 'cursor', 'codex', 'gemini']);
 
 function normalizePromptInput(agent, payload) {
   const p = payload || {};
@@ -34,7 +34,11 @@ function normalizePromptInput(agent, payload) {
 }
 
 function emitPromptDeny(agent, reason, stopped) {
-  if (stopped && (agent === 'claude' || !agent)) {
+  if (agent === 'gemini') {
+    process.stdout.write(JSON.stringify({ decision: 'deny', reason: stopped ? `${stopped} ${reason}` : reason }));
+    process.exit(0);
+  }
+  if (stopped && (agent === 'claude' || agent === 'codex' || !agent)) {
     process.stdout.write(JSON.stringify({ continue: false, stopReason: stopped, decision: 'block', reason }));
     process.exit(0);
   }
@@ -52,16 +56,12 @@ function emitPromptContext(agent, note) {
     process.stderr.write(note + '\n');
     process.exit(0);
   }
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: note } }));
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: agent === 'gemini' ? 'BeforeAgent' : 'UserPromptSubmit', additionalContext: note } }));
   process.exit(0);
 }
 
 function readHookPayload() {
-  try {
-    return JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
-  } catch {
-    return process.exit(0);
-  }
+  return readPayload() ?? process.exit(0);
 }
 
 function localTierDisabled() {
@@ -99,7 +99,6 @@ async function requestServerDecision({ url, apiKey, body, agent, strict, injecti
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    clearTimeout(timer);
 
     if (!response.ok) {
       if (response.status === 401 || response.status === 403) {
@@ -110,6 +109,7 @@ async function requestServerDecision({ url, apiKey, body, agent, strict, injecti
       throw new Error(`HTTP ${response.status}`);
     }
     const decision = await response.json();
+    clearTimeout(timer);
     breakerReset();
     return decision;
   } catch (error) {
@@ -176,10 +176,20 @@ function promptInjectionNote(injection) {
   );
 }
 
+const MAX_PROMPT_SENT = 4 * 1024 * 1024;
+
+function sendablePrompt(prompt) {
+  const text = String(prompt ?? '');
+  if (text.length <= MAX_PROMPT_SENT) return text;
+  const half = Math.floor(MAX_PROMPT_SENT / 2);
+  return `${text.slice(0, half)}\n[shomra: ${text.length - half * 2} characters not sent]\n${text.slice(text.length - half)}`;
+}
+
 function buildPromptGuardBody(norm, agent, clientDecision, clientReason) {
+  const prompt = sendablePrompt(norm.prompt);
   const redaction = localTierDisabled()
-    ? { text: norm.prompt, masked: [], changed: false }
-    : redactLocally(norm.prompt);
+    ? { text: prompt, masked: [], changed: false }
+    : redactLocally(prompt);
 
   return {
     tool_name: 'UserPromptSubmit',

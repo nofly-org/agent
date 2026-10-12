@@ -93,7 +93,7 @@ test('matcher coverage is read as the vendor reads it - a regex, not a list of l
   assert.equal(matcherCovers('*', 'anything'), true);
   assert.equal(matcherCovers('Bash', 'PowerShell'), false);
   assert.equal(matcherCovers('Bash|[unclosed', 'PowerShell'), false, 'a matcher that cannot compile covers nothing');
-  assert.deepEqual(missingTools('claude', 'Bash|Write|Edit|MultiEdit|NotebookEdit|mcp__.*').map((m) => m.name), ['PowerShell', 'Skill']);
+  assert.deepEqual(missingTools('claude', 'Bash|Write|Edit|MultiEdit|NotebookEdit|mcp__.*').map((m) => m.name), ['PowerShell', 'Monitor', 'Skill']);
   assert.deepEqual(missingTools('claude', TOOL_GUARD_MATCHERS.claude), []);
   assert.deepEqual(missingTools('gemini', '.*'), [], 'match-all covers every required name');
   assert.deepEqual(missingTools('gemini', 'run_shell_command').map((m) => m.name), ['write_file', 'replace', 'mcp__.*']);
@@ -105,7 +105,7 @@ test('an old install that never learned PowerShell is POROUS, names it, and carr
   const home = fakeHome(claudeSettings('Bash|Write|Edit|MultiEdit|NotebookEdit|mcp__.*'));
   const row = withHome(home, () => staticCheck('claude'));
   assert.equal(row.state, 'porous');
-  assert.deepEqual(row.missing.map((m) => m.name), ['PowerShell', 'Skill']);
+  assert.deepEqual(row.missing.map((m) => m.name), ['PowerShell', 'Monitor', 'Skill']);
   assert.match(row.statement, /PowerShell/);
   assert.match(row.statement, /shell commands/);
   assert.match(row.statement, /skill invocations/);
@@ -157,8 +157,9 @@ test('a pinned npm hook on an older version is reported as a note, never as a ho
 test('hook entries are read out of each vendor\'s own settings shape', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-shapes-'));
   const codex = path.join(dir, 'hooks.json');
-  fs.writeFileSync(codex, JSON.stringify({ PreToolUse: [{ matcher: TOOL_GUARD_MATCHERS.codex, hooks: [{ command: hookCmdFor('codex') }] }] }));
+  fs.writeFileSync(codex, JSON.stringify({ hooks: { PreToolUse: [{ matcher: TOOL_GUARD_MATCHERS.codex, hooks: [{ command: hookCmdFor('codex') }] }] } }));
   assert.equal(hookEntries('codex', codex)[0].matcher, TOOL_GUARD_MATCHERS.codex);
+  assert.equal(hookEntries('codex', codex)[0].legacy, undefined);
 
   const cursor = path.join(dir, 'cursor.json');
   fs.writeFileSync(cursor, JSON.stringify({ hooks: { beforeShellExecution: [{ command: hookCmdFor('cursor') }] } }));
@@ -168,8 +169,9 @@ test('hook entries are read out of each vendor\'s own settings shape', () => {
   assert.equal(cursorEntries[0].matcher, null, 'a flat-event vendor has no matcher field to read');
 
   const copilot = path.join(dir, 'shomra.json');
-  fs.writeFileSync(copilot, JSON.stringify({ preToolUse: [{ command: hookCmdFor('copilot') }] }));
+  fs.writeFileSync(copilot, JSON.stringify({ version: 1, hooks: { preToolUse: [{ type: 'command', bash: hookCmdFor('copilot'), powershell: hookCmdFor('copilot') }] } }));
   assert.equal(hookEntries('copilot', copilot)[0].event, 'preToolUse');
+  assert.equal(hookEntries('copilot', copilot)[0].legacy, undefined);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -427,7 +429,7 @@ test('end to end: Codex’s apply_patch canary reaches the server WITH the rebui
   fs.mkdirSync(path.join(home, '.codex'), { recursive: true });
   fs.writeFileSync(
     path.join(home, '.codex', 'hooks.json'),
-    JSON.stringify({ PreToolUse: [{ matcher: TOOL_GUARD_MATCHERS.codex, hooks: [{ type: 'command', command: hookCmdFor('codex') }] }] }, null, 2),
+    JSON.stringify({ hooks: { PreToolUse: [{ matcher: TOOL_GUARD_MATCHERS.codex, hooks: [{ type: 'command', command: hookCmdFor('codex') }] }] } }, null, 2),
   );
   try {
     const out = await runSelftest(home, stub.url, ['--agent', 'codex']);

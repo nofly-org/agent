@@ -56,13 +56,15 @@ export async function cmdScan(flags) {
     console.log(JSON.stringify({ machine: machineInfo(cfg), ...(homes ? { homes } : {}), assets, artifacts, capped, available, ...(unreadStores.length ? { unreadMcpStores: unreadStores } : {}) }, null, 2));
     return;
   }
-  console.log(bold(cyan('\n  Shomra')) + dim(` agent v${VERSION} - local scan`));
-  if (homes) console.log(dim(`  ${homes.length} user home(s): ${homes.map((h) => h.user).join(', ')}`));
-  printAssets(assets);
-  for (const s of unreadStores) {
-    console.log(`  ${yellow('⚠')} ${dim(`MCP servers in ${s.file} were NOT read (${s.state === 'no-sqlite' ? 'this Node has no node:sqlite - use Node 22.5+' : s.state}) - not the same as none.`)}`);
+  if (!flags.json) {
+    console.log(bold(cyan('\n  Shomra')) + dim(` agent v${VERSION} - local scan`));
+    if (homes) console.log(dim(`  ${homes.length} user home(s): ${homes.map((h) => h.user).join(', ')}`));
+    printAssets(assets);
+    for (const s of unreadStores) {
+      console.log(`  ${yellow('⚠')} ${dim(`MCP servers in ${s.file} were NOT read (${s.state === 'no-sqlite' ? 'this Node has no node:sqlite - use Node 22.5+' : s.state}) - not the same as none.`)}`);
+    }
+    printArtifacts(artifacts, capped, available);
   }
-  printArtifacts(artifacts, capped, available);
 
   if (flags.report) {
     await sendReport(cfg, assets, flags, { artifacts, capped, available });
@@ -81,7 +83,7 @@ async function sendReport(cfg, assets, flags, extra = {}) {
   const artifacts = extra.artifacts ?? [];
   const capped = extra.capped ?? [];
   const available = extra.available ?? [];
-  process.stdout.write(dim('\n  Reporting to platform… '));
+  if (!flags.json) process.stdout.write(dim('\n  Reporting to platform… '));
   try {
     const res = await api(url, apiKey, '/agent/report', {
       machine: { ...machineInfo(cfg), scope: flags['all-users'] ? 'all-users' : 'user' },
@@ -95,23 +97,24 @@ async function sendReport(cfg, assets, flags, extra = {}) {
 
       timeoutMs: clampInt(process.env.SHOMRA_API_TIMEOUT_MS, 180000, 1000, 600000),
     });
+    if (flags.json) {
+      console.log(JSON.stringify(res, null, 2));
+      if ((res?.critical ?? 0) > 0) process.exitCode = 1;
+      return;
+    }
     console.log(
       green('done') +
         dim(` (${res.assets} assets analyzed`) +
         (res.artifacts ? dim(`, ${res.artifacts.registered} artifacts registered`) : '') +
         dim(')'),
     );
-    if (flags.json) {
-      console.log(JSON.stringify(res, null, 2));
-      return;
-    }
     console.log('');
     if (Array.isArray(res.results)) {
       for (const r of res.results.filter((x) => x.findingCount > 0)) {
         const vc = VERDICT_COLOR[r.verdict] || gray;
         console.log(`  ${vc('●')} ${bold(r.name)} ${dim('risk ' + r.riskScore)} ${vc(r.verdict)}`);
         for (const f of r.findings || []) {
-          console.log(`      ${SEV_COLOR[f.severity](f.severity.padEnd(8))} ${f.title}`);
+          console.log(`      ${SEV_COLOR[f.severity](String(f.severity).padEnd(8))} ${f.title}`);
         }
       }
     }
@@ -126,7 +129,8 @@ async function sendReport(cfg, assets, flags, extra = {}) {
     console.log(dim(`  Endpoint: ${res.endpointId}\n`));
     if (crit > 0) process.exitCode = 1;
   } catch (e) {
-    console.log(red('failed'));
+    if (flags.json) console.log(JSON.stringify({ error: e.message }, null, 2));
+    else console.log(red('failed'));
     console.error(`  ${red('✗')} ${e.message}\n`);
 
     process.exitCode = 1;

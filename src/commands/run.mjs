@@ -1,5 +1,5 @@
 import os from 'node:os';
-import { api } from '../core/api-client.mjs';
+import { api, currentUsername } from '../core/api-client.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE, exitNotConfigured } from '../core/exit-codes.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
@@ -117,7 +117,7 @@ export async function cmdRun(flags, positional) {
   const run = await requestOrExit(() => api(url, apiKey, `/playbooks/agent/${encodeURIComponent(id)}/run`, {
     inputs,
     ...(flags.project ? { projectId: String(flags.project) } : {}),
-    actor: `${os.hostname()}/${os.userInfo().username}`,
+    actor: `${os.hostname()}/${currentUsername()}`,
   }), flags);
   if (!flags.json) console.log(green('done'));
 

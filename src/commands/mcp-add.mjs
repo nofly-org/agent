@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
+import { readJsonFile, writeJsonFile } from '../core/json-file.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { SEV_COLOR, bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { localGate } from '../detect/guard-signals.mjs';
-import { mcpIndexAlert, mcpLookup, mcpLookupId, parseEnvKV, worstMcpVerdict } from '../mcp/lookup.mjs';
+import { mcpIndexAlert, mcpLookup, mcpLookupId, parseEnvKV, splitCommandLine, worstMcpVerdict } from '../mcp/lookup.mjs';
 import { printAlternatives } from '../models/lookup.mjs';
 import { withMcpAdvisories } from '../gate/advisories.mjs';
 
@@ -21,7 +22,7 @@ function buildServerEntry(flags, positional) {
   const server = {};
   if (flags.url) server.url = String(flags.url);
 
-  const tokens = flags.command ? String(flags.command).split(/\s+/) : positional.slice(2);
+  const tokens = flags.command ? splitCommandLine(flags.command) : positional.slice(2);
   if (tokens.length) {
     [server.command] = tokens;
     if (tokens.length > 1) server.args = tokens.slice(1);
@@ -38,7 +39,8 @@ function assertUsableArguments(name, server, tokens) {
       `shomra mcp add <name> ${[server.command, ...(server.args || [])].join(' ')}`,
     );
   }
-  if (RUNNER_NAMES.test(String(name))) {
+  const program = String(server.command).split(/[\\/]/).pop().replace(/\.(exe|cmd|bat)$/i, '');
+  if (RUNNER_NAMES.test(String(name)) && !RUNNER_NAMES.test(program) && !/[\\/]/.test(String(server.command))) {
     usageExit(
       `"${name}" is a runner, not a server name - it looks like the NAME argument was left out.`,
       `shomra mcp add <name> ${[name, ...tokens].join(' ')}`,
@@ -97,22 +99,27 @@ function readConfigOrEmpty(configFile) {
 }
 
 function readConfigOrExit(configFile) {
-  if (!fs.existsSync(configFile)) return {};
   try {
-    return JSON.parse(fs.readFileSync(configFile, 'utf8'));
-  } catch {
-    console.error(`${red('✗')} ${configFile} is not valid JSON.`);
-    return process.exit(EXIT_USAGE);
+    const config = readJsonFile(configFile);
+    if (config && typeof config === 'object' && !Array.isArray(config)) return config;
+    console.error(`${red('✗')} ${configFile} does not hold a JSON object - nothing was changed.`);
+  } catch (error) {
+    console.error(`${red('✗')} ${error.message}`);
   }
+  return process.exit(EXIT_USAGE);
 }
 
 function writeServerEntry(configFile, name, server) {
   const config = readConfigOrExit(configFile);
+  if (config.mcpServers !== undefined && (typeof config.mcpServers !== 'object' || config.mcpServers === null || Array.isArray(config.mcpServers))) {
+    console.error(`${red('✗')} ${configFile} has an mcpServers value that is not an object - nothing was changed.`);
+    process.exit(EXIT_USAGE);
+  }
   config.mcpServers = config.mcpServers || {};
-  const existed = !!config.mcpServers[name];
+  const existed = Object.prototype.hasOwnProperty.call(config.mcpServers, name);
   config.mcpServers[name] = server;
   fs.mkdirSync(path.dirname(configFile), { recursive: true });
-  fs.writeFileSync(configFile, `${JSON.stringify(config, null, 2)}\n`);
+  writeJsonFile(configFile, config);
   return existed;
 }
 

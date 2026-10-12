@@ -2,6 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { SELF_PATH } from '../agents/hook-command.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
+import { readJsonFile, writeJsonFile } from '../core/json-file.mjs';
+
+function fileMode(file) {
+  try {
+    return fs.statSync(file).mode & 0o777;
+  } catch {
+    return 0o600;
+  }
+}
 import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
 import { MCP_HOST_CONFIGS, MCP_HOST_KEYS, shomraMcpEntry } from '../mcp/hosts.mjs';
 import { runMcpServer } from '../mcp/server.mjs';
@@ -26,21 +35,20 @@ function cmdMcpInstall(flags) {
     const host = MCP_HOST_CONFIGS[key];
     const file = global ? host.global() : host.local();
     let cfg = {};
-    if (fs.existsSync(file)) {
-      try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {
-        console.log(`  ${red('✗')} ${host.label} ${dim('- ' + file + ' is not valid JSON; fix or move it first.')}`);
-        out.push({ agent: key, file, changed: false, error: 'invalid json' });
-        continue;
-      }
+    try {
+      cfg = readJsonFile(file);
+    } catch (e) {
+      console.log(`  ${red('✗')} ${host.label} ${dim('- ' + e.message)}`);
+      out.push({ agent: key, file, changed: false, error: 'invalid json' });
+      continue;
     }
-    cfg.mcpServers = cfg.mcpServers || {};
+    if (!cfg.mcpServers || typeof cfg.mcpServers !== 'object' || Array.isArray(cfg.mcpServers)) cfg.mcpServers = {};
     const before = JSON.stringify(cfg.mcpServers.shomra || null);
     cfg.mcpServers.shomra = entry;
     const changed = before !== JSON.stringify(entry);
     if (changed) {
       try {
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
+        writeJsonFile(file, cfg);
       } catch (e) {
         console.log(`  ${red('✗')} ${host.label} ${dim('- ' + e.message)}`);
         out.push({ agent: key, file, changed: false, error: e.message });
@@ -93,9 +101,9 @@ async function cmdMcpGuardInstall(flags) {
   for (const { label, file } of files) {
     let cfg;
     try {
-      cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+      cfg = readJsonFile(file);
     } catch (e) {
-      console.log(`  ${red('✗')} ${label} ${dim('- ' + file + ' is not valid JSON; fix or move it first.')}`);
+      console.log(`  ${red('✗')} ${label} ${dim('- ' + e.message)}`);
       results.push({ file, error: 'invalid json' });
       continue;
     }
@@ -106,8 +114,8 @@ async function cmdMcpGuardInstall(flags) {
       try {
 
         const bak = file + '.shomra-backup';
-        if (!undo && !fs.existsSync(bak)) fs.writeFileSync(bak, before);
-        fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
+        if (!undo && !fs.existsSync(bak)) fs.writeFileSync(bak, before, { mode: fileMode(file) });
+        writeJsonFile(file, cfg);
       } catch (e) {
         console.log(`  ${red('✗')} ${label} ${dim('- ' + e.message)}`);
         results.push({ file, error: e.message });
@@ -117,13 +125,15 @@ async function cmdMcpGuardInstall(flags) {
     results.push({ file, label, ...out, changed });
     if (!flags.json) {
       const names = undo ? out.restored : out.wrapped;
+      const updated = undo ? [] : out.updated ?? [];
       if (names.length) console.log(`  ${green('✓')} ${bold(label)} ${dim('- ' + (undo ? 'restored ' : 'guarded ') + names.join(', '))}`);
-      if (!undo && out.updated?.length) console.log(`  ${green('✓')} ${bold(label)} ${dim('- screening set to ' + screen + ' for ' + out.updated.join(', '))}`);
-      else console.log(`  ${yellow('•')} ${label} ${dim('- nothing to ' + (undo ? 'restore' : 'guard'))}`);
+      if (updated.length) console.log(`  ${green('✓')} ${bold(label)} ${dim('- ' + (screen ? 'screening set to ' + screen : 'guard repointed at this install') + ' for ' + updated.join(', '))}`);
+      if (!names.length && !updated.length) console.log(`  ${yellow('•')} ${label} ${dim('- nothing to ' + (undo ? 'restore' : 'guard'))}`);
       for (const s of out.skipped ?? []) console.log(`    ${dim('· ' + s.name + ' - ' + s.why)}`);
     }
   }
 
+  if (results.some((r) => r.error)) process.exitCode = 1;
   if (flags.json) { console.log(JSON.stringify({ mode: undo ? 'uninstall' : 'install', results }, null, 2)); return; }
   if (!undo) {
     console.log(dim('\n  Every stdio MCP server now starts through Shomra: a DENIED / REVOKED / QUARANTINED'));

@@ -1,25 +1,37 @@
 import fs from 'node:fs';
+import { parseJsonc } from '../../core/jsonc.mjs';
 
 export function readJson(file) {
   try {
-    return JSON.parse(stripJsonComments(fs.readFileSync(file, 'utf8')));
+    return parseJsonc(fs.readFileSync(file, 'utf8'));
   } catch {
     return null;
   }
 }
 
-function stripJsonComments(s) {
-  return String(s)
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+export function readText(file, cap = 200_000) {
+  return readTextBounded(file, cap)?.text ?? null;
 }
 
-export function readText(file, cap = 200_000) {
+export function readTextBounded(file, cap) {
+  let fd;
   try {
-    const b = fs.readFileSync(file, 'utf8');
-    return b.length > cap ? b.slice(0, cap) : b;
+    fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0));
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) return null;
+    const size = Math.min(st.size, cap);
+    const buf = Buffer.alloc(size);
+    const n = fs.readSync(fd, buf, 0, size, 0);
+    return { text: buf.subarray(0, n).toString('utf8'), truncated: st.size > cap };
   } catch {
     return null;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+      }
+    }
   }
 }
 

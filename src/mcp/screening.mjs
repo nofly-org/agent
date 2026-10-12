@@ -1,8 +1,32 @@
 import { downrankCodeContext, grade, localScan } from '../detect/guard-signals.mjs';
-import { safeJson } from './jsonrpc.mjs';
 
-const MAX_EXTRACT_DEPTH = 12;
-const MAX_EXTRACT_BYTES = 256 * 1024;
+const MAX_EXTRACT_DEPTH = 24;
+const MAX_SCREEN_CHARS = 512 * 1024;
+const TEXT_MIME_RE = /^(?:text\/|application\/(?:json|xml|javascript|x-sh|x-shellscript|x-yaml|yaml|toml|x-python|x-httpd-php|sql|graphql))/i;
+
+function windowed(text, max = MAX_SCREEN_CHARS) {
+  if (text.length <= max) return text;
+  const half = Math.floor(max / 2);
+  return `${text.slice(0, half)}\n${text.slice(text.length - half)}`;
+}
+
+function fullJson(value) {
+  if (value == null) return '';
+  try {
+    return windowed(JSON.stringify(value) ?? '');
+  } catch {
+    return '';
+  }
+}
+
+function decodedBlob(owner, blob) {
+  if (typeof blob !== 'string' || !TEXT_MIME_RE.test(String(owner?.mimeType ?? ''))) return null;
+  try {
+    return Buffer.from(blob.slice(0, MAX_SCREEN_CHARS * 2), 'base64').toString('utf8');
+  } catch {
+    return null;
+  }
+}
 
 export const LISTING_KEY = {
   'tools/list': 'tools',
@@ -13,23 +37,32 @@ export const LISTING_KEY = {
 
 export const RESULT_METHODS = new Set(['resources/read', 'prompts/get', 'completion/complete']);
 
-function extractResultText(value, depth = 0, collected = []) {
-  if (depth > MAX_EXTRACT_DEPTH || collected.join('').length > MAX_EXTRACT_BYTES) return collected;
-  if (typeof value === 'string') {
-    collected.push(value);
-    return collected;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) extractResultText(item, depth + 1, collected);
-    return collected;
-  }
-  if (value && typeof value === 'object') {
-    for (const [key, item] of Object.entries(value)) {
-      if (key === 'blob') continue;
-      if (typeof item === 'string') collected.push(item);
-      else extractResultText(item, depth + 1, collected);
+function extractResultText(value) {
+  const collected = [];
+  let size = 0;
+  const push = (text) => {
+    collected.push(text);
+    size += text.length;
+  };
+  const walk = (node, depth) => {
+    if (size > MAX_SCREEN_CHARS * 4) return;
+    if (typeof node === 'string') return push(node);
+    if (!node || typeof node !== 'object') return;
+    if (depth > MAX_EXTRACT_DEPTH) return push(fullJson(node));
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, depth + 1);
+      return;
     }
-  }
+    for (const [key, item] of Object.entries(node)) {
+      if (key === 'blob') {
+        const text = decodedBlob(node, item);
+        if (text) push(text);
+        continue;
+      }
+      walk(item, depth + 1);
+    }
+  };
+  walk(value, 0);
   return collected;
 }
 
@@ -38,7 +71,7 @@ function isUnmaskedThreat(finding) {
 }
 
 export function screenResult(result) {
-  const text = extractResultText(result).join('\n');
+  const text = windowed(extractResultText(result).join('\n'));
   if (!text.trim()) return { blocked: false };
 
   const scan = localScan(text);
@@ -56,13 +89,13 @@ function descriptorText(entry, method) {
   const parts = method === 'tools/list'
     ? [
       descriptor.name ?? '', typeof descriptor.title === 'string' ? descriptor.title : '', descriptor.description ?? '',
-      safeJson(descriptor.annotations), safeJson(descriptor.inputSchema), safeJson(descriptor.outputSchema), safeJson(descriptor._meta),
+      fullJson(descriptor.annotations), fullJson(descriptor.inputSchema), fullJson(descriptor.outputSchema), fullJson(descriptor._meta),
     ]
     : [
       descriptor.name ?? '', descriptor.title ?? '', descriptor.description ?? '',
-      descriptor.uri ?? '', descriptor.uriTemplate ?? '', safeJson(descriptor.arguments), safeJson(descriptor._meta),
+      descriptor.uri ?? '', descriptor.uriTemplate ?? '', fullJson(descriptor.arguments), fullJson(descriptor._meta),
     ];
-  return parts.filter(Boolean).join('\n');
+  return windowed(parts.filter((p) => typeof p === 'string' && p).join('\n'));
 }
 
 function descriptorLabel(entry) {
@@ -80,7 +113,7 @@ function isPoisonedDescriptor(entry, method) {
 }
 
 export function screenInstructions(result) {
-  if (typeof result?.instructions !== 'string' || !poisonedText(result.instructions)) return { result, withheld: false };
+  if (typeof result?.instructions !== 'string' || !poisonedText(windowed(result.instructions))) return { result, withheld: false };
   const { instructions: _withheld, ...rest } = result;
   return { result: rest, withheld: true };
 }
@@ -108,7 +141,8 @@ export function screenListing(method, result, deniedTools = []) {
 }
 
 export function screenToolCallArguments(toolArguments) {
-  const { findings } = localScan(safeJson(toolArguments), { categories: ['shell', 'injection', 'secret'] });
+  const leaves = windowed(extractResultText(toolArguments).join('\n'));
+  const { findings } = localScan(`${leaves}\n${fullJson(toolArguments)}`, { categories: ['shell', 'injection', 'secret'] });
   if (grade(findings).verdict !== 'BLOCK') return { blocked: false };
   const label = findings.find((f) => f.severity === 'CRITICAL')?.label || 'dangerous tool call';
   return { blocked: true, label };

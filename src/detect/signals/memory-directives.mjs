@@ -143,10 +143,10 @@ function pushSentences(units              , parts                               
     starts.push({ at: joined.length, line: p.line });
     joined += p.text.trim();
   }
+  let k = 0;
   for (const s of splitSentences(joined)) {
-    let line = starts[0].line;
-    for (const st of starts) if (st.at <= s.at) line = st.line;
-    units.push({ text: s.text.slice(0, MAX_UNIT), line, code: false });
+    while (k + 1 < starts.length && starts[k + 1].at <= s.at) k++;
+    units.push({ text: s.text.slice(0, MAX_UNIT), line: starts[k].line, code: false });
   }
 }
 

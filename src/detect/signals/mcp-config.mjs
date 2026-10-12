@@ -1,8 +1,10 @@
+import crypto from 'node:crypto';
 import { assessUrl } from './egress.mjs';
 import { MALICIOUS_PACKAGE_SEED, POPULAR_PACKAGES, editDistance } from './packages.mjs';
 import { SECRET_PATTERNS, isPlaceholderSecret } from './secrets.mjs';
 import { parseLooseToml } from '../../inventory/grant-extract.mjs';
 import { parseYaml } from '../../core/yaml-lite.mjs';
+import { parseJsonc } from '../../core/jsonc.mjs';
 
 const MAX_SERVERS = 200;
 const MAX_ARGS = 64;
@@ -12,15 +14,11 @@ const strList = (v) => (Array.isArray(v) ? v.filter((x) => x != null && typeof x
 
 /* ─── documents ──────────────────────────────────────────────────────────── */
 
-function stripJsonComments(s) {
-  return String(s).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:"])\/\/.*$/gm, '$1').replace(/,(\s*[}\]])/g, '$1');
-}
-
 export function parseConfigDoc(text, path = '') {
   if (typeof text !== 'string' || !text.trim()) return null;
   if (/\.toml$/i.test(path)) return parseLooseToml(text);
   if (/\.ya?ml$/i.test(path)) return parseYaml(text);
-  try { return JSON.parse(stripJsonComments(text)); } catch { /* fall through */ }
+  try { return parseJsonc(text); } catch { /* fall through */ }
   if (/^\s*\[/m.test(text) && /=/.test(text)) return parseLooseToml(text);
   return null;
 }
@@ -651,4 +649,296 @@ export function gradeMcpDocument(content, path = '') {
   const findings = [];
   for (const s of servers) for (const f of gradeServer(s)) findings.push({ ...f, server: s.name });
   return { servers, findings };
+}
+
+
+const MASK_KEY = 'shomra-mask-v1';
+const MAX_KEEP = 12;
+
+const charKind = (c) => (c >= 'a' && c <= 'z' ? 'a' : c >= 'A' && c <= 'Z' ? 'A' : c >= '0' && c <= '9' ? '0' : null);
+
+function ownPalette(value, kept) {
+  const palette = { a: new Set(), A: new Set(), 0: new Set() };
+  for (let i = 0; i < value.length; i++) {
+    const kind = charKind(value[i]);
+    if (kind && !kept(i)) palette[kind].add(value[i]);
+  }
+  return Object.fromEntries(Object.entries(palette).map(([kind, set]) => [kind, [...set].sort()]));
+}
+
+function shapeLike(value, kept, palette = null) {
+  let bytes = Buffer.alloc(0);
+  for (let n = 0; bytes.length < value.length; n++) bytes = Buffer.concat([bytes, crypto.createHmac('sha256', MASK_KEY).update(`${n}:${value}`).digest()]);
+  let out = '';
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    if (c === '\\' && i + 1 < value.length) {
+      const span = value[i + 1] === 'u' ? 6 : value[i + 1] === 'x' ? 4 : 2;
+      out += value.slice(i, i + span);
+      i += span - 1;
+      continue;
+    }
+    const b = bytes[i];
+    const own = palette && charKind(c) ? palette[charKind(c)] : null;
+    if (kept(i)) out += c;
+    else if (own?.length) out += own[b % own.length];
+    else if (c >= 'a' && c <= 'f') out += String.fromCharCode(97 + (b % 6));
+    else if (c >= 'A' && c <= 'F') out += String.fromCharCode(65 + (b % 6));
+    else if (c >= 'a' && c <= 'z') out += String.fromCharCode(97 + (b % 26));
+    else if (c >= 'A' && c <= 'Z') out += String.fromCharCode(65 + (b % 26));
+    else if (c >= '0' && c <= '9') out += String.fromCharCode(48 + (b % 10));
+    else out += c;
+  }
+  return out;
+}
+
+const LITERAL_RUNS = new Map();
+const ESCAPED_CHAR = { n: '\n', r: '\r', t: '\t', f: '\f', v: '\v' };
+
+function literalRuns(re) {
+  const cacheKey = `${re.flags}/${re.source}`;
+  if (LITERAL_RUNS.has(cacheKey)) return LITERAL_RUNS.get(cacheKey);
+  const src = re.source;
+  const runs = [];
+  const groups = [];
+  let inLookaround = 0;
+  let cur = '';
+  const flush = () => {
+    if (!inLookaround && cur) runs.push(cur);
+    cur = '';
+  };
+  const quantify = () => {
+    cur = cur.slice(0, -1);
+    flush();
+  };
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (c === '\\') {
+      const n = src[++i];
+      if (n === undefined) break;
+      if (n === 'u' || n === 'x' || n === 'p' || n === 'P' || n === 'k' || n === 'c' || (n >= '0' && n <= '9') || 'dDwWsSbB'.includes(n)) {
+        flush();
+        if ((n === 'u' || n === 'p' || n === 'P') && src[i + 1] === '{') i = src.indexOf('}', i);
+        else if (n === 'k' && src[i + 1] === '<') i = src.indexOf('>', i);
+        else if (n === 'u') i += 4;
+        else if (n === 'x') i += 2;
+        else if (n === 'c') i += 1;
+        if (i < 0) break;
+        continue;
+      }
+      cur += ESCAPED_CHAR[n] ?? n;
+      continue;
+    }
+    if (c === '[') {
+      flush();
+      for (i++; i < src.length && src[i] !== ']'; i++) if (src[i] === '\\') i++;
+      continue;
+    }
+    if (c === '(') {
+      flush();
+      const look = /^\?(?:=|!|<=|<!)/.exec(src.slice(i + 1));
+      if (look) i += look[0].length;
+      else if (src[i + 1] === '?') i = src[i + 2] === '<' ? src.indexOf('>', i) : i + 2;
+      if (i < 0) break;
+      groups.push(!!look);
+      if (look) inLookaround++;
+      continue;
+    }
+    if (c === ')') {
+      flush();
+      if (groups.pop()) inLookaround--;
+      continue;
+    }
+    if (c === '?' || c === '*' || c === '+') {
+      quantify();
+      if (src[i + 1] === '?') i++;
+      continue;
+    }
+    if (c === '{' && /^\{\d+(?:,\d*)?\}/.test(src.slice(i, i + 16))) {
+      quantify();
+      i = src.indexOf('}', i);
+      if (src[i + 1] === '?') i++;
+      continue;
+    }
+    if (c === '|' || c === '^' || c === '$' || c === '.') {
+      flush();
+      continue;
+    }
+    cur += c;
+  }
+  flush();
+  LITERAL_RUNS.set(cacheKey, runs);
+  return runs;
+}
+
+const PEM_ARMOUR_RE = /-----(?:BEGIN|END) [A-Z0-9 ]{1,60}-----/g;
+
+function literalPositions(token, re, minLength) {
+  const keep = new Uint8Array(token.length);
+  for (const m of token.matchAll(PEM_ARMOUR_RE)) keep.fill(1, m.index, m.index + m[0].length);
+  const insensitive = re.flags.includes('i');
+  const hay = insensitive ? token.toLowerCase() : token;
+  for (const run of literalRuns(re)) {
+    if (run.length < minLength) continue;
+    const needle = insensitive ? run.toLowerCase() : run;
+    for (let at = hay.indexOf(needle); at >= 0; at = hay.indexOf(needle, at + 1)) keep.fill(1, at, at + needle.length);
+  }
+  return keep;
+}
+
+const ALNUM = /[A-Za-z0-9]/;
+
+function hidesEnough(token, keep) {
+  let alnum = 0;
+  let hidden = 0;
+  for (let i = 0; i < token.length; i++) {
+    if (!ALNUM.test(token[i])) continue;
+    alnum++;
+    if (!keep[i]) hidden++;
+  }
+  return hidden >= Math.min(8, Math.ceil(alnum / 2));
+}
+
+const fresh = (re) => new RegExp(re.source, re.flags.replace(/[gy]/g, ''));
+
+function namedSecret(v) {
+  for (const { re } of SECRET_PATTERNS) {
+    const r = fresh(re);
+    const m = r.exec(v);
+    if (m && m[0].length >= 8 && !isPlaceholderSecret(m[0])) return { re: r, token: m[0] };
+  }
+  return null;
+}
+
+const PALETTE_MIN_HIDDEN = 24;
+
+function maskToken(token, re) {
+  if (re) {
+    for (const minLength of [3, 2, 1]) {
+      const keep = literalPositions(token, re, minLength);
+      if (!hidesEnough(token, keep)) break;
+      const kept = (i) => keep[i] === 1;
+      const candidate = shapeLike(token, kept);
+      if (candidate !== token && re.test(candidate)) return candidate;
+      if (keep.length - keep.reduce((n, k) => n + k, 0) < PALETTE_MIN_HIDDEN) continue;
+      const drawn = shapeLike(token, kept, ownPalette(token, kept));
+      if (drawn !== token && re.test(drawn)) return drawn;
+    }
+  }
+  for (let keep = 0; keep <= Math.min(MAX_KEEP, Math.floor(token.length / 3)); keep++) {
+    const candidate = shapeLike(token, (i) => i < keep);
+    if (!re || re.test(candidate)) return candidate;
+  }
+  const fallback = Math.min(4, Math.floor(token.length / 3));
+  return shapeLike(token, (i) => i < fallback);
+}
+
+export function maskSecretValue(raw, { key = null, header = false } = {}) {
+  if (typeof raw !== 'string' || !raw) return raw;
+  const named = namedSecret(raw);
+  if (named) return raw.split(named.token).join(maskToken(named.token, named.re));
+  if (key === null || !literalCredential(key, raw, header)) return raw;
+  const scheme = /^\s*(?:bearer|basic|token|apikey)\s+/i.exec(raw)?.[0] ?? '';
+  return scheme + maskToken(raw.slice(scheme.length), null);
+}
+
+function maskUrl(raw) {
+  if (typeof raw !== 'string' || !/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) return maskSecretValue(raw);
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    return maskSecretValue(raw);
+  }
+  let changed = false;
+  if (u.password && !REFERENCE_RE.test(decodeURIComponent(u.password)) && !isPlaceholderValue(u.password)) {
+    u.password = maskToken(decodeURIComponent(u.password), null);
+    changed = true;
+  }
+  for (const [k, v] of [...u.searchParams]) {
+    if (URL_CRED_PARAM_RE.test(k) && v.length >= 8 && !REFERENCE_RE.test(v) && !isPlaceholderValue(v)) {
+      u.searchParams.set(k, maskToken(v, null));
+      changed = true;
+    }
+  }
+  return maskSecretValue(changed ? u.href : raw);
+}
+
+function maskArgs(args) {
+  const out = [];
+  const toks = (args ?? []).map((a) => (typeof a === 'string' ? a : a));
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    if (typeof t !== 'string') {
+      out.push(t);
+      continue;
+    }
+    const eq = t.indexOf('=');
+    const flag = t.startsWith('-') && eq > 0 ? t.slice(0, eq) : t;
+    if (CRED_FLAG_RE.test(flag)) {
+      if (eq > 0) out.push(`${flag}=${maskSecretValue(t.slice(eq + 1), { key: `arg ${flag}`, header: true })}`);
+      else {
+        out.push(t);
+        if (i + 1 < toks.length && typeof toks[i + 1] === 'string') out.push(maskSecretValue(toks[++i], { key: `arg ${flag}`, header: true }));
+      }
+      continue;
+    }
+    if ((flag === '-e' || flag === '--env') && typeof toks[i + 1] === 'string' && /^[A-Za-z_][\w]*=/.test(toks[i + 1])) {
+      const next = toks[++i];
+      const k = next.slice(0, next.indexOf('='));
+      out.push(t, `${k}=${maskSecretValue(next.slice(k.length + 1), { key: k })}`);
+      continue;
+    }
+    if ((flag === '--header' || flag === '-H') && typeof toks[i + 1] === 'string') {
+      const next = toks[++i];
+      const m = /^(\s*([\w-]+)\s*:\s*)(.+)$/.exec(next);
+      out.push(t, m ? `${m[1]}${maskSecretValue(m[3], { key: m[2], header: true })}` : maskSecretValue(next));
+      continue;
+    }
+    out.push(maskUrl(t));
+  }
+  return out;
+}
+
+function maskBlock(block, header) {
+  if (!isObj(block)) return block;
+  const out = {};
+  for (const [k, v] of Object.entries(block)) out[k] = typeof v === 'string' ? maskSecretValue(v, { key: k, header }) : v;
+  return out;
+}
+
+export function maskServerSecrets(server) {
+  if (!isObj(server)) return server;
+  const out = { ...server };
+  if (isObj(server.env)) out.env = maskBlock(server.env, false);
+  if (isObj(server.headers)) out.headers = maskBlock(server.headers, true);
+  if (Array.isArray(server.args)) out.args = maskArgs(server.args);
+  for (const k of ['url', 'httpUrl', 'serverUrl', 'uri']) if (typeof server[k] === 'string') out[k] = maskUrl(server[k]);
+  if (typeof server.command === 'string') out.command = maskSecretValue(server.command);
+  return out;
+}
+
+const MAX_MASKED_MATCHES = 2000;
+
+export function maskNamedSecretsIn(text, remember = () => {}) {
+  let out = String(text ?? '');
+  for (const { re } of SECRET_PATTERNS) {
+    const once = fresh(re);
+    const all = new RegExp(once.source, `${once.flags}g`);
+    const seen = new Set();
+    for (const m of out.matchAll(all)) {
+      if (seen.size >= MAX_MASKED_MATCHES) break;
+      if (m[0].length >= 8 && !isPlaceholderSecret(m[0])) seen.add(m[0]);
+    }
+    for (const token of seen) {
+      const masked = maskToken(token, once);
+      remember(token, masked);
+      out = out.split(token).join(masked);
+    }
+  }
+  return out;
+}
+
+export function headerCredentialKey(key) {
+  return HEADER_CRED_KEY_RE.test(String(key ?? ''));
 }

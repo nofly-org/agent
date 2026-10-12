@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { agentHookFiles } from '../agents/hook-files.mjs';
+import { agentHookFiles, managedFile } from '../agents/hook-files.mjs';
 import { PACKAGE_SPEC, SELF_PATH, shomraHookRe } from '../agents/hook-command.mjs';
 import { KIND_LABEL, VENDOR_TOOLS, matcherCovers, missingTools } from '../agents/vendor-tools.mjs';
 import { VERSION } from '../core/version.mjs';
@@ -40,6 +40,30 @@ export function installedVendors(keys = Object.keys(VENDOR_TOOLS)) {
   return keys.filter((k) => vendorInstalled(k));
 }
 
+const CLINE_MARK_RE = /\/\/ shomra cline hook/;
+const CLINE_RUN_RE = /spawnSync\((".*?"|'npx'),\s*\[(.*?)\]/;
+
+function clineEntry(file, event) {
+  let text;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    return [];
+  }
+  if (!CLINE_MARK_RE.test(text)) return [];
+  const m = CLINE_RUN_RE.exec(text);
+  if (!m) return [];
+  let args;
+  try {
+    args = JSON.parse(`[${m[2].replace(/'/g, '"')}]`);
+  } catch {
+    return [];
+  }
+  const exe = m[1] === "'npx'" ? 'npx' : JSON.parse(m[1]);
+  const quote = (a) => (/^[\w@%+=:,./-]+$/.test(a) ? a : `"${String(a).replace(/(["\\$`])/g, '\\$1')}"`);
+  return [{ event, matcher: null, command: [exe, ...args].map(quote).join(' ') }];
+}
+
 function readJson(file) {
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -55,6 +79,7 @@ function readJson(file) {
  * such field, and the EVENT is what decides whether the hook runs.
  */
 export function hookEntries(vendor, file) {
+  if (VENDOR_TOOLS[vendor]?.settings?.shape === 'cline-scripts') return path.basename(file) === 'PreToolUse' ? clineEntry(file, 'PreToolUse') : [];
   const cfg = readJson(file);
   if (!cfg) return [];
   const re = shomraHookRe('tool-guard');
@@ -69,17 +94,28 @@ export function hookEntries(vendor, file) {
       }
     }
   };
-  const flat = (list, event) => {
+  const flat = (list, event, extra = {}) => {
     for (const h of Array.isArray(list) ? list : []) {
-      const command = String(h?.command ?? '');
-      if (re.test(command)) out.push({ event, matcher: null, command });
+      const command = String(h?.command ?? (process.platform === 'win32' ? h?.powershell ?? h?.bash : h?.bash ?? h?.powershell) ?? '');
+      if (re.test(command)) out.push({ event, matcher: null, command, ...extra });
     }
   };
 
-  if (shape === 'claude' || shape === 'gemini') grouped(cfg.hooks?.[VENDOR_TOOLS[vendor].event], VENDOR_TOOLS[vendor].event);
-  else if (shape === 'codex') grouped(cfg[VENDOR_TOOLS[vendor].event], VENDOR_TOOLS[vendor].event);
-  else if (shape === 'flat-events') for (const e of [...VENDOR_TOOLS[vendor].events, ...VENDOR_TOOLS[vendor].postEvents]) flat(cfg.hooks?.[e.name], e.name);
-  else if (shape === 'copilot') for (const e of VENDOR_TOOLS[vendor].events) flat(cfg[e.name], e.name);
+  const event = VENDOR_TOOLS[vendor]?.event;
+  if (shape === 'claude' || shape === 'gemini') grouped(cfg.hooks?.[event], event);
+  else if (shape === 'codex') {
+    grouped(cfg.hooks?.[event], event);
+    const before = out.length;
+    grouped(cfg[event], event);
+    for (const e of out.slice(before)) e.legacy = 'Codex reads hooks only under the "hooks" key of hooks.json, so this entry at the top level never runs';
+  } else if (shape === 'flat-events') for (const e of [...VENDOR_TOOLS[vendor].events, ...VENDOR_TOOLS[vendor].postEvents]) flat(cfg.hooks?.[e.name], e.name);
+  else if (shape === 'copilot') {
+    const legacy = cfg.version !== 1 || !cfg.hooks ? 'Copilot CLI rejects a hook file without "version": 1 and a "hooks" object, so this file never runs' : null;
+    for (const e of VENDOR_TOOLS[vendor].events) {
+      flat(cfg.hooks?.[e.name], e.name, legacy ? { legacy } : {});
+      if (legacy) flat(cfg[e.name], e.name, { legacy });
+    }
+  }
   return out;
 }
 
@@ -96,7 +132,7 @@ export function commandHealth(command) {
       ? { ok: true, how: 'npm', detail: PACKAGE_SPEC }
       : { ok: true, stale: true, how: 'npm', detail: `pinned to @shomra/agent@${npm[1]}, this CLI is ${VERSION}` };
   }
-  const named = [...command.matchAll(/"([^"]+shomra\.mjs)"|(\S+shomra\.mjs)/g)].map((m) => m[1] ?? m[2]).filter(Boolean);
+  const named = [...command.matchAll(/"([^"]+shomra\.mjs)"|'([^']+shomra\.mjs)'|([^\s"']+shomra\.mjs)/g)].map((m) => m[1] ?? m[2] ?? m[3]).filter(Boolean);
   const target = named[0];
   if (!target) return { ok: true, how: 'npm', detail: 'resolved through the package manager' };
   if (!fs.existsSync(target)) return { ok: false, how: 'path', detail: `${target} does not exist on this machine - the agent's hook spawn fails and the call runs unscreened` };
@@ -118,7 +154,7 @@ function scopeOf(file) {
 export function staticCheck(vendor) {
   const v = VENDOR_TOOLS[vendor];
   const files = agentHookFiles(vendor).filter((f) => fs.existsSync(f));
-  const installs = files.flatMap((file) => hookEntries(vendor, file).map((e) => ({ ...e, file, scope: scopeOf(file) })));
+  const installs = files.flatMap((file) => hookEntries(vendor, file).map((e) => ({ ...e, file, scope: file === managedFile(vendor) ? 'machine' : scopeOf(file) })));
   const fix = `shomra install-hook --agent ${vendor}`;
 
   if (!installs.length) {
@@ -137,6 +173,20 @@ export function staticCheck(vendor) {
 
   const notes = [];
   let stale = null;
+  const legacy = installs.find((i) => i.legacy);
+  if (legacy) {
+    return {
+      vendor,
+      label: v.label,
+      state: STATE.STALE,
+      files,
+      installs,
+      missing: [],
+      notes,
+      fix,
+      statement: `${v.label}'s Shomra hook in ${legacy.file} is installed in a shape the agent ignores: ${legacy.legacy}. Re-run the install to rewrite it.`,
+    };
+  }
   for (const i of installs) {
     const health = commandHealth(i.command);
     i.health = health;
@@ -170,7 +220,7 @@ export function staticCheck(vendor) {
     if (!installs.some((i) => i.event === e.name)) missingEvents.push({ name: e.name, kind: e.kind, why: KIND_LABEL[e.kind] });
   }
   /** Copilot wires one pre-event for every tool; its required names are screened, not matched. */
-  if (v.matcher === null && v.settings.shape === 'copilot') missing.length = 0;
+  if (v.matcher === null && (v.settings.shape === 'copilot' || v.settings.shape === 'cline-scripts')) missing.length = 0;
 
   for (const e of v.postEvents ?? []) if (e.note) notes.push(e.note);
   if (stale) notes.push(stale);

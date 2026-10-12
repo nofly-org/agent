@@ -18,7 +18,7 @@ export async function screenModelLoad(agent, tool, input, url) {
   if (typeof input.content === 'string') content = input.content;
   else if (typeof input.new_string === 'string') content = input.new_string;
   else if (typeof input.new_str === 'string') content = input.new_str;
-  else if (Array.isArray(input.edits)) content = input.edits.map((e) => e.new_string || e.new_str || '').join('\n');
+  else if (Array.isArray(input.edits)) content = input.edits.map((e) => e?.new_string || e?.new_str || '').join('\n');
   if (!content) return;
   const refs = scanModelRefs(content, path.basename(String(filePath))).filter((r) => r.source === 'hf');
   if (!refs.length) return;

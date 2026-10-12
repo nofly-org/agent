@@ -1,88 +1,54 @@
-import { cmdAdd } from '../commands/add.mjs';
-import { cmdAgentIdentity } from '../commands/agent-identity.mjs';
-import { cmdBaseline, cmdCheck } from '../commands/check.mjs';
-import { cmdCorpus } from '../commands/corpus.mjs';
-import { cmdDesign } from '../commands/design.mjs';
-import { cmdDoctor } from '../commands/doctor.mjs';
-import { cmdFix } from '../commands/fix.mjs';
-import { cmdGate } from '../commands/gate.mjs';
-import { cmdInstallPrecommit } from '../commands/git-hooks.mjs';
-import { cmdInit } from '../commands/init.mjs';
-import { cmdInstallHook } from '../commands/install-hook.mjs';
-import { cmdLedger } from '../commands/ledger.mjs';
-import { cmdLlmProxy } from '../commands/llm-proxy.mjs';
-import { cmdMcp, cmdMcpGuard } from '../commands/mcp.mjs';
-import { cmdMdmScript } from '../commands/mdm-script.mjs';
-import { cmdMemoryScan } from '../commands/memory-scan.mjs';
-import { cmdMemoryRestore } from '../guard/memory-restore.mjs';
-import { cmdModelScan } from '../commands/model-scan.mjs';
-import { cmdModels } from '../commands/models.mjs';
-import { cmdNew } from '../commands/new.mjs';
-import { cmdPlan, cmdPlanGuard } from '../commands/plan.mjs';
-import { cmdPr } from '../commands/pr.mjs';
-import { cmdProtect } from '../commands/protect.mjs';
-import { cmdProvenance } from '../commands/provenance.mjs';
-import { cmdCampaign, cmdHarden, cmdRedteam } from '../commands/redteam.mjs';
-import { cmdRules } from '../commands/rules.mjs';
-import { cmdRun } from '../commands/run.mjs';
-import { cmdSchedule } from '../commands/schedule.mjs';
-import { cmdScanZip } from '../commands/scan-zip.mjs';
-import { cmdScan } from '../commands/scan.mjs';
-import { cmdSecrets } from '../commands/secrets.mjs';
-import { cmdSelftest } from '../commands/selftest.mjs';
-import { cmdStatus } from '../commands/status.mjs';
-import { cmdWhy } from '../commands/why.mjs';
-import { cmdPromptGuard } from '../guard/prompt-guard.mjs';
-import { cmdSessionGuard } from '../guard/session-guard.mjs';
-import { cmdResultGuard } from '../guard/result-guard.mjs';
-import { cmdToolGuard } from '../guard/tool-guard.mjs';
+const guardCommand = async (load, name, refuse, what, f) => {
+  const [mod, { strictOnCrash }, emit] = await Promise.all([load(), import('../guard/crash.mjs'), import('../guard/emit.mjs')]);
+  return strictOnCrash(mod[name], emit[refuse], what)(f);
+};
 
 export const COMMANDS = {
-  init: (f) => cmdInit(f),
-  scan: (f) => cmdScan(f),
-  report: (f) => cmdScan({ ...f, report: true }),
-  schedule: (f, p) => cmdSchedule(f, p),
-  'mdm-script': (f) => cmdMdmScript(f),
-  gate: (f, p) => cmdGate(f, p),
-  run: (f, p) => cmdRun(f, p),
-  check: (f, p) => cmdCheck(f, p),
-  pr: (f, p) => cmdPr(f, p),
-  baseline: (f, p) => cmdBaseline(f, p),
-  fix: (f, p) => cmdFix(f, p),
-  why: (f, p) => cmdWhy(f, p),
-  provenance: (f, p) => cmdProvenance(f, p),
-  'install-precommit': (f, p) => cmdInstallPrecommit(f, p),
-  'scan-zip': (f, p) => cmdScanZip(f, p),
-  'model-scan': (f, p) => cmdModelScan(f, p),
-  models: (f, p) => cmdModels(f, p),
-  'memory-scan': (f, p) => cmdMemoryScan(f, p),
-  'memory-restore': () => cmdMemoryRestore(),
-  redteam: (f) => cmdRedteam(f),
-  campaign: (f) => cmdCampaign(f),
-  harden: (f) => cmdHarden(f),
-  'agent-identity': (f, p) => cmdAgentIdentity(f, p),
-  'agent-id': (f, p) => cmdAgentIdentity(f, p),
-  'llm-proxy': (f) => cmdLlmProxy(f),
-  'tool-guard': (f) => cmdToolGuard(f),
-  'mcp-guard': (f, p) => cmdMcpGuard(f, p),
-  'result-guard': (f) => cmdResultGuard(f),
-  'prompt-guard': (f) => cmdPromptGuard(f),
-  'plan-guard': (f) => cmdPlanGuard(f),
-  'session-guard': (f) => cmdSessionGuard(f),
-  plan: (f, p) => cmdPlan(f, p),
-  corpus: (f, p) => cmdCorpus(f, p),
-  rules: (f, p) => cmdRules(f, p),
-  design: (f, p) => cmdDesign(f, p),
-  add: (f, p) => cmdAdd(f, p),
-  'install-hook': (f) => cmdInstallHook(f),
-  selftest: (f) => cmdSelftest(f),
-  protect: (f) => cmdProtect(f),
-  ledger: (f) => cmdLedger(f),
-  doctor: (f) => cmdDoctor(f),
-  new: (f, p) => cmdNew(f, p),
-  mcp: (f, p) => cmdMcp(f, p),
-  secrets: (f, p) => cmdSecrets(f, p),
-  status: () => cmdStatus(),
+  init: (f) => import('../commands/init.mjs').then((m) => m.cmdInit(f)),
+  scan: (f) => import('../commands/scan.mjs').then((m) => m.cmdScan(f)),
+  report: (f) => import('../commands/scan.mjs').then((m) => m.cmdScan({ ...f, report: true })),
+  schedule: (f, p) => import('../commands/schedule.mjs').then((m) => m.cmdSchedule(f, p)),
+  'mdm-script': (f) => import('../commands/mdm-script.mjs').then((m) => m.cmdMdmScript(f)),
+  gate: (f, p) => import('../commands/gate.mjs').then((m) => m.cmdGate(f, p)),
+  run: (f, p) => import('../commands/run.mjs').then((m) => m.cmdRun(f, p)),
+  check: (f, p) => import('../commands/check.mjs').then((m) => m.cmdCheck(f, p)),
+  pr: (f, p) => import('../commands/pr.mjs').then((m) => m.cmdPr(f, p)),
+  baseline: (f, p) => import('../commands/check.mjs').then((m) => m.cmdBaseline(f, p)),
+  fix: (f, p) => import('../commands/fix.mjs').then((m) => m.cmdFix(f, p)),
+  why: (f, p) => import('../commands/why.mjs').then((m) => m.cmdWhy(f, p)),
+  provenance: (f, p) => import('../commands/provenance.mjs').then((m) => m.cmdProvenance(f, p)),
+  'install-precommit': (f, p) => import('../commands/git-hooks.mjs').then((m) => m.cmdInstallPrecommit(f, p)),
+  'scan-zip': (f, p) => import('../commands/scan-zip.mjs').then((m) => m.cmdScanZip(f, p)),
+  'model-scan': (f, p) => import('../commands/model-scan.mjs').then((m) => m.cmdModelScan(f, p)),
+  models: (f, p) => import('../commands/models.mjs').then((m) => m.cmdModels(f, p)),
+  'memory-scan': (f, p) => import('../commands/memory-scan.mjs').then((m) => m.cmdMemoryScan(f, p)),
+  'memory-restore': () => import('../guard/memory-restore.mjs').then((m) => m.cmdMemoryRestore()),
+  redteam: (f) => import('../commands/redteam.mjs').then((m) => m.cmdRedteam(f)),
+  campaign: (f) => import('../commands/redteam.mjs').then((m) => m.cmdCampaign(f)),
+  harden: (f) => import('../commands/redteam.mjs').then((m) => m.cmdHarden(f)),
+  'agent-identity': (f, p) => import('../commands/agent-identity.mjs').then((m) => m.cmdAgentIdentity(f, p)),
+  'agent-id': (f, p) => import('../commands/agent-identity.mjs').then((m) => m.cmdAgentIdentity(f, p)),
+  'llm-proxy': (f) => import('../commands/llm-proxy.mjs').then((m) => m.cmdLlmProxy(f)),
+  'tool-guard': (f) => guardCommand(() => import('../guard/tool-guard.mjs'), 'cmdToolGuard', 'emitGuardDeny', 'guard', f),
+  'mcp-guard': (f, p) => import('../commands/mcp.mjs').then((m) => m.cmdMcpGuard(f, p)),
+  'result-guard': (f) => guardCommand(() => import('../guard/result-guard.mjs'), 'cmdResultGuard', 'emitResultBlock', 'result-guard', f),
+  'prompt-guard': (f) => import('../guard/prompt-guard.mjs').then((m) => m.cmdPromptGuard(f)),
+  'plan-guard': (f) => import('../commands/plan.mjs').then((m) => m.cmdPlanGuard(f)),
+  'session-guard': (f) => import('../guard/session-guard.mjs').then((m) => m.cmdSessionGuard(f)),
+  plan: (f, p) => import('../commands/plan.mjs').then((m) => m.cmdPlan(f, p)),
+  corpus: (f, p) => import('../commands/corpus.mjs').then((m) => m.cmdCorpus(f, p)),
+  rules: (f, p) => import('../commands/rules.mjs').then((m) => m.cmdRules(f, p)),
+  design: (f, p) => import('../commands/design.mjs').then((m) => m.cmdDesign(f, p)),
+  add: (f, p) => import('../commands/add.mjs').then((m) => m.cmdAdd(f, p)),
+  'install-hook': (f) => import('../commands/install-hook.mjs').then((m) => m.cmdInstallHook(f)),
+  selftest: (f) => import('../commands/selftest.mjs').then((m) => m.cmdSelftest(f)),
+  protect: (f) => import('../commands/protect.mjs').then((m) => m.cmdProtect(f)),
+  ledger: (f) => import('../commands/ledger.mjs').then((m) => m.cmdLedger(f)),
+  doctor: (f) => import('../commands/doctor.mjs').then((m) => m.cmdDoctor(f)),
+  new: (f, p) => import('../commands/new.mjs').then((m) => m.cmdNew(f, p)),
+  mcp: (f, p) => import('../commands/mcp.mjs').then((m) => m.cmdMcp(f, p)),
+  secrets: (f, p) => import('../commands/secrets.mjs').then((m) => m.cmdSecrets(f, p)),
+  status: () => import('../commands/status.mjs').then((m) => m.cmdStatus()),
 };
 
 export const ADMIN_VERBS = new Set([

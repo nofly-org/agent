@@ -6,6 +6,19 @@ import { reportUsername } from './user-homes.mjs';
 import { VERSION } from './version.mjs';
 import { keyedFetch } from './keyed-fetch.mjs';
 
+const RETRY_STATUSES = new Set([429, 502, 503, 504]);
+const MAX_RETRIES = 2;
+const MAX_RETRY_WAIT_MS = 5000;
+const MAX_ERROR_TEXT = 300;
+
+export function currentUsername() {
+  try {
+    return os.userInfo().username;
+  } catch {
+    return process.env.USER || process.env.USERNAME || process.env.LOGNAME || '';
+  }
+}
+
 export function gateMachine() {
   let machineId;
   try {
@@ -13,7 +26,7 @@ export function gateMachine() {
   } catch {
 
   }
-  return { ...(machineId ? { machineId } : {}), hostname: os.hostname(), username: os.userInfo().username };
+  return { ...(machineId ? { machineId } : {}), hostname: os.hostname(), username: currentUsername() };
 }
 
 export function machineInfo(cfg) {
@@ -29,43 +42,81 @@ export function machineInfo(cfg) {
   };
 }
 
+function errorText(json, res) {
+  const msg = json?.message ?? json?.error ?? json?.raw ?? res.statusText;
+  const text = Array.isArray(msg) ? msg.join(', ') : typeof msg === 'string' ? msg : JSON.stringify(msg);
+  const plain = String(text ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  return plain.length > MAX_ERROR_TEXT ? `${plain.slice(0, MAX_ERROR_TEXT)}…` : plain;
+}
+
+function retryWaitMs(res, attempt) {
+  const raw = res.headers?.get?.('retry-after');
+  const secs = Number(raw);
+  if (raw && Number.isFinite(secs)) return Math.min(Math.max(secs, 0) * 1000, MAX_RETRY_WAIT_MS);
+  const when = raw ? Date.parse(raw) : NaN;
+  if (Number.isFinite(when)) return Math.min(Math.max(when - Date.now(), 0), MAX_RETRY_WAIT_MS);
+  return Math.min(500 * 2 ** attempt, MAX_RETRY_WAIT_MS);
+}
+
+const sleep = (ms) => new Promise((done) => { setTimeout(done, ms); });
+
+function networkError(e, url) {
+  const cause = e?.cause;
+  const code = cause?.code ? ` ${cause.code}` : '';
+  let host = '';
+  try {
+    host = ` ${new URL(url).host}`;
+  } catch {
+  }
+  return new Error(`${e?.message ?? e}${code ? ` (${code.trim()}${host ? ` -${host}` : ''})` : ''}`);
+}
+
 export async function api(url, key, route, body, opts = {}) {
 
   if (!url) throw new Error('no backend configured - set SHOMRA_URL or run `shomra init --url <your backend>`');
 
   const timeoutMs = opts.timeoutMs ?? clampInt(process.env.SHOMRA_API_TIMEOUT_MS, 30000, 1000, 600000);
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  let res;
-  try {
-    const method = opts.method ?? 'POST';
-    res = await keyedFetch(`${url}${route}`, {
-      method,
+  const deadline = Date.now() + timeoutMs;
+  const method = opts.method ?? 'POST';
+  for (let attempt = 0; ; attempt += 1) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), Math.max(deadline - Date.now(), 1));
+    let res;
+    let text;
+    try {
+      res = await keyedFetch(`${url}${route}`, {
+        method,
 
-      headers: { 'Content-Type': 'application/json', 'X-Shomra-Key': key, Connection: 'close' },
-      ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
-      signal: ctrl.signal,
-    });
-  } catch (e) {
-    if (e?.name === 'AbortError') throw new Error(`request timed out after ${timeoutMs}ms (raise SHOMRA_API_TIMEOUT_MS or check the backend)`);
-    throw e;
-  } finally {
-    clearTimeout(timer);
-  }
-  const text = await res.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = { raw: text };
-  }
-  if (!res.ok) {
-    const msg = json?.message || json?.raw || res.statusText;
-    const err = new Error(`${res.status} ${Array.isArray(msg) ? msg.join(', ') : msg}`);
+        headers: { 'Content-Type': 'application/json', 'X-Shomra-Key': key, Connection: 'close' },
+        ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
+        signal: ctrl.signal,
+      });
+      text = await res.text();
+    } catch (e) {
+      if (e?.name === 'AbortError') throw new Error(`request timed out after ${timeoutMs}ms (raise SHOMRA_API_TIMEOUT_MS or check the backend)`);
+      throw networkError(e, url);
+    } finally {
+      clearTimeout(timer);
+    }
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = { raw: text };
+    }
+    if (res.ok) return json;
+    if (RETRY_STATUSES.has(res.status) && attempt < (opts.retries ?? MAX_RETRIES)) {
+      const wait = retryWaitMs(res, attempt);
+      if (Date.now() + wait < deadline) {
+        await sleep(wait);
+        continue;
+      }
+    }
+    const err = new Error(`${res.status} ${errorText(json, res)}`);
 
     err.status = res.status;
+    err.auth = res.status === 401 || res.status === 403;
     err.rejected = res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429;
     throw err;
   }
-  return json;
 }

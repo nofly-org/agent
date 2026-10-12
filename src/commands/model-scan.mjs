@@ -1,5 +1,5 @@
 import os from 'node:os';
-import { api } from '../core/api-client.mjs';
+import { api, currentUsername } from '../core/api-client.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE, exitNotConfigured } from '../core/exit-codes.mjs';
 import { SEV_COLOR, VERDICT_COLOR, bold, dim, gray, green, red, yellow } from '../core/terminal.mjs';
@@ -12,7 +12,7 @@ async function requestModelScan({ url, apiKey, target, flags }) {
   try {
     const report = await api(url, apiKey, '/projects/agent-model-scan', {
       target: String(target),
-      actor: `${os.hostname()}/${os.userInfo().username}`,
+      actor: `${os.hostname()}/${currentUsername()}`,
       ...(flags.project ? { projectId: String(flags.project) } : {}),
     });
     if (!flags.json) console.log(green('done'));

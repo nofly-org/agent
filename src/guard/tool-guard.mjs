@@ -15,18 +15,21 @@ import { VERSION } from '../core/version.mjs';
 import { loadConfig, resolveSettings, storedAgentCredential } from '../core/config.mjs';
 import { clearCachedCredential, workloadCredential } from '../core/workload-identity.mjs';
 import { classifyConsequence, downrankCodeContext, grade, localScan } from '../detect/guard-signals.mjs';
+import { SEV_RANK } from '../detect/signals/severity.mjs';
 import { SHELL_TOOLS_RE, WRITE_TOOLS, callSubjectTypes, guardNeedsServer, guardTargetPath, guardText } from './classify.mjs';
 import { shellCommandOf } from './command-text.mjs';
 import { runTargets } from './run-targets.mjs';
-import { confirmationNote, emitGuardAsk, emitGuardDeny, stoppedNote } from './emit.mjs';
+import { redactLocally } from '../detect/local-redact.mjs';
+import { confirmationNote, emitGuardAsk, emitGuardDeny, emitGuardNotice, stoppedNote } from './emit.mjs';
 import { guardPathAllowlisted } from './ignore.mjs';
 import { screenModelLoad } from './model-load.mjs';
 import { screenSkillInvocation } from './skill-check.mjs';
 import { activeArtifactsField } from './active-artifacts.mjs';
 import { normalizeGuardInput } from './normalize.mjs';
+import { readHookPayload as readPayload } from './payload.mjs';
 import { envFlag, guardWait, resolveAgentFlag } from './options.mjs';
 import { recordSelftest, selftestField } from './selftest-marker.mjs';
-import { buildGuardBody, reportGuardDecision } from './report.mjs';
+import { buildGuardBody, flushQueuedReports, reportGuardDecision } from './report.mjs';
 import { guardHookTamper, guardStateTamper, hookTamperReason, refuseOrAsk, tamperReason } from './self-protect.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
 
@@ -81,21 +84,37 @@ function ackLedger() {
   pendingLedger = [];
 }
 
-function askUnscreened(agent, why) {
+const FAIL_OPEN_NOTICE_EVERY_MS = 30 * 60 * 1000;
+
+function failOpenNoticeDue(now = Date.now()) {
+  const file = path.join(CONFIG_DIR, 'guard-notice.json');
+  let last = 0;
+  try {
+    last = Number(JSON.parse(fs.readFileSync(file, 'utf8')).at) || 0;
+  } catch {
+  }
+  if (now - last < FAIL_OPEN_NOTICE_EVERY_MS) return false;
+  try {
+    fs.mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(file, JSON.stringify({ at: now }), { mode: 0o600 });
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+function askUnscreened(agent, why, flagged = null) {
   emitGuardAsk(
     agent,
-    `Shomra could not screen this call (${why}), and it is a destructive one - a delete, a force push, `
-    + 'or a write to a file that survives the session. Nothing has judged it: approve it only if you meant it. '
+    `Shomra could not screen this call (${why}), and it is a high-consequence one - a delete, a force push, `
+    + 'or a call that touches credentials or a file that survives the session. Nothing has judged it: approve it only if you meant it. '
+    + (flagged ? `The on-machine rules also matched: ${flagged}. ` : '')
     + 'Set SHOMRA_GUARD_FAILOPEN_SEVERE=1 to let these through unscreened.',
   );
 }
 
 function readHookPayload() {
-  try {
-    return JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
-  } catch {
-    return process.exit(0);
-  }
+  return readPayload() ?? process.exit(0);
 }
 
 function localTierDisabled() {
@@ -112,8 +131,35 @@ function screenLocally(normalized, tool, input) {
   if (allowlisted) findings = [];
   else if (isWrite) findings = downrankCodeContext(scan.findings);
 
-  const top = findings.find((finding) => finding.severity === 'CRITICAL') || findings[0] || null;
+  const top = findings.reduce((worst, f) => ((SEV_RANK[f.severity] ?? 0) > (SEV_RANK[worst?.severity] ?? 0) ? f : worst), null);
   return { ...grade(findings), top, findings };
+}
+
+function localFlagMode() {
+  const mode = String(process.env.SHOMRA_GUARD_LOCAL_FLAG ?? '').trim().toLowerCase();
+  if (mode === 'allow' || mode === 'deny' || mode === 'ask') return mode;
+  return failOpenOnSevere() ? 'allow' : 'ask';
+}
+
+const RUN_TARGET_NOUN = { 'npm-script': 'the npm script', make: 'the make target', script: 'the script' };
+
+export function flaggedLabel(local, run) {
+  if (localTierDisabled()) return null;
+  if (local?.verdict === 'FLAG' && local.top?.label) return local.top.label;
+  const hit = run?.risky?.[0];
+  return hit ? `${hit.label} (in ${RUN_TARGET_NOUN[hit.kind] ?? 'the file'} ${hit.target})` : null;
+}
+
+function settleFlagged(agent, label, why) {
+  if (!label) return;
+  const mode = localFlagMode();
+  if (mode === 'allow') return;
+  if (mode === 'deny') emitGuardDeny(agent, `Blocked on-machine by Shomra: ${label}. ${why}, and SHOMRA_GUARD_LOCAL_FLAG=deny refuses what the local tier flags.`);
+  emitGuardAsk(
+    agent,
+    `Shomra flagged this call on-machine: ${label}. ${why}, so nothing else has judged it - approve it only if you meant it. `
+    + 'Set SHOMRA_GUARD_LOCAL_FLAG=allow to let flagged calls through.',
+  );
 }
 
 const READ_TOOLS_RE = /^(read|read_file|view|open_file|cat)$/i;
@@ -145,7 +191,7 @@ async function recordMemoryWrite({ url, apiKey, tool, input, normalized }) {
       source: os.hostname(),
       contentBasis: w.basis,
     });
-    recordLedger(w.path, [w.before != null ? sha256(w.before) : null, w.basis === 'whole' ? sha256(w.content) : null]);
+    recordLedger(w.path, [w.before != null ? sha256(w.before) : null, w.basis === 'whole' ? sha256(w.content) : null], undefined, { pending: typeof w.likely === 'string' ? [sha256(w.likely)] : [] });
   }
 }
 
@@ -174,7 +220,6 @@ function reportUnauthenticated(agent, status, strict, detail = {}) {
   if (strict) {
     emitGuardDeny(agent, `Shomra guard could not authenticate (HTTP ${status}); blocked by fail-closed policy.`);
   }
-  process.exit(0);
 }
 
 async function requestServerDecision({ url, apiKey, agentId, body, agent, strict, retried, onUnreachable, onRejected }) {
@@ -192,13 +237,13 @@ async function requestServerDecision({ url, apiKey, agentId, body, agent, strict
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    clearTimeout(timer);
 
     if (!response.ok) {
       if (response.status === 401 || response.status === 403) {
         onRejected?.();
         const agentCredential = String(apiKey ?? '').startsWith('shm_agt_') || String(agentId ?? '').startsWith('shm_agt_');
         reportUnauthenticated(agent, response.status, strict, { reason: await rejectionReason(response), agentCredential });
+        return onUnreachable(`the backend rejected the credential (HTTP ${response.status})`, { breaker: false });
       }
       if (response.status === 429) {
         const wait = retryAfterMs(response);
@@ -213,8 +258,11 @@ async function requestServerDecision({ url, apiKey, agentId, body, agent, strict
       throw new Error(`HTTP ${response.status}`);
     }
     const decision = await response.json();
+    clearTimeout(timer);
+    if (!isGuardDecision(decision)) throw new Error('the backend answered without a guard decision');
     breakerReset();
     ackLedger();
+    await flushQueuedReports(url, apiKey);
     return decision;
   } catch (error) {
     clearTimeout(timer);
@@ -222,6 +270,12 @@ async function requestServerDecision({ url, apiKey, agentId, body, agent, strict
     if (strict) emitGuardDeny(agent, `Shomra guard could not be reached (${error.message}); blocked by fail-closed policy.`);
     return onUnreachable(error.message, { breaker: true });
   }
+}
+
+const DECISIONS = new Set(['ALLOW', 'FLAG', 'BLOCK']);
+
+export function isGuardDecision(decision) {
+  return !!decision && typeof decision === 'object' && !Array.isArray(decision) && (DECISIONS.has(decision.decision) || decision.hold === true);
 }
 
 function retryAfterMs(response) {
@@ -269,13 +323,15 @@ export function postContentField(tool, input, normalized, read = boundedRead) {
   }
 }
 
+const RISKY_RUN_CATEGORIES = new Set(['shell', 'injection', 'egress']);
+
 export function runTargetsOf(tool, input, normalized, read) {
   try {
     if (!SHELL_TOOLS_RE.test(tool || '')) return { targets: [], risky: [] };
-    const targets = runTargets(shellCommandOf(input), normalized?.cwd, read);
+    const targets = runTargets(shellCommandOf(input), normalized?.cwd, read).map((t) => ({ ...t, text: redactLocally(t.text).text }));
     const risky = targets.flatMap((t) =>
       localScan(t.text).findings
-        .filter((f) => f.severity === 'CRITICAL' || f.severity === 'HIGH')
+        .filter((f) => (f.severity === 'CRITICAL' || f.severity === 'HIGH') && RISKY_RUN_CATEGORIES.has(f.category))
         .map((f) => ({ target: t.name, kind: t.kind, label: f.label ?? f.name ?? f.title, severity: f.severity })),
     );
     return { targets, risky };
@@ -300,7 +356,7 @@ export async function cmdToolGuard(flags) {
   const apiKey = settings.apiKey || (agentId?.startsWith('shm_agt_') ? agentId : undefined);
 
   const normalized = normalizeGuardInput(agent, readHookPayload());
-  const tool = (normalized.tool_name ?? '').trim();
+  const tool = String(normalized.tool_name ?? '').trim();
   const input = normalized.tool_input ?? {};
 
   const local = localTierDisabled() ? ALLOW_VERDICT : screenLocally(normalized, tool, input);
@@ -328,22 +384,22 @@ export async function cmdToolGuard(flags) {
 
   await screenModelLoad(agent, tool, input, url);
 
+  const run = runTargetsOf(tool, input, normalized);
+  const severe = unscreenedSevere(normalized, tool, input) || run.risky.length > 0;
+  const flaggedBy = flaggedLabel(local, run);
+
   if (!apiKey) {
     recordSelftest({ stage: 'not-configured', tool });
     if (strict) {
       emitGuardDeny(agent, 'Shomra is not configured on this machine (SHOMRA_GUARD_STRICT). Run: shomra init --key shm_…');
     }
-    if (unscreenedSevere(normalized, tool, input)) askUnscreened(agent, 'Shomra is not configured on this machine');
+    if (unscreenedSevere(normalized, tool, input)) askUnscreened(agent, 'Shomra is not configured on this machine', flaggedBy);
+    settleFlagged(agent, flaggedBy, 'No Shomra server is configured on this machine to confirm it');
     process.exit(0);
   }
 
   await screenSkillInvocation({ agent, tool, input, normalized, url, apiKey: settings.apiKey, agentId, strict });
 
-  await recordMemoryWrite({ url, apiKey, tool, input, normalized });
-
-
-  const run = runTargetsOf(tool, input, normalized);
-  const severe = unscreenedSevere(normalized, tool, input) || run.risky.length > 0;
   /**
    * ⚠ The org's subject types come from the server's last answer, cached on
    * disk - reading them costs no round trip. Unknown (no answer yet, stale, an
@@ -357,6 +413,7 @@ export async function cmdToolGuard(flags) {
   if (!escalate) {
     recordSelftest({ stage: 'not-escalated', tool, subjectTypes, reason: 'the local tier decided this call alone - the server never saw it' });
     countUnscreened('not escalated - screened by the local tier only');
+    await recordMemoryWrite({ url, apiKey, tool, input, normalized });
     process.exit(0);
   }
 
@@ -371,7 +428,9 @@ export async function cmdToolGuard(flags) {
   const onUnreachable = (why) => {
     recordSelftest({ stage: 'unreachable', tool, reason: why });
     countUnscreened(subjectCall ? `${why} - org subject rules NOT evaluated` : supplyCall ? `${why} - package and image checks NOT run` : why);
-    if (severe) askUnscreened(agent, why);
+    if (severe) askUnscreened(agent, why, flaggedBy);
+    settleFlagged(agent, flaggedBy, `No Shomra verdict arrived (${why})`);
+    if (failOpenNoticeDue()) emitGuardNotice(agent, `Shomra could not reach its server (${why}), so tool calls are screened on this machine only and org policy is not applied until it answers again. Set SHOMRA_GUARD_STRICT=1 to refuse calls instead.`);
     return process.exit(0);
   };
 
@@ -421,5 +480,6 @@ export async function cmdToolGuard(flags) {
 
   if (decision && typeof decision === 'object') rememberSubjectTypes(decision.subjectTypes, { url });
   enforceServerDecision(agent, decision);
+  await recordMemoryWrite({ url, apiKey, tool, input, normalized });
   process.exit(0);
 }

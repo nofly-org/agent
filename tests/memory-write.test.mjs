@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { memoryWritesFor, outOfBandChange, readLedger, recordLedger, sha256 } from '../src/guard/memory-write.mjs';
+import { memoryWritesFor, outOfBandChange, pendingWrite, readLedger, recordLedger, sha256 } from '../src/guard/memory-write.mjs';
 import { isMemoryPath } from '../src/commands/memory-scan.mjs';
 import { localMemory } from '../src/detect/signals/memory.mjs';
 
@@ -65,7 +65,40 @@ test('Gemini save_memory lands under the Added Memories heading of ~/.gemini/GEM
   const file = path.join(os.homedir(), '.gemini', 'GEMINI.md');
   const [w] = memoryWritesFor('save_memory', { fact: 'User likes tabs' }, { read: read({ [file]: '# Rules\n\n## Gemini Added Memories\n- old fact\n' }) });
   assert.equal(path.resolve(w.path), path.resolve(file));
-  assert.match(w.content, /## Gemini Added Memories\n- User likes tabs\n- old fact/);
+  assert.equal(w.content, '# Rules\n\n## Gemini Added Memories\n- old fact\n- User likes tabs\n', 'Gemini appends at the end of its section');
+});
+
+test('save_memory follows Gemini\'s own placement: before the next heading, or a new section at the end', () => {
+  const file = path.join(os.homedir(), '.gemini', 'GEMINI.md');
+  const [mid] = memoryWritesFor('save_memory', { fact: '- uses pnpm' }, { read: read({ [file]: '# Notes\n\n## Gemini Added Memories\n- a\n\n## Other\nkeep\n' }) });
+  assert.equal(mid.content, '# Notes\n\n## Gemini Added Memories\n- a\n- uses pnpm\n\n## Other\nkeep\n');
+  const [fresh] = memoryWritesFor('save_memory', { fact: 'uses pnpm' }, { read: read({ [file]: '# Notes' }) });
+  assert.equal(fresh.content, '# Notes\n\n## Gemini Added Memories\n- uses pnpm\n');
+});
+
+test('an edit Claude Code matches through curly quotes, and a patch Codex applies at its first match, are kept as pending predictions', () => {
+  const file = path.join(os.tmpdir(), 'CLAUDE.md');
+  const curly = '# Rules\n- \u201CDon\u2019t commit secrets\u201D\n';
+  const [edit] = memoryWritesFor('Edit', { file_path: file, old_string: '- "Don\'t commit secrets"', new_string: '- "Don\'t commit secrets or .env files"' }, { read: read({ [file]: curly }) });
+  assert.equal(edit.basis, 'fragment');
+  assert.equal(edit.likely, '# Rules\n- \u201CDon\u2019t commit secrets or .env files\u201D\n');
+  const agents = path.join(os.tmpdir(), 'AGENTS.md');
+  const twice = '# Agents\n## Backend\n- run tests\n## Frontend\n- run tests\n';
+  const [patch] = memoryWritesFor('apply_patch', { input: `*** Begin Patch\n*** Update File: ${agents}\n@@\n-- run tests\n+- run tests with coverage\n*** End Patch` }, { read: read({ [agents]: twice }) });
+  assert.equal(patch.basis, 'fragment', 'an ambiguous patch is never sent to the server as the whole file');
+  assert.equal(patch.likely, '# Agents\n## Backend\n- run tests with coverage\n## Frontend\n- run tests\n');
+});
+
+test('a pending prediction is confirmed by the next read and then counted as known', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-pending-'));
+  const store = path.join(dir, 'CLAUDE.md');
+  recordLedger(store, [sha256('v1')], dir, { pending: [sha256('v2')] });
+  assert.equal(pendingWrite(store, 'v2', dir), true);
+  assert.equal(pendingWrite(store, 'v3', dir), false);
+  recordLedger(store, [sha256('v2')], dir);
+  assert.equal(pendingWrite(store, 'v2', dir), false);
+  assert.equal(outOfBandChange(store, 'v2', dir), false);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('the ledger reports an out-of-band change only for a store the hook has seen', () => {

@@ -12,6 +12,11 @@ const NPM_SCRIPT_VERBS = new Set(['test', 't', 'tst', 'start', 'stop', 'restart'
 const PNPM_OWN = new Set(['add', 'install', 'i', 'update', 'up', 'upgrade', 'remove', 'rm', 'uninstall', 'link', 'ln', 'unlink', 'import', 'rebuild', 'rb', 'prune', 'fetch', 'patch', 'patch-commit', 'audit', 'list', 'ls', 'outdated', 'why', 'exec', 'dlx', 'create', 'publish', 'pack', 'store', 'init', 'env', 'setup', 'config', 'root', 'bin', 'licenses', 'deploy', 'doctor', 'server', 'help', 'self-update', 'dedupe', 'cat-file', 'cat-index', 'find-hash', 'ignored-builds', 'approve-builds']);
 const YARN_OWN = new Set(['add', 'install', 'remove', 'upgrade', 'up', 'upgrade-interactive', 'init', 'info', 'why', 'config', 'cache', 'dlx', 'exec', 'create', 'link', 'unlink', 'pack', 'publish', 'login', 'logout', 'set', 'version', 'workspace', 'workspaces', 'plugin', 'node', 'bin', 'global', 'audit', 'outdated', 'list', 'licenses', 'import', 'patch', 'patch-commit', 'rebuild', 'constraints', 'dedupe', 'explain', 'npm', 'search', 'stage', 'unplug', 'help', 'check', 'generate-lock-entry', 'owner', 'tag', 'team', 'policies', 'autoclean']);
 const DIR_FLAGS = new Set(['--prefix', '-C', '--dir', '--cwd']);
+const CREDENTIAL_FILE_RE = /(?:^|[\\/])(?:\.env(?:\.[\w.-]+)?|[\w.-]+\.env|\.envrc|\.netrc|\.npmrc|\.pypirc|\.pgpass|credentials(?:\.json)?|id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?|[\w.-]+\.(?:pem|key|p12|pfx|kdbx|keystore|jks))$/i;
+
+export function credentialLike(p) {
+  return CREDENTIAL_FILE_RE.test(String(p ?? ''));
+}
 
 const unquote = (t) => String(t ?? '').replace(/^["']|["']$/g, '');
 const tokens = (seg) => [...(String(seg).trim().match(/"[^"]*"|'[^']*'|\S+/g) ?? [])];
@@ -177,7 +182,7 @@ function scriptFile(toks, cwd, read) {
       break;
     }
   }
-  if (!target || target.startsWith('~')) return null;
+  if (!target || target.startsWith('~') || credentialLike(target)) return null;
   const p = path.resolve(cwd, target);
   const text = safeRead(read, p);
   return text == null ? null : { kind: 'script', name: target, path: p, ...windowed(text) };

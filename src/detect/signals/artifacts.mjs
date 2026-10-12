@@ -2,6 +2,8 @@ import { assessUrl } from './egress.mjs';
 import { lineAt, lineOf } from './lines.mjs';
 import { gradeMcpDocument } from './mcp-config.mjs';
 
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 export const HIGH_IMPACT_TOOLS = ['bash', 'shell', 'exec', 'execute', 'run', 'terminal', 'command', 'write', 'edit', 'multiedit', 'writefile', 'write_file', 'create', 'delete', 'remove', 'rm', 'webfetch', 'web_fetch', 'fetch', 'browser', 'network', 'http', 'curl', 'computer', 'automation'];
 
 const YAML_ESCAPES = { 0: '\0', a: '\x07', b: '\b', t: '\t', '\t': '\t', n: '\n', v: '\v', f: '\f', r: '\r', e: '\x1b', ' ': ' ', '"': '"', '/': '/', '\\': '\\', N: '\x85', _: '\xa0', L: '\u2028', P: '\u2029' };
@@ -73,7 +75,8 @@ export function frontmatter(text) {
     if (li && key) { (Array.isArray(data[key]) ? data[key] : (data[key] = [])).push(unquote(li[1].trim())); continue; }
     const kv = /^([A-Za-z0-9_.-]+)\s*:\s*(.*)$/.exec(raw);
     if (!kv) continue;
-    key = kv[1];
+    key = UNSAFE_KEYS.has(kv[1]) ? null : kv[1];
+    if (key === null) continue;
     const val = kv[2].trim();
     if (val === '') data[key] = data[key] ?? null;
     else if (BLOCK_SCALAR_RE.test(val)) { data[key] = ''; scalar = { key, style: val, parts: [] }; }

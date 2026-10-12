@@ -5,6 +5,16 @@ VERSION="${VERSION:-latest}"
 PROTECT="${PROTECT:-true}"
 RULES="${RULES:-false}"
 
+case "$VERSION" in
+  ''|*[!A-Za-z0-9._-]*) echo "[shomra] version must be an npm dist-tag or an exact version, got: ${VERSION}" >&2; exit 1 ;;
+esac
+for value in "$PROTECT" "$RULES"; do
+  case "$value" in
+    true|false) ;;
+    *) echo "[shomra] protect and rules must be true or false, got: ${value}" >&2; exit 1 ;;
+  esac
+done
+
 if ! command -v node >/dev/null 2>&1; then
   echo "[shomra] Node is not present in this image. Add the Node feature (or a Node base image) before this one." >&2
   echo "[shomra]   \"ghcr.io/devcontainers/features/node:1\": {}" >&2

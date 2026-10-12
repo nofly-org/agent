@@ -266,7 +266,7 @@ export function readSubjectTypes({ file = SUBJECT_TYPES_FILE, url = null, now = 
     const row = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (!row || !Array.isArray(row.types) || typeof row.at !== 'number') return null;
     if (url && row.url && row.url !== url) return null;
-    if (now - row.at > subjectTypesTtlMs(row.types)) return null;
+    if (now - row.at > subjectTypesTtlMs(row.types) || row.at > now + 60_000) return null;
     return row.types.filter((t) => typeof t === 'string');
   } catch {
     return null;

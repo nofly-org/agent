@@ -19,23 +19,42 @@ export function breakerWindowOpen(at, now, cooldown) {
   return age >= 0 && age < cooldown;
 }
 
+export function breakerThreshold() {
+  return clampInt(process.env.SHOMRA_GUARD_BREAKER_FAILURES, 3, 1, 20);
+}
+
+function readBreaker() {
+  try {
+    const state = JSON.parse(fs.readFileSync(BREAKER_FILE, 'utf8'));
+    if (!state || typeof state !== 'object' || typeof state.at !== 'number') return null;
+    return { at: state.at, failures: Number.isInteger(state.failures) && state.failures > 0 ? state.failures : 1 };
+  } catch {
+    return null;
+  }
+}
+
 export function breakerOpen() {
   const cooldown = breakerCooldownMs();
   if (cooldown === 0) return false;
-  try {
-    const { at } = JSON.parse(fs.readFileSync(BREAKER_FILE, 'utf8'));
-    return breakerWindowOpen(at, Date.now(), cooldown);
-  } catch {
-    return false;
-  }
+  const state = readBreaker();
+  return !!state && state.failures >= breakerThreshold() && breakerWindowOpen(state.at, Date.now(), cooldown);
+}
+
+export function nextFailures(prev, now, cooldown, threshold) {
+  if (!prev) return 1;
+  const span = cooldown > 0 ? cooldown : 30000;
+  if (breakerWindowOpen(prev.at, now, span)) return prev.failures + 1;
+  if (prev.failures >= threshold && breakerWindowOpen(prev.at, now, span * 10)) return prev.failures + 1;
+  return 1;
 }
 
 export function breakerTrip() {
   try {
+    const now = Date.now();
+    const failures = nextFailures(readBreaker(), now, breakerCooldownMs(), breakerThreshold());
     fs.mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-    fs.writeFileSync(BREAKER_FILE, JSON.stringify({ at: Date.now() }), { mode: 0o600 });
+    fs.writeFileSync(BREAKER_FILE, JSON.stringify({ at: now, failures }), { mode: 0o600 });
   } catch {
-
   }
 }
 
@@ -43,6 +62,5 @@ export function breakerReset() {
   try {
     fs.rmSync(BREAKER_FILE, { force: true });
   } catch {
-
   }
 }

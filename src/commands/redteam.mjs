@@ -1,5 +1,5 @@
 import os from 'node:os';
-import { api } from '../core/api-client.mjs';
+import { api, currentUsername } from '../core/api-client.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { exitNotConfigured } from '../core/exit-codes.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
@@ -21,7 +21,7 @@ export async function cmdRedteam(flags) {
       ...(scenarioKeys ? { scenarioKeys } : {}),
       ...(flags.project ? { projectId: String(flags.project) } : {}),
       ...(flags.evolve ? { evolutionary: true } : flags.adaptive ? { adaptive: true } : {}),
-      actor: `${os.hostname()}/${os.userInfo().username}`,
+      actor: `${os.hostname()}/${currentUsername()}`,
     });
   } catch (e) {
     if (!flags.json) console.log(red('failed'));
@@ -74,7 +74,7 @@ export async function cmdCampaign(flags) {
       ...(objectiveKeys ? { objectiveKeys } : {}),
       ...(Number.isFinite(turns) ? { turns } : {}),
       ...(flags.project ? { projectId: String(flags.project) } : {}),
-      actor: `${os.hostname()}/${os.userInfo().username}`,
+      actor: `${os.hostname()}/${currentUsername()}`,
     });
   } catch (e) {
     if (!flags.json) console.log(red('failed'));
@@ -131,7 +131,7 @@ export async function cmdHarden(flags) {
       ...(runId ? { runId } : {}),
       targetKind,
       apply,
-      actor: `${os.hostname()}/${os.userInfo().username}`,
+      actor: `${os.hostname()}/${currentUsername()}`,
     });
   } catch (e) {
     if (!flags.json) console.log(red('failed'));

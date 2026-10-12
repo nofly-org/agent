@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { canonicalGrant, readVendorPosture } from '../agent-posture.mjs';
+import { managedFile } from '../../agents/hook-files.mjs';
 import { projectRoots } from '../project-roots.mjs';
 import { readEnvRedirects } from '../env-redirect.mjs';
 import { exists, readText } from './fs-read.mjs';
@@ -24,12 +25,12 @@ export function discoverCodingAgents(roots = [process.cwd()], opts = {}) {
   const cwd = process.cwd();
   const { HOME, APPDATA, vscodeUserDir, own } = userDirs(opts.home);
   const agents = [
-    { vendor: 'claude-code', name: 'Claude Code', probes: [path.join(HOME, '.claude.json'), path.join(HOME, '.claude')], hookFiles: [path.join(HOME, '.claude', 'settings.json'), path.join(cwd, '.claude', 'settings.json')] },
+    { vendor: 'claude-code', name: 'Claude Code', probes: [path.join(HOME, '.claude.json'), path.join(HOME, '.claude')], hookFiles: [managedFile('claude'), path.join(HOME, '.claude', 'settings.json'), path.join(cwd, '.claude', 'settings.json')].filter(Boolean) },
     { vendor: 'cursor', name: 'Cursor', probes: [path.join(HOME, '.cursor')], hookFiles: [path.join(HOME, '.cursor', 'hooks.json'), path.join(cwd, '.cursor', 'hooks.json')] },
     { vendor: 'windsurf', name: 'Windsurf', probes: [path.join(HOME, '.codeium', 'windsurf')], hookFiles: [path.join(HOME, '.codeium', 'windsurf', 'hooks.json'), path.join(cwd, '.windsurf', 'hooks.json')] },
     { vendor: 'gemini', name: 'Gemini CLI', probes: [path.join(HOME, '.gemini')], hookFiles: [path.join(HOME, '.gemini', 'settings.json'), path.join(cwd, '.gemini', 'settings.json')] },
-    { vendor: 'codex', name: 'OpenAI Codex CLI', probes: [path.join(HOME, '.codex')], hookFiles: [path.join(HOME, '.codex', 'hooks.json'), path.join(cwd, '.codex', 'hooks.json')] },
-    { vendor: 'copilot', name: 'GitHub Copilot', probes: [path.join(HOME, '.copilot'), path.join(vscodeUserDir(), 'globalStorage', 'github.copilot-chat')], hookFiles: [path.join(HOME, '.copilot', 'hooks', 'shomra.json'), path.join(cwd, '.github', 'hooks', 'shomra.json')] },
+    { vendor: 'codex', name: 'OpenAI Codex CLI', probes: [path.join(HOME, '.codex')], hookFiles: [managedFile('codex'), path.join(HOME, '.codex', 'hooks.json'), path.join(cwd, '.codex', 'hooks.json')].filter(Boolean) },
+    { vendor: 'copilot', name: 'GitHub Copilot', probes: [path.join(HOME, '.copilot'), path.join(vscodeUserDir(), 'globalStorage', 'github.copilot-chat')], hookFiles: [managedFile('copilot'), path.join(HOME, '.copilot', 'hooks', 'shomra.json'), path.join(cwd, '.github', 'hooks', 'shomra.json')].filter(Boolean) },
     { vendor: 'qwen-code', name: 'Qwen Code', probes: [path.join(HOME, '.qwen')], hookFiles: [path.join(HOME, '.qwen', 'settings.json'), path.join(cwd, '.qwen', 'settings.json')] },
     { vendor: 'kiro', name: 'Kiro', probes: [path.join(HOME, '.kiro'), path.join(HOME, '.aws', 'amazonq')], hookFiles: [] },
     { vendor: 'opencode', name: 'OpenCode', probes: [path.join(HOME, '.config', 'opencode'), path.join(HOME, '.local', 'share', 'opencode')], hookFiles: [] },
@@ -38,7 +39,7 @@ export function discoverCodingAgents(roots = [process.cwd()], opts = {}) {
     { vendor: 'augment', name: 'Augment', probes: [path.join(HOME, '.augment')], hookFiles: [] },
     { vendor: 'continue', name: 'Continue', probes: [path.join(HOME, '.continue')], hookFiles: [] },
     { vendor: 'amp', name: 'Amp', probes: [path.join(HOME, '.config', 'amp'), path.join(vscodeUserDir(), 'globalStorage', 'sourcegraph.amp')], hookFiles: [] },
-    { vendor: 'cline', name: 'Cline', probes: [...['Code', 'Cursor', 'Windsurf'].map((app) => path.join(vscodeUserDir(app), 'globalStorage', 'saoudrizwan.claude-dev')), path.join(HOME, '.cline', 'data')], hookFiles: [path.join(HOME, '.cline', 'hooks.json'), path.join(cwd, '.cline', 'hooks.json')] },
+    { vendor: 'cline', name: 'Cline', probes: [...['Code', 'Cursor', 'Windsurf'].map((app) => path.join(vscodeUserDir(app), 'globalStorage', 'saoudrizwan.claude-dev')), path.join(HOME, '.cline', 'data')], hookFiles: [path.join(HOME, 'Documents', 'Cline', 'Hooks', 'PreToolUse'), path.join(HOME, '.cline', 'hooks', 'PreToolUse'), path.join(cwd, '.clinerules', 'hooks', 'PreToolUse'), path.join(cwd, '.cline', 'hooks', 'PreToolUse')] },
     { vendor: 'roo', name: 'Roo Code', probes: ['Code', 'Cursor', 'Windsurf'].map((app) => path.join(vscodeUserDir(app), 'globalStorage', 'rooveterinaryinc.roo-cline')), hookFiles: [path.join(cwd, '.roo', 'hooks.json')] },
     { vendor: 'aider', name: 'Aider', probes: [path.join(HOME, '.aider.conf.yml'), path.join(cwd, '.aider.conf.yml'), path.join(HOME, '.aider')], hookFiles: [path.join(HOME, '.aider.conf.yml'), path.join(cwd, '.aider.conf.yml')] },
   ];

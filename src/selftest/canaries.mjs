@@ -120,23 +120,27 @@ export function canariesFor(vendor, { marker, dir, pkg, docker, session = `selft
         make('shell-install', { hook_event_name: 'BeforeTool', session_id: session, cwd, tool_name: 'run_shell_command', tool_input: { command: install } }),
         make('write-dockerfile', { hook_event_name: 'BeforeTool', session_id: session, cwd, tool_name: 'write_file', tool_input: { file_path: dockerPath, content: dockerfileText(marker) } }),
         make('edit-manifest', { hook_event_name: 'BeforeTool', session_id: session, cwd, tool_name: 'replace', tool_input: { file_path: pkgPath, old_string: edit.old, new_string: edit.new } }),
-        make('mcp-exec', { hook_event_name: 'BeforeTool', session_id: session, cwd, tool_name: mcpTool, tool_input: { command: install } }),
+        make('mcp-exec', {
+          hook_event_name: 'BeforeTool',
+          session_id: session,
+          cwd,
+          tool_name: `mcp_${marker}_execute_command`,
+          tool_input: { command: install },
+          mcp_context: { server_name: marker, tool_name: 'execute_command', command: 'npx', args: ['-y', marker] },
+        }),
         make('mcp-connect', { hook_event_name: 'BeforeTool', session_id: session, cwd, tool_name: 'run_shell_command', tool_input: { command: connect } }),
       ];
 
-    case 'cline':
+    case 'cline': {
+      const call = (name, input) => ({ hookName: 'tool_call', taskId: session, workspaceRoots: [cwd], tool_call: { id: `${marker}-${name}`, name, input }, preToolUse: { toolName: name, parameters: Object.fromEntries(Object.entries(input).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)])) } });
       return [
-        make('shell-install', { tool_name: 'execute_command', tool_input: { command: install }, cwd, task_id: session }),
-        make('write-dockerfile', { tool_name: 'write_to_file', tool_input: { path: dockerPath, content: dockerfileText(marker) }, cwd, task_id: session }),
-        make('edit-manifest', {
-          tool_name: 'replace_in_file',
-          tool_input: { path: pkgPath, diff: `------- SEARCH\n${edit.old}\n=======\n${edit.new}\n+++++++ REPLACE` },
-          cwd,
-          task_id: session,
-        }),
-        make('mcp-exec', { tool_name: 'use_mcp_tool', server_name: marker, tool_input: { server_name: marker, tool_name: 'execute_command', arguments: { command: install } }, cwd, task_id: session }),
-        make('mcp-connect', { tool_name: 'execute_command', tool_input: { command: connect }, cwd, task_id: session }),
+        make('shell-install', call('run_commands', { commands: [install] })),
+        make('write-dockerfile', call('editor', { path: dockerPath, new_text: dockerfileText(marker) })),
+        make('edit-manifest', call('editor', { path: pkgPath, old_text: edit.old, new_text: edit.new })),
+        make('mcp-exec', { hookName: 'tool_call', taskId: session, workspaceRoots: [cwd], preToolUse: { toolName: 'use_mcp_tool', parameters: { server_name: marker, tool_name: 'execute_command', arguments: JSON.stringify({ command: install }) } } }),
+        make('mcp-connect', call('run_commands', { commands: [connect] })),
       ];
+    }
 
     case 'cursor':
       return [

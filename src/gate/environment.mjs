@@ -2,6 +2,14 @@ import { git } from '../core/git-exec.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
+export function kindFlag(flags) {
+  if (flags.kind === undefined) return undefined;
+  const kind = String(flags.kind);
+  if (GATE_KINDS.includes(kind)) return kind;
+  process.stderr.write(`✗ Unknown --kind "${kind}". Use one of: ${GATE_KINDS.join(', ')}\n`);
+  process.exit(3);
+}
+
 export const GATE_KINDS = ['mcp', 'skill', 'command', 'subagent', 'hook', 'rules', 'agent-card', 'memory', 'plugin', 'tool-manifest', 'model-config', 'extension', 'workflow', 'guardrail', 'framework', 'auto'];
 
 

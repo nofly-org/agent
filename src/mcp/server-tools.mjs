@@ -1,3 +1,4 @@
+import path from 'node:path';
 export const MCP_TOOLS = [
   {
     name: 'shomra_check',
@@ -71,22 +72,30 @@ export const MCP_TOOLS = [
   },
 ];
 
-export function mcpToolInvocation(name, rawArguments) {
-  const args = rawArguments || {};
-  if (name === 'shomra_check') return { args: ['check', args.path ? String(args.path) : '.'] };
-  if (name === 'shomra_scan_models') return { args: ['models', args.path ? String(args.path) : '.'] };
-  if (name === 'shomra_fix') return { args: ['fix', String(args.file || ''), ...(args.apply ? ['--apply'] : [])] };
-  if (name === 'shomra_explain') return { args: ['why', String(args.file || '')] };
+const workspacePath = (value, cwd) => path.resolve(cwd, String(value ?? '') || '.');
+
+export function mcpToolInvocation(name, rawArguments, cwd = process.cwd()) {
+  const args = rawArguments && typeof rawArguments === 'object' ? rawArguments : {};
+  if (name === 'shomra_check') return { args: ['check', workspacePath(args.path, cwd)] };
+  if (name === 'shomra_scan_models') return { args: ['models', workspacePath(args.path, cwd)] };
+  if (name === 'shomra_fix') {
+    if (!args.file) return { error: 'shomra_fix requires `file`.' };
+    return { args: ['fix', workspacePath(args.file, cwd), ...(args.apply === true ? ['--apply'] : [])] };
+  }
+  if (name === 'shomra_explain') {
+    if (!args.file) return { error: 'shomra_explain requires `file`.' };
+    return { args: ['why', workspacePath(args.file, cwd)] };
+  }
   if (name === 'shomra_review_change') {
     if (typeof args.content !== 'string' || !args.path) {
       return { error: 'shomra_review_change requires `content` and `path`.' };
     }
     return {
-      args: ['gate', '--stdin', '--path', String(args.path), ...(args.kind ? ['--kind', String(args.kind)] : [])],
+      args: ['gate', '--stdin', `--path=${String(args.path).replace(/^-+/, '')}`, ...(args.kind ? [`--kind=${String(args.kind)}`] : [])],
       stdin: args.content,
     };
   }
-  if (name === 'shomra_rules') return { args: ['rules', args.path ? String(args.path) : '.'] };
+  if (name === 'shomra_rules') return { args: ['rules', workspacePath(args.path, cwd)] };
   if (name === 'shomra_review_plan') {
     if (typeof args.plan !== 'string' || !args.plan.trim()) {
       return { error: 'shomra_review_plan requires `plan` text.' };
