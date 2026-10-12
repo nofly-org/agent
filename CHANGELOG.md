@@ -145,6 +145,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Configs are parsed the way the agents parse them**: comment markers inside
   JSONC and TOML strings, TOML multi-line strings and inline tables, and YAML
   crafted to take quadratic time.
+- **Invisible characters are judged by their neighbours, as on the server.** A
+  zero-width non-joiner in Persian or Hindi, a joiner in an emoji, a
+  right-to-left mark beside Arabic, a BOM at the start of a file and a flag's tag
+  sequence no longer raise a row offline. Text hidden in Unicode tag characters,
+  variation selectors, invisible operators or zero-width alphabets is decoded and
+  graded: an instruction or payload is HIGH, a secret CRITICAL, and invisible
+  characters inside a link are flagged as ASCII smuggling. An instruction whose
+  letters are interleaved with invisible marks is read with them removed.
 
 ### CLI
 - **`secrets`** exits 1 on a find in every mode, refuses a missing path, scans a
