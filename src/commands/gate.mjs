@@ -1,16 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { resolveScanTarget, walkArtifacts } from '../artifacts/matchers.mjs';
+import { MAX_ARTIFACT_BYTES, resolveScanTarget, walkArtifacts } from '../artifacts/matchers.mjs';
 import { api, gateMachine } from '../core/api-client.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { localGate } from '../detect/guard-signals.mjs';
-import { gateArtifactList, gateExitCode, readArtifactBounded, strictOutageOf, withUnreadMiddle } from '../gate/batch.mjs';
+import { carriedPastMasking, gateArtifactList, gateExitCode, readArtifactBounded, strictOutageOf, withUnreadMiddle } from '../gate/batch.mjs';
 import { collectSiblings, detectEnv, kindFlag } from '../gate/environment.mjs';
 import { isGateVerdict, localAsGateResult, printGateResult } from '../gate/result.mjs';
+import { locationBase } from '../gate/locations.mjs';
 import { toSarif } from '../gate/sarif.mjs';
-import { bundledFindings, bundledKind, byBundledPriority, collectLocalSast, mergeSastIntoResult } from '../gate/sast.mjs';
+import { bundledFileFindings, bundledKind, byBundledPriority, collectLocalSast, mergeSastIntoResult, notAnalyzedFindings, planBundled } from '../gate/sast.mjs';
 import { withMcpAdvisories } from '../gate/advisories.mjs';
 import { maskSecrets } from '../detect/secret-mask.mjs';
 import { listZipEntries, normalizeZipName, readZipText } from '../core/zip-lite.mjs';
@@ -36,8 +37,8 @@ function resolveGateFile(file) {
 }
 
 const MAX_BUNDLE_FILE_BYTES = 512 * 1024 * 1024;
-const MAX_BUNDLE_SOURCES = 60;
-const MAX_BUNDLE_BYTES = 16 * 1024 * 1024;
+const MAX_BUNDLE_INFLATE = 64 * 1024 * 1024;
+const HALF_WINDOW = Math.floor(MAX_ARTIFACT_BYTES / 2);
 const DEPENDENCY_DIR = /(^|\/)(node_modules|vendor|site-packages|\.venv|venv|__pycache__)\//i;
 const SEVERITY_RANK = { INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 };
 
@@ -63,22 +64,26 @@ function readBundle(buf, bundleRel) {
       for (const f of localGate(first, { kind: 'mcp', path: `${bundleRel}!/manifest.json` }).findings) findings.push({ ...f, title: `${f.title} (in another copy of manifest.json)` });
     }
   }
-  let budget = MAX_BUNDLE_BYTES;
-  const sources = entries
+  const candidates = entries
     .filter((e) => !e.directory && !DEPENDENCY_DIR.test(e.path) && bundledKind(e.path) && bundledKind(e.path) !== 'reference')
-    .map((e) => ({ ...e, rel: e.path }))
-    .sort(byBundledPriority)
-    .slice(0, MAX_BUNDLE_SOURCES);
-  for (const entry of sources) {
-    if (entry.usize > budget) continue;
-    const text = readZipText(buf, entry);
-    if (text === null) continue;
-    budget -= entry.usize;
-    for (const f of bundledFindings({ rel: `${bundleRel}!/${entry.path}`, content: text })) {
+    .map((e) => ({ ...e, rel: e.path, size: e.usize }))
+    .sort(byBundledPriority);
+  const plan = planBundled(candidates);
+  const skipped = plan.skipped.map((s) => ({ rel: `${bundleRel}!/${s.rel}`, skip: s.skip }));
+  for (const entry of plan.take) {
+    const rel = `${bundleRel}!/${entry.path}`;
+    const text = entry.usize > MAX_BUNDLE_INFLATE ? null : readZipText(buf, entry, { maxBytes: MAX_BUNDLE_INFLATE });
+    if (text === null) {
+      skipped.push({ rel, skip: entry.usize > MAX_BUNDLE_INFLATE ? 'too large to analyze' : 'could not be read from the bundle' });
+      continue;
+    }
+    const windowed = text.length > MAX_ARTIFACT_BYTES ? { content: `${text.slice(0, HALF_WINDOW)}\n${text.slice(-HALF_WINDOW)}`, unread: text.length - 2 * HALF_WINDOW } : { content: text };
+    for (const f of bundledFileFindings({ rel, ...windowed })) {
       const capped = bundledKind(entry.path) === 'code' && SEVERITY_RANK[f.severity] > SEVERITY_RANK.HIGH ? 'HIGH' : f.severity;
       findings.push({ ...f, severity: capped });
     }
   }
+  findings.push(...notAnalyzedFindings(skipped));
   return { content, findings };
 }
 
@@ -124,11 +129,12 @@ async function requestGateVerdict({ url, apiKey, flags, kind, relPath, content, 
   if (!flags.json) process.stdout.write(dim('  Checking with Shomra gate… '));
   try {
     const siblings = collectSiblings(fullTarget, relPath);
+    const sent = maskSecrets(content);
     const verdict = await api(url, apiKey, '/gate/check', {
       ...(kind ? { kind } : {}),
       ...(flags.name ? { name: String(flags.name) } : {}),
       ...(relPath ? { path: relPath } : {}),
-      content: maskSecrets(content).text,
+      content: sent.text,
       ...(siblings.length ? { siblings } : {}),
       machine: gateMachine(),
       env: detectEnv(),
@@ -136,7 +142,7 @@ async function requestGateVerdict({ url, apiKey, flags, kind, relPath, content, 
     });
     if (!isGateVerdict(verdict)) throw new Error('the backend answered without a gate verdict - is SHOMRA_URL pointing at the Shomra API?');
     if (!flags.json) console.log('');
-    return { verdict };
+    return { verdict, sent };
   } catch (error) {
     if (!flags.json) {
       console.log(yellow('backend unavailable'));
@@ -158,8 +164,9 @@ export async function cmdGate(rawFlags, positional) {
   const local = unread ? withUnreadMiddle(localGate(content, { kind, path: relPath }), unread) : localGate(content, { kind, path: relPath });
 
   let serverVerdict = null;
+  let sent = null;
   if (apiKey) {
-    ({ verdict: serverVerdict } = await requestGateVerdict({ url, apiKey, flags, kind, relPath, content, fullTarget }));
+    ({ verdict: serverVerdict, sent = null } = await requestGateVerdict({ url, apiKey, flags, kind, relPath, content, fullTarget }));
     if (!serverVerdict && flags.strict) {
       const fallback = localAsGateResult(local, name, kind);
       if (sarif) {
@@ -181,7 +188,8 @@ export async function cmdGate(rawFlags, positional) {
     if (advisories === 'unavailable' && !flags.json) console.error(`  ${yellow('⚠')} ${dim('Advisory lookup (OSV) unreachable - pinned MCP packages were not checked for published CVEs.')}`);
   }
   const base = serverVerdict || localAsGateResult(shownLocal, name, kind);
-  const result = mergeSastIntoResult(base, [...collectLocalSast({ fullPath: fullTarget, relPath, kind, content }), ...fromBundle]);
+  const carried = serverVerdict ? carriedPastMasking(local, sent, { kind, path: relPath }, serverVerdict.findings) : [];
+  const result = mergeSastIntoResult(base, [...carried, ...collectLocalSast({ fullPath: fullTarget, relPath, kind, content, root: fullTarget ? locationBase(path.dirname(fullTarget)) : undefined }), ...fromBundle]);
   if (sarif) console.log(JSON.stringify(toSarif([{ ...result, path: relPath ?? name, ...(fullTarget ? { full: fullTarget } : {}) }]), null, 2));
   else printGateResult(result, serverVerdict ? 'server' : 'local', flags);
 

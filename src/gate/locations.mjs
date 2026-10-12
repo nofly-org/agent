@@ -7,7 +7,7 @@ export function locationBase(cwd = process.cwd()) {
 }
 
 export function findingPath(result, finding, cwd = process.cwd()) {
-  if (finding?.file) return path.resolve(cwd, String(finding.file).replace(/!\/.*$/, ''));
+  if (finding?.file && !(result?.full && finding.file === result.path)) return path.resolve(cwd, String(finding.file).replace(/!\/.*$/, ''));
   if (result?.full) return path.resolve(result.full);
   return path.resolve(cwd, String(result?.path ?? '').replace(/!\/.*$/, ''));
 }

@@ -31,9 +31,22 @@ export function resolveWindowsExecutable(command, env = process.env) {
   return null;
 }
 
+function msvcrtQuoted(argument) {
+  let out = '';
+  let run = 0;
+  for (const c of String(argument)) {
+    if (c === '\\') {
+      run++;
+      continue;
+    }
+    out += c === '"' ? `${'\\'.repeat(run * 2)}\\"` : `${'\\'.repeat(run)}${c}`;
+    run = 0;
+  }
+  return `"${out}${'\\'.repeat(run * 2)}"`;
+}
+
 export function escapeCmdArgument(argument, twice = false) {
-  let escaped = String(argument).replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, '$1$1');
-  escaped = `"${escaped}"`.replace(CMD_META, '^$1');
+  const escaped = msvcrtQuoted(argument).replace(CMD_META, '^$1');
   return twice ? escaped.replace(CMD_META, '^$1') : escaped;
 }
 

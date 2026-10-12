@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DEC_RANK } from './sast.mjs';
 
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 const SEV_THRESH = { none: 99, critical: 5, high: 4, medium: 3, low: 2, info: 1 };
 
 const SEV_RANK_LOCAL = { INFO: 1, LOW: 2, MEDIUM: 3, HIGH: 4, CRITICAL: 5 };
@@ -17,7 +19,8 @@ function parseSimpleYaml(text) {
     if (li && key) { (Array.isArray(data[key]) ? data[key] : (data[key] = [])).push(unquote(li[1].trim())); continue; }
     const kv = /^([A-Za-z0-9_.-]+)\s*:\s*(.*)$/.exec(line);
     if (!kv) continue;
-    key = kv[1];
+    key = UNSAFE_KEYS.has(kv[1]) ? null : kv[1];
+    if (key === null) continue;
     const v = kv[2].trim();
     data[key] = v === '' ? (data[key] ?? null) : v.startsWith('[') ? v.replace(/^\[|\]$/g, '').split(',').map((s) => unquote(s.trim())).filter(Boolean) : unquote(v);
   }

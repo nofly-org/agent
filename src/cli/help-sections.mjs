@@ -20,7 +20,7 @@ const MODES = () => `${bold('MODES')}  ${dim('- local-first: everything that can
 
 const COMMANDS = () => `${bold('COMMANDS')}
   ${dim('Daily - the verbs you live in')}
-  ${cyan('check')}         ${bold('Is my repo safe?')} Gate every AI artifact  ${dim('[dir] [--staged|--changed] [--fix] [--strict] [--json]')}
+  ${cyan('check')}         ${bold('Is my repo safe?')} Gate every AI artifact  ${dim('[dir] [--staged|--changed|--rev <sha>] [--fix] [--strict] [--json]')}
   ${cyan('fix')}           Remediate an artifact in place (AI)    ${dim('<file> [--apply] [--kind …] [--json]')}
   ${cyan('why')}           Explain a finding + false-positive read ${dim('<file> [--kind …] [--json]')}
   ${cyan('gate')}          Vet ONE AI artifact before install     ${dim('<file> [--kind …] [--strict] [--json]  ·  --all for a whole repo (CI)')}
@@ -115,6 +115,7 @@ const CHECK = () => `${bold('CHECK')}  ${dim('- the one command a developer runs
     ${dim('shomra check')}            every AI artifact under the repo
     ${dim('shomra check --staged')}   only what's git-staged  ${dim('(wire into pre-commit / on-save)')}
     ${dim('shomra check --changed')}  only what changed vs HEAD
+    ${dim('shomra check --rev <sha>')} a commit, read straight from git  ${dim('(--base-rev <sha>: only what changed since)')}
     ${dim('shomra check --fix')}      gate, then remediate what isn't clean, in place
     ${dim('shomra check --json')}     machine-readable - what an IDE extension calls
     ${dim('shomra check --sarif')}    SARIF 2.1.0 - upload for native GitHub/GitLab PR annotations

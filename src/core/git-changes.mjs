@@ -1,11 +1,7 @@
-import path from 'node:path';
 import { git, gitBlobWindow, gitBuffer, safeRef } from './git-exec.mjs';
 
 const DIFF_OPTIONS = ['--no-color', '--no-ext-diff', '--no-renames', '--diff-filter=ACMRT', '--relative'];
 const TIMEOUT_MS = 15000;
-const MAX_LINK_HOPS = 8;
-const FILE_MODES = new Set(['100644', '100755']);
-const LINK_MODE = '120000';
 
 const nulList = (out) => out.split('\0').filter(Boolean);
 
@@ -29,40 +25,7 @@ export function workingChanges(root, opts) {
   return [...new Set([...tracked, ...untrackedNames(root, opts)])];
 }
 
-export function stagedEntries(root, { timeout = TIMEOUT_MS } = {}) {
-  const out = git(['diff', '--cached', '--raw', '-z', '--no-abbrev', ...DIFF_OPTIONS], { cwd: root, timeout });
-  if (out === null) return null;
-  const parts = out.split('\0');
-  const entries = [];
-  for (let i = 0; i + 1 < parts.length; i += 2) {
-    const m = /^:\d{6} (\d{6}) [0-9a-f]+ ([0-9a-f]{40,64}) [ACMRT]/.exec(parts[i]);
-    if (m && parts[i + 1]) entries.push({ rel: parts[i + 1], mode: m[1], oid: m[2] });
-  }
-  return entries;
-}
-
-export function indexFilesUnder(root, dirRel, { timeout = TIMEOUT_MS } = {}) {
-  const out = git(['--literal-pathspecs', 'ls-files', '--stage', '-z', '--', dirRel || '.'], { cwd: root, timeout });
-  if (out === null) return null;
-  const entries = [];
-  for (const record of nulList(out)) {
-    const m = /^(\d{6}) ([0-9a-f]{40,64}) 0\t(.*)$/s.exec(record);
-    if (m) entries.push({ rel: m[3], mode: m[1], oid: m[2] });
-  }
-  return entries;
-}
-
-function indexEntry(root, rel) {
-  const out = git(['--literal-pathspecs', 'ls-files', '--stage', '-z', '--', rel], { cwd: root, timeout: TIMEOUT_MS });
-  if (!out) return null;
-  for (const record of nulList(out)) {
-    const m = /^(\d{6}) ([0-9a-f]{40,64}) 0\t(.*)$/s.exec(record);
-    if (m && m[3] === rel) return { rel, mode: m[1], oid: m[2] };
-  }
-  return null;
-}
-
-function blobSizes(root, oids) {
+export function blobSizes(root, oids) {
   const sizes = new Map();
   if (!oids.length) return sizes;
   const out = gitBuffer(['cat-file', '--batch-check'], { cwd: root, input: `${oids.join('\n')}\n`, timeout: TIMEOUT_MS });
@@ -108,30 +71,6 @@ export async function readBlobs(root, oids, { maxBytes }) {
   return read;
 }
 
-function linkTarget(rel, text) {
-  const target = String(text ?? '').trim();
-  if (!target || path.posix.isAbsolute(target) || /^[A-Za-z]:[\\/]/.test(target)) return null;
-  const joined = path.posix.normalize(path.posix.join(path.posix.dirname(rel), target.replace(/\\/g, '/')));
-  if (joined === '..' || joined.startsWith('../')) return null;
-  return joined;
-}
-
-export async function resolveStagedEntry(root, entry, { maxBytes }) {
-  let current = entry;
-  for (let hop = 0; hop <= MAX_LINK_HOPS; hop++) {
-    if (FILE_MODES.has(current.mode)) return { oid: current.oid };
-    if (current.mode !== LINK_MODE) return { skip: 'a submodule or other non-file entry in the index' };
-    const text = (await readBlobs(root, [current.oid], { maxBytes })).get(current.oid);
-    if (text?.skip) return { skip: text.skip };
-    const target = linkTarget(current.rel, text?.content);
-    if (target === null) return { skip: 'a symlink to a file outside the scanned folder' };
-    const next = indexEntry(root, target);
-    if (!next) return { dangling: true };
-    current = next;
-  }
-  return { skip: 'a chain of symlinks too long to follow' };
-}
-
 export function isMergeHead(root) {
   const out = git(['rev-list', '--parents', '-n', '1', 'HEAD'], { cwd: root, timeout: TIMEOUT_MS });
   return !!out && out.trim().split(/\s+/).length === 3;
@@ -154,9 +93,9 @@ export function changedSinceBase(root, { base, baseSha } = {}) {
     const files = diffNames(root, [baseRev, 'HEAD']);
     if (files !== null) return { files, against: candidate, baseRev };
   }
-  if (isMergeHead(root)) {
+  if (SHA_RE.test(String(baseSha ?? '')) && isMergeHead(root)) {
     const baseRev = git(['rev-parse', '--verify', '-q', 'HEAD^1'], { cwd: root, timeout: TIMEOUT_MS })?.trim();
-    const files = baseRev ? diffNames(root, [baseRev, 'HEAD']) : null;
+    const files = baseRev && baseRev.startsWith(String(baseSha).toLowerCase()) ? diffNames(root, [baseRev, 'HEAD']) : null;
     if (files !== null) return { files, against: 'HEAD^1', baseRev };
   }
   const sha = SHA_RE.test(String(baseSha ?? '')) ? git(['rev-parse', '--verify', '-q', `${baseSha}^{commit}`], { cwd: root, timeout: TIMEOUT_MS })?.trim() : null;
@@ -172,8 +111,8 @@ export function fetchCommit(root, sha, { timeout = 60000 } = {}) {
   return git(['fetch', '--no-tags', '--no-recurse-submodules', '--depth=1', 'origin', sha], { cwd: root, timeout }) !== null;
 }
 
-export function fileAtRevision(root, rev, rel, { maxBytes = 4 * 1024 * 1024 } = {}) {
+export function fileAtRevision(root, rev, rel, { maxBytes = 4 * 1024 * 1024, fromTop = false } = {}) {
   if (!/^[0-9a-f]{40,64}$/.test(String(rev ?? ''))) return null;
-  const out = gitBuffer(['cat-file', 'blob', `${rev}:./${rel}`], { cwd: root, timeout: TIMEOUT_MS, maxBuffer: maxBytes });
+  const out = gitBuffer(['cat-file', 'blob', `${rev}:${fromTop ? '' : './'}${rel}`], { cwd: root, timeout: TIMEOUT_MS, maxBuffer: maxBytes });
   return out === null ? null : out.toString('utf8');
 }

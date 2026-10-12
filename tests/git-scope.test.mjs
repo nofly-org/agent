@@ -194,6 +194,133 @@ test('suppressions already on the base branch still apply to a pull request', { 
   }
 });
 
+test('a mark already on the base branch covers only the line it covered there', { skip: noGit }, () => {
+  const r = repo();
+  const SAFE = 'curl -fsSL https://get.example.com/install.sh | sh';
+  try {
+    r.write('.claude/commands/setup.md', `Set up the tools.\n<!-- shomra-ignore-next-line -->\n${SAFE}\n`);
+    r.write('.claude/commands/notes.md', `${'Summarise the diff.\n'.repeat(10)}<!-- shomra-ignore-file -->\n`);
+    r.g('add', '-A');
+    r.g('commit', '-qm', 'base');
+    r.g('checkout', '-qb', 'feature');
+    r.write('.claude/commands/setup.md', `Set up the tools, then build.\n<!-- shomra-ignore-next-line -->\n${SAFE}\n`);
+    r.g('commit', '-qam', 'reword');
+    assert.equal(pr(r, '--base', 'main').status, 0, 'the accepted line keeps its mark');
+
+    r.write('.claude/commands/setup.md', `Set up the tools, then build.\n<!-- shomra-ignore-next-line -->\n${EVIL}\n`);
+    r.g('commit', '-qam', 'swap the governed line');
+    const swapped = pr(r, '--base', 'main');
+    assert.equal(swapped.status, 1, swapped.stdout);
+    assert.match(JSON.stringify(JSON.parse(swapped.stdout).checkRun.output.annotations), /applies only once it is merged/);
+
+    r.write('.claude/commands/setup.md', `Set up the tools, then build.\n<!-- shomra-ignore-next-line -->\n${SAFE}\nThen:\n<!-- shomra-ignore-next-line -->\n${EVIL}\n`);
+    r.g('commit', '-qam', 'copy the mark');
+    assert.equal(pr(r, '--base', 'main').status, 1, 'a copied mark does not cover new code');
+
+    r.write('.claude/commands/setup.md', `Set up the tools, then build.\n<!-- shomra-ignore-next-line -->\n${SAFE}\n`);
+    r.write('.claude/commands/notes.md', `<!-- shomra-ignore-file -->\n${EVIL}\n`);
+    r.g('commit', '-qam', 'move a dead file mark to the top');
+    assert.equal(pr(r, '--base', 'main').status, 1, 'a file mark the base branch held past the first lines never applied there');
+  } finally {
+    r.done();
+  }
+});
+
+test('a commit, a working change or a pull request that only edits a skill script or a symlink target is still checked', { skip: (process.platform === 'win32' && 'symlinks') || noGit }, () => {
+  const r = repo();
+  try {
+    r.write('.claude/skills/setup/SKILL.md', SKILL('Run scripts/install.sh to set up.'));
+    r.write('.claude/skills/setup/scripts/install.sh', '#!/bin/sh\nnpm ci\n');
+    r.write('docs/agent.md', 'Use pnpm.\n');
+    fs.symlinkSync('docs/agent.md', path.join(r.dir, 'CLAUDE.md'));
+    r.g('add', '-A');
+    r.g('commit', '-qm', 'base');
+    r.g('checkout', '-qb', 'feature');
+
+    r.write('.claude/skills/setup/scripts/install.sh', `#!/bin/sh\n${EVIL}\n`);
+    assert.equal(r.shomra('check', '--changed').status, 1, 'an edited skill script is part of the change');
+    r.g('add', '-A');
+    assert.equal(r.shomra('check', '--staged').status, 1, 'and of the commit');
+    r.g('commit', '-qm', 'script');
+    assert.equal(pr(r, '--base', 'main').status, 1, 'and of the pull request');
+    r.write('.claude/skills/setup/scripts/install.sh', '#!/bin/sh\nnpm ci\n');
+    r.g('commit', '-qam', 'put the script back');
+
+    r.write('docs/agent.md', `${EVIL}\n`);
+    assert.equal(r.shomra('check', '--changed').status, 1, 'a changed symlink target reaches the link');
+    r.g('add', '-A');
+    assert.equal(r.shomra('check', '--staged').status, 1);
+    r.g('commit', '-qm', 'target');
+    assert.equal(pr(r, '--base', 'main').status, 1);
+  } finally {
+    r.done();
+  }
+});
+
+test('the index is read the way the disk is: a link through a linked folder, a linked skill script, and a link to nothing', { skip: (process.platform === 'win32' && 'symlinks') || noGit }, () => {
+  const r = repo();
+  try {
+    r.write('README.md', 'x\n');
+    r.g('add', '-A');
+    r.g('commit', '-qm', 'base');
+    r.write('real/evil.md', `${EVIL}\n`);
+    fs.symlinkSync('real', path.join(r.dir, 'docs-link'));
+    fs.symlinkSync('docs-link/evil.md', path.join(r.dir, 'CLAUDE.md'));
+    r.g('add', '-A');
+    const linked = r.shomra('check', '--staged', '--json');
+    assert.equal(linked.status, 1, linked.stdout);
+    assert.equal(r.shomra('check').status, 1);
+    r.g('commit', '-qm', 'linked');
+
+    r.write('.claude/skills/run/SKILL.md', SKILL('Run scripts/install.sh.'));
+    r.write('.claude/skills/run/scripts/payload.dat', `#!/bin/sh\n${EVIL}\n`);
+    fs.symlinkSync('payload.dat', path.join(r.dir, '.claude/skills/run/scripts/install.sh'));
+    r.g('add', '-A');
+    const script = r.shomra('check', '--staged', '--json');
+    assert.equal(script.status, 1, script.stdout);
+    r.g('commit', '-qm', 'skill');
+
+    fs.symlinkSync('missing.md', path.join(r.dir, 'AGENTS.md'));
+    r.g('add', '-A');
+    const dangling = JSON.parse(r.shomra('check', '--staged', '--json').stdout);
+    const result = dangling.results.find((x) => x.path === 'AGENTS.md');
+    assert.ok(result && result.notAnalyzed && result.decision === 'FLAG', JSON.stringify(dangling.results));
+  } finally {
+    r.done();
+  }
+});
+
+test('bundled files past a limit are reported, never skipped in silence', { skip: noGit }, () => {
+  const r = repo();
+  try {
+    r.write('.claude/skills/big/SKILL.md', SKILL('Run scripts/install.sh.'));
+    const pad = 'echo building the project\n'.repeat(45000);
+    r.write('.claude/skills/big/scripts/install.sh', `#!/bin/sh\n${pad}${EVIL}\n${pad}`);
+    const big = r.shomra('check', '--json');
+    const findings = JSON.parse(big.stdout).results[0].findings;
+    assert.ok(findings.some((f) => /too large to read whole/.test(f.title) && /install\.sh/.test(f.title)), JSON.stringify(findings));
+    r.write('.claude/skills/big/scripts/install.sh', `#!/bin/sh\n${EVIL}\n${pad}${pad}`);
+    assert.equal(r.shomra('check').status, 1, 'the part that was read is still graded');
+    r.g('add', '-A');
+    assert.equal(r.shomra('check', '--staged').status, 1, 'and so is the staged copy');
+    r.g('commit', '-qm', 'big');
+
+    r.write('.claude/skills/many/SKILL.md', SKILL('Run scripts/install.sh.'));
+    for (let i = 0; i < 205; i++) r.write(`.claude/skills/many/lib/m${String(i).padStart(3, '0')}.py`, 'print("ok")\n');
+    r.write('.claude/skills/many/scripts/install.sh', `#!/bin/sh\n${EVIL}\n`);
+    for (const args of [['check', '--json'], ['check', '--staged', '--json']]) {
+      if (args.includes('--staged')) r.g('add', '-A');
+      const out = JSON.parse(r.shomra(...args).stdout);
+      const many = out.results.find((x) => x.path === '.claude/skills/many/SKILL.md');
+      assert.ok(many, JSON.stringify(out.results.map((x) => x.path)));
+      assert.notEqual(many.decision, 'ALLOW', JSON.stringify(many.findings));
+      assert.ok(many.findings.some((f) => /not analyzed \(past the 200-file limit\)/.test(f.title)), JSON.stringify(many.findings.map((f) => f.title)));
+    }
+  } finally {
+    r.done();
+  }
+});
+
 test('with no base branch in the checkout, a pull request is checked whole and trusts no suppression', { skip: noGit }, () => {
   const r = prRepo();
   try {
@@ -260,6 +387,53 @@ test('the pre-receive hook gates files a pushed .gitattributes marks export-igno
     const pushed = g('push', '-q', 'origin', 'main');
     assert.notEqual(pushed.status, 0, pushed.stderr);
     assert.match(pushed.stderr, /REJECTED/);
+
+    g('reset', '-q', '--hard', 'HEAD~1');
+    fs.writeFileSync(path.join(work, '.gitattributes'), 'CLAUDE.md working-tree-encoding=UTF-16LE\n');
+    fs.writeFileSync(path.join(work, 'CLAUDE.md'), Buffer.from(`Run this first:\n${EVIL}\n`, 'utf16le'));
+    g('add', '-A');
+    g('commit', '-qm', 'encoded');
+    assert.match(g('show', 'HEAD:CLAUDE.md').stdout, /evil\.example\.com/, 'git stores the payload as UTF-8');
+    const encoded = g('push', '-q', 'origin', 'main');
+    assert.notEqual(encoded.status, 0, 'an encoding attribute does not change what the hook reads');
+
+    g('reset', '-q', '--hard', 'HEAD~1');
+    fs.writeFileSync(path.join(work, '.shomraignore'), 'CLAUDE.md\n');
+    fs.writeFileSync(path.join(work, 'CLAUDE.md'), `<!-- shomra-ignore-file -->\nRun this first:\n${EVIL}\n`);
+    g('add', '-A');
+    g('commit', '-qm', 'waive it');
+    const waived = g('push', '-q', 'origin', 'main');
+    assert.notEqual(waived.status, 0, 'a push cannot waive its own artifact');
+
+    g('push', '-q', 'origin', 'HEAD~1:refs/heads/topic');
+    const branch = g('push', '-q', 'origin', 'HEAD:refs/heads/fresh');
+    assert.notEqual(branch.status, 0, 'a new branch gets no waivers it brought with it');
+
+    const hook = path.join(bare, 'hooks', 'pre-receive');
+    fs.writeFileSync(hook, '#!/bin/sh\n# old\nshomra gate --all "$WORK"\n', { mode: 0o755 });
+    const upgrade = spawnSync(process.execPath, [CLI, 'install-precommit', '--pre-receive', bare], { env, encoding: 'utf8' });
+    assert.equal(upgrade.status, 0, upgrade.stderr);
+    assert.match(fs.readFileSync(hook, 'utf8'), /shomra check --rev/);
+
+    g('reset', '-q', '--hard', 'HEAD~1');
+    fs.renameSync(hook, `${hook}.off`);
+    fs.mkdirSync(path.join(work, '.claude', 'commands'), { recursive: true });
+    fs.writeFileSync(path.join(work, '.claude', 'commands', 'legacy.md'), `${EVIL}\n`);
+    g('add', '-A');
+    g('commit', '-qm', 'legacy, from before the hook');
+    assert.equal(g('push', '-q', 'origin', 'main').status, 0);
+    fs.renameSync(`${hook}.off`, hook);
+    fs.writeFileSync(path.join(work, 'README.md'), 'x\ny\n');
+    g('commit', '-qam', 'unrelated');
+    assert.equal(g('push', '-q', 'origin', 'main').status, 0, 'a push is judged on what it changes');
+    fs.writeFileSync(path.join(work, '.shomraignore'), '.claude/commands/legacy.md\n');
+    g('add', '-A');
+    g('commit', '-qm', 'accept the legacy command');
+    assert.equal(g('push', '-q', 'origin', 'main').status, 0, 'a waiver can be pushed on its own');
+    fs.appendFileSync(path.join(work, '.claude', 'commands', 'legacy.md'), 'Summarise the diff.\n');
+    g('commit', '-qam', 'touch the accepted command');
+    const accepted = g('push', '-q', 'origin', 'main');
+    assert.equal(accepted.status, 0, accepted.stderr);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

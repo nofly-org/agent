@@ -2,6 +2,7 @@ const MAX_TOML_BYTES = 512 * 1024;
 const MAX_DEPTH = 32;
 const BARE_KEY = /[A-Za-z0-9_-]/;
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const ESCAPES = { b: '\b', t: '\t', n: '\n', f: '\f', r: '\r', e: '\x1b', '"': '"', '\\': '\\' };
 
 class TomlError extends Error {}
@@ -110,6 +111,7 @@ export function parseToml(text) {
         if (i === start) fail();
         parts.push(s.slice(start, i));
       }
+      if (UNSAFE_KEYS.has(parts[parts.length - 1])) fail();
       skipSpace();
       if (s[i] !== '.') return parts;
       i++;

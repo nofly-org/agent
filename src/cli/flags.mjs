@@ -10,7 +10,7 @@ const BOOLEAN_FLAGS = new Set([
 const VALUE_FLAGS = new Set([
   'key', 'url', 'path', 'kind', 'name', 'project', 'agent', 'agent-id', 'min',
   'scenarios', 'objectives', 'turns', 'target', 'run', 'port', 'config', 'env',
-  'command', 'base', 'repo', 'pr', 'token', 'sha', 'session', 'since', 'depth',
+  'command', 'base', 'repo', 'pr', 'token', 'sha', 'session', 'since', 'depth', 'rev', 'base-rev',
   'scope', 'writer', 'type', 'slug', 'framework', 'chunk-size', 'manifest',
 
   'fail-on',

@@ -1,9 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { MAX_ARTIFACT_BYTES, artifactKindOf, descendInto, resolveScanTarget, walkArtifacts, walkablePath } from '../artifacts/matchers.mjs';
+import { resolveScanTarget, walkArtifacts } from '../artifacts/matchers.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
-import { indexFilesUnder, readBlobs, resolveStagedEntry, stagedEntries, workingChanges } from '../core/git-changes.mjs';
-import { bundledKind, byBundledPriority } from '../gate/sast.mjs';
+import { diffNames, stagedNames, workingChanges } from '../core/git-changes.mjs';
+import { git } from '../core/git-exec.mjs';
+import { listTree, resolveRev } from '../core/git-tree.mjs';
+import { touchedArtifacts, treeArtifacts } from '../gate/scope.mjs';
+import { trustedConfig } from '../gate/trusted.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { VERSION } from '../core/version.mjs';
@@ -13,54 +16,12 @@ import { toSarif } from '../gate/sarif.mjs';
 import { findingFingerprint } from '../gate/suppressions.mjs';
 import { fixOneFile } from './fix.mjs';
 
-const MAX_SKILL_SCRIPTS = 60;
-
-async function stagedSkillScripts(root, skillRel) {
-  const dir = path.posix.dirname(skillRel);
-  const entries = (indexFilesUnder(root, dir === '.' ? '' : dir) ?? [])
-    .filter((e) => /^10(0644|0755)$/.test(e.mode))
-    .filter((e) => {
-      const inner = dir === '.' ? e.rel : e.rel.slice(dir.length + 1);
-      const parts = inner.split('/');
-      const name = parts[parts.length - 1];
-      let parent = 'skills';
-      for (const segment of parts.slice(0, -1)) {
-        if (!descendInto(parent, segment)) return false;
-        parent = `${parent}/${segment}`;
-      }
-      return !!bundledKind(name);
-    })
-    .sort(byBundledPriority)
-    .slice(0, MAX_SKILL_SCRIPTS);
-  const blobs = await readBlobs(root, entries.map((e) => e.oid), { maxBytes: MAX_ARTIFACT_BYTES });
-  return entries
-    .map((e) => ({ rel: path.relative(process.cwd(), path.join(root, ...e.rel.split('/'))).split(path.sep).join('/'), ...blobs.get(e.oid) }))
-    .filter((s) => !s.unread);
-}
-
 async function stagedArtifacts(root, single) {
-  const entries = stagedEntries(root);
-  if (entries === null) return null;
-  const artifacts = [];
-  const wanted = [];
-  for (const entry of entries) {
-    if (single && entry.rel !== single.rel) continue;
-    const kind = single ? single.kind ?? artifactKindOf(entry.rel) : artifactKindOf(entry.rel);
-    if (!single && (!kind || !walkablePath(entry.rel))) continue;
-    const resolved = await resolveStagedEntry(root, entry, { maxBytes: MAX_ARTIFACT_BYTES });
-    if (resolved.dangling) continue;
-    const artifact = { full: path.join(root, ...entry.rel.split('/')), rel: entry.rel, ...(kind ? { kind } : {}) };
-    if (resolved.skip) {
-      artifacts.push({ ...artifact, skip: resolved.skip });
-      continue;
-    }
-    if (kind === 'skill') artifact.scripts = await stagedSkillScripts(root, entry.rel);
-    artifacts.push(artifact);
-    wanted.push([artifact, resolved.oid]);
-  }
-  const blobs = await readBlobs(root, wanted.map(([, oid]) => oid), { maxBytes: MAX_ARTIFACT_BYTES });
-  for (const [artifact, oid] of wanted) artifact.read = blobs.get(oid);
-  return artifacts;
+  const changed = stagedNames(root);
+  if (changed === null) return null;
+  const tree = listTree(root);
+  if (tree === null) return null;
+  return treeArtifacts(root, tree, { changed, single });
 }
 
 async function artifactsInScope(root, single, flags) {
@@ -71,10 +32,7 @@ async function artifactsInScope(root, single, flags) {
     if (staged !== null) return staged;
   } else {
     const changed = workingChanges(root);
-    if (changed !== null) {
-      const changedSet = new Set(changed);
-      return everything().filter((artifact) => changedSet.has(artifact.rel));
-    }
+    if (changed !== null) return touchedArtifacts(root, everything(), changed);
   }
   if (!flags.json) console.error(`  ${yellow('⚠')} ${dim('not a git repo (or git unavailable) - checking the whole tree')}`);
   return everything();
@@ -85,14 +43,14 @@ function printNothingToCheck(flags, root) {
     console.log(JSON.stringify({ scanned: 0, blocked: 0, flagged: 0, results: [] }, null, 2));
     return;
   }
-  const where = flags.staged || flags.changed ? ' in the changed set.' : ` under ${root}.`;
+  const where = flags.rev !== undefined ? ` in ${flags.rev}.` : flags.staged || flags.changed ? ' in the changed set.' : ` under ${root}.`;
   console.log(`${green('\n  ✓ No AI artifacts to check')}${dim(where)}\n`);
 }
 
 function printHeader({ flags, artifacts, env, apiKey }) {
   if (flags.json || flags.sarif) return;
 
-  const scope = flags.staged ? 'staged' : flags.changed ? 'changed' : env.environment;
+  const scope = flags.rev !== undefined ? `commit ${flags.rev}` : flags.staged ? 'staged' : flags.changed ? 'changed' : env.environment;
   const provider = env.ciProvider ? ` · ${env.ciProvider}` : '';
   console.log(bold(cyan('\n  Shomra check')) + dim(` - ${artifacts.length} artifact${artifacts.length > 1 ? 's' : ''} · ${scope}${provider}`));
   if (!apiKey) console.error(`  ${dim('On-machine analysis only - run')} ${bold('shomra init')} ${dim('to also apply org policy.')}`);
@@ -154,19 +112,50 @@ function scanTargetOrExit(flags, positional) {
   return target;
 }
 
+function usageExit(message) {
+  console.error(`${red('✗')} ${message}`);
+  process.exit(EXIT_USAGE);
+}
+
+async function revisionScope(flags, positional) {
+  if (flags.staged || flags.changed || flags.fix) usageExit('--rev checks a commit, so it cannot be combined with --staged, --changed or --fix.');
+  const dir = path.resolve(typeof positional[0] === 'string' ? positional[0] : typeof flags.path === 'string' ? flags.path : '.');
+  const top = git(['rev-parse', '--show-toplevel'], { cwd: dir, timeout: 5000 })?.trim();
+  const root = top ? path.resolve(top) : dir;
+  const sha = resolveRev(root, flags.rev);
+  if (!sha) usageExit(`${flags.rev} is not a commit in the repository at ${root}.`);
+  const base = flags['base-rev'] === undefined ? null : resolveRev(root, flags['base-rev']);
+  if (flags['base-rev'] !== undefined && !base) usageExit(`${flags['base-rev']} is not a commit in the repository at ${root}.`);
+  const tree = listTree(root, { rev: sha });
+  const changed = base ? diffNames(root, [base, sha]) : null;
+  if (!tree || (base && changed === null)) {
+    console.error(`${red('✗')} Could not read ${sha} from git.`);
+    process.exit(1);
+  }
+  const artifacts = await treeArtifacts(root, tree, { changed, carrier: `commit ${sha.slice(0, 12)}` });
+  return { root, artifacts, trusted: trustedConfig(root, { baseRev: base ?? sha, fromTop: true }) };
+}
+
 export async function cmdCheck(flags, positional) {
   const { apiKey, url } = resolveSettings(loadConfig());
-  const { root, single } = scanTargetOrExit(flags, positional);
   const env = detectEnv();
-
-  const artifacts = await artifactsInScope(root, single, flags);
+  let root;
+  let artifacts;
+  let trusted;
+  if (flags.rev !== undefined) {
+    ({ root, artifacts, trusted } = await revisionScope(flags, positional));
+  } else {
+    const target = scanTargetOrExit(flags, positional);
+    root = target.root;
+    artifacts = await artifactsInScope(root, target.single, flags);
+  }
   if (!artifacts.length) {
     printNothingToCheck(flags, root);
     return;
   }
 
   printHeader({ flags, artifacts, env, apiKey });
-  const outcome = await gateArtifactList(artifacts, { apiKey, url, env, flags, root });
+  const outcome = await gateArtifactList(artifacts, { apiKey, url, env, flags, root, trusted });
   const { results, blocked, flagged, suppressed, backendDown, rejected } = outcome;
   const strictOutage = strictOutageOf(flags, outcome);
 

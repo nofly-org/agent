@@ -140,6 +140,36 @@ export function resolveScanTarget(value, { fallback = '.' } = {}) {
   return { root, single: { full, rel, ...(kind ? { kind } : {}) } };
 }
 
+const HALF_WINDOW = Math.floor(MAX_ARTIFACT_BYTES / 2);
+
+export function readArtifactBounded(full) {
+  let fd;
+  try {
+    fd = fs.openSync(full, fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0));
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) return { skip: 'not a regular file' };
+    if (st.size <= MAX_ARTIFACT_BYTES) {
+      const buf = Buffer.alloc(st.size);
+      const n = fs.readSync(fd, buf, 0, st.size, 0);
+      return { content: buf.subarray(0, n).toString('utf8') };
+    }
+    const head = Buffer.alloc(HALF_WINDOW);
+    const tail = Buffer.alloc(HALF_WINDOW);
+    const hn = fs.readSync(fd, head, 0, HALF_WINDOW, 0);
+    const tn = fs.readSync(fd, tail, 0, HALF_WINDOW, st.size - HALF_WINDOW);
+    return { content: `${head.subarray(0, hn).toString('utf8')}\n${tail.subarray(0, tn).toString('utf8')}`, unread: Math.max(0, st.size - hn - tn) };
+  } catch (error) {
+    return { skip: `could not be read (${error.code ?? error.message})` };
+  } finally {
+    if (fd !== undefined) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+      }
+    }
+  }
+}
+
 export function readRegularFile(full, maxBytes = MAX_ARTIFACT_BYTES) {
   let fd;
   try {

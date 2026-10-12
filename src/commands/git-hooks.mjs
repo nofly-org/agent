@@ -79,15 +79,14 @@ function installPreReceive(flags, positional) {
   }
 
   const hookPath = path.join(dir, 'pre-receive');
-  const marker = 'shomra gate --all';
+  const ownedBy = 'Managed by `shomra install-precommit --pre-receive`';
   const managed = [
     '#!/bin/sh',
     '# Shomra - refuse a push that carries a blocked AI artifact.',
-    '# Managed by `shomra install-precommit --pre-receive`. Delete this file to uninstall.',
+    `# ${ownedBy}. Delete this file to uninstall.`,
     '#',
     '# Runs on the SERVER, so unlike pre-commit it cannot be skipped with',
     '# --no-verify and it covers developers who never installed anything.',
-    'set -e',
     '',
     '# ⚠ FAIL CLOSED. The client-side hook fails open on a missing binary because',
     '# blocking a local commit over a tooling problem is hostile. The opposite is',
@@ -102,29 +101,28 @@ function installPreReceive(flags, positional) {
     '  exit 1',
     '}',
     '',
-    'TMP=$(mktemp -d)',
-    'trap \'rm -rf "$TMP"\' EXIT',
     'STATUS=0',
     '',
-    '# stdin is "<old> <new> <ref>" per pushed ref. Check each ref\'s tree out to a',
-    '# temp dir and gate it - the push is refused as a whole if any ref carries a',
-    '# blocked artifact.',
+    '# stdin is "<old> <new> <ref>" per pushed ref. What each push changes is read',
+    '# straight from git - no checkout, so a pushed .gitattributes cannot change',
+    '# what is read - and waivers (.shomraignore, baseline, ignore marks, repo',
+    '# policy) count only as they stood before the push.',
     'while read -r oldrev newrev refname; do',
     '  # All-zero newrev = branch deletion. Nothing arrives, nothing to gate.',
     '  case "$newrev" in *[!0]*) ;; *) continue ;; esac',
-    '  WORK="$TMP/$(echo "$refname" | tr "/" "_")"',
-    '  mkdir -p "$WORK"',
-    '  if ! GIT_INDEX_FILE="$TMP/index" git read-tree "$newrev" || ! GIT_INDEX_FILE="$TMP/index" git --work-tree="$WORK" checkout-index -a -f -q; then',
-    '    echo "REJECTED: $refname could not be read for the AI-artifact gate." >&2',
-    '    STATUS=1',
-    '    continue',
+    '  case "$oldrev" in',
+    '    *[!0]*) BASE="$oldrev" ;;',
+    '    *) BASE=$(git merge-base HEAD "$newrev" 2>/dev/null || true) ;;',
+    '  esac',
+    '  if [ -n "$BASE" ]; then',
+    '    shomra check --rev "$newrev" --base-rev "$BASE" && continue',
+    '  else',
+    '    shomra check --rev "$newrev" --no-suppress --no-policy && continue',
     '  fi',
-    '  if ! shomra gate --all "$WORK"; then',
-    '    echo "" >&2',
-    '    echo "REJECTED: $refname carries an AI artifact Shomra blocks (see above)." >&2',
-    '    echo "          Fix it locally (shomra check --fix) and push again." >&2',
-    '    STATUS=1',
-    '  fi',
+    '  echo "" >&2',
+    '  echo "REJECTED: $refname carries an AI artifact Shomra blocks (see above)." >&2',
+    '  echo "          Fix it locally (shomra check --fix) and push again." >&2',
+    '  STATUS=1',
     'done',
     '',
     'exit $STATUS',
@@ -133,21 +131,27 @@ function installPreReceive(flags, positional) {
 
   let existing = null;
   try { existing = fs.readFileSync(hookPath, 'utf8'); } catch {  }
-  if (existing && existing.includes(marker) && !flags.force) {
+  const ours = existing !== null && (existing.includes(ownedBy) || existing.includes('shomra gate --all'));
+  if (existing === managed) {
     console.log(green('  ✓') + ' Shomra pre-receive hook already installed ' + dim('→ ' + hookPath));
     return;
   }
-  if (existing && !existing.includes(marker) && !flags.force) {
+  if (existing !== null && !ours && !flags.force) {
     console.log('\n  ' + yellow('⚠') + ' A pre-receive hook already exists ' + dim('→ ' + hookPath));
     console.log('  Chain Shomra into it, or re-run with ' + bold('--force') + ' to replace it (a backup is kept).\n');
     return;
   }
-  if (existing && flags.force) {
+  if (existing !== null) {
     try { fs.writeFileSync(hookPath + '.bak', existing); console.log(dim('  Backed up existing hook → pre-receive.bak')); } catch {  }
   }
   fs.writeFileSync(hookPath, managed, 'utf8');
   try { fs.chmodSync(hookPath, 0o755); } catch {  }
 
+  if (ours) {
+    console.log('\n  ' + green('✓ Updated') + ' Shomra pre-receive hook ' + dim('→ ' + hookPath));
+    console.log(dim('  Pushed commits are now read straight from git, and waivers are taken from before the push.\n'));
+    return;
+  }
   console.log('\n  ' + green('✓ Installed') + ' Shomra pre-receive hook ' + dim('→ ' + hookPath));
   console.log(dim('  Every push is now gated server-side - no --no-verify, and no per-developer install.'));
   console.log(dim('  This hook FAILS CLOSED: if shomra is missing on the server, pushes are refused.'));

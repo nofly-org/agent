@@ -10,6 +10,7 @@ import { parseFlags } from '../src/cli/flags.mjs';
 import { parseBackendUrl } from '../src/core/config.mjs';
 import { maskSecrets } from '../src/detect/secret-mask.mjs';
 import { gradeServer, maskServerSecrets, normalizeServerEntry } from '../src/detect/signals/mcp-config.mjs';
+import { localGate } from '../src/detect/guard-signals.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(HERE, '..', 'shomra.mjs');
@@ -158,6 +159,45 @@ test('an enrolled check sends stand-ins, never the secret values in a committed 
     const sent = JSON.stringify(backend.seen.map((r) => r.body));
     for (const real of ['Tr0ub4dor&3', '51HxYz2eZvKYlo2C8a9bQ3', TOKEN]) assert.ok(!sent.includes(real), real);
     assert.match(sent, /ghp_[A-Za-z0-9]{36}/);
+  } finally {
+    await backend.close();
+    s.done();
+  }
+});
+
+test('an enrolled verdict is never weaker than the offline one: masked secrets still read as secrets, escapes survive, and a size warning is kept', async () => {
+  const s = sandbox();
+  const backend = await fakeBackend((url, body) => {
+    if (url !== '/gate/check') return [404, {}];
+    const g = localGate(body.content, { kind: body.kind, path: body.path });
+    return [200, { decision: g.verdict, riskScore: g.riskScore, findings: g.findings }];
+  });
+  const awsSecret = ['wJalrXUtnFEMI', '/K7MDENG/', 'bPxRfiCYzQ9KxLpZ2a'].join('');
+  const pem = ['-----BEGIN RSA ', 'PRIVATE KEY-----\n', 'MIIEowIBAAKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gun\n', '-----END RSA PRIVATE KEY-----\n'].join('');
+  const env = { SHOMRA_API_KEY: 'shm_test_key_0000000000000000', SHOMRA_URL: backend.url };
+  const verdicts = async (args) => {
+    const offline = JSON.parse(s.run([...args, '--json']).stdout);
+    const enrolled = JSON.parse((await runAsync(s.dir, [...args, '--json'], env)).stdout);
+    return { offline, enrolled };
+  };
+  try {
+    s.write('.env', `AWS_SECRET_ACCESS_KEY=${awsSecret}\n`);
+    s.write('deploy/key.pem', pem);
+    s.write('.mcp.json', JSON.stringify({ mcpServers: { tool: { command: 'node', args: ['server.js'], env: { API_TOKEN: 'Qm9vT2x8a\tZ93kLpWq1Xr7Ty' } } } }, null, 2));
+    s.write('CLAUDE.md', `${'Use pnpm for every install.\n'.repeat(26000)}${EVIL}\n${'Use pnpm for every install.\n'.repeat(26000)}`);
+    for (const file of ['.env', 'deploy/key.pem', '.mcp.json', 'CLAUDE.md']) {
+      const { offline, enrolled } = await verdicts(['gate', file]);
+      assert.equal(enrolled.source, 'server', file);
+      const rank = { ALLOW: 0, FLAG: 1, BLOCK: 2 };
+      assert.ok(rank[enrolled.decision] >= rank[offline.decision], `${file}: offline ${offline.decision}, enrolled ${enrolled.decision}`);
+      for (const f of offline.findings.filter((x) => /credential|private key|too large/i.test(x.title))) assert.ok(enrolled.findings.some((e) => e.title === f.title), `${file}: ${f.title}`);
+    }
+    const all = JSON.parse((await runAsync(s.dir, ['check', '--json'], env)).stdout);
+    for (const r of all.results) assert.notEqual(r.decision, 'ALLOW', `${r.path} ${JSON.stringify(r.findings)}`);
+    const sent = JSON.stringify(backend.seen.map((r) => r.body));
+    assert.ok(!sent.includes(awsSecret) && !sent.includes('u1SU1LfVLPHCozMxH2Mo4lgO') && !sent.includes('Z93kLpWq1Xr7Ty'));
+    assert.match(sent, /AWS_SECRET_ACCESS_KEY=/);
+    assert.match(sent, /-----BEGIN RSA PRIVATE KEY-----/);
   } finally {
     await backend.close();
     s.done();

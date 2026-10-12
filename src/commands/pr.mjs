@@ -4,13 +4,14 @@ import path from 'node:path';
 import { walkArtifacts } from '../artifacts/matchers.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
-import { changedSinceBase, fetchCommit, fileAtRevision } from '../core/git-changes.mjs';
+import { changedSinceBase, fetchCommit } from '../core/git-changes.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { gateArtifactList, gateExitCode, strictOutageOf } from '../gate/batch.mjs';
 import { detectEnv } from '../gate/environment.mjs';
 import { findingPath, locationBase, relativeToBase } from '../gate/locations.mjs';
-import { REPO_POLICY_FILES } from '../gate/repo-policy.mjs';
 import { toSarif } from '../gate/sarif.mjs';
+import { touchedArtifacts } from '../gate/scope.mjs';
+import { trustedConfig } from '../gate/trusted.mjs';
 
 const PR_WORKFLOW = `name: Shomra AI Security
 on: pull_request
@@ -61,34 +62,6 @@ function pullRequestScope(root, { base, baseSha }) {
   const scope = changedSinceBase(root, { base, baseSha });
   if (scope || process.env.GITHUB_ACTIONS !== 'true' || !fetchCommit(root, baseSha)) return scope;
   return changedSinceBase(root, { base, baseSha });
-}
-
-const UNVERIFIED_MARK_NOTE = 'the base branch could not be read, so a shomra-ignore mark here could not be checked against it';
-
-function trustedConfig(root, scope) {
-  if (!scope) return { ignore: '', baseline: null, policy: null, markLines: () => new Set(), markNote: UNVERIFIED_MARK_NOTE };
-  const read = (rel) => fileAtRevision(root, scope.baseRev, rel);
-  let policy = null;
-  for (const file of REPO_POLICY_FILES) {
-    const text = read(`.shomra/${file}`);
-    if (text !== null) {
-      policy = { text, file };
-      break;
-    }
-  }
-  const marks = new Map();
-  return {
-    ignore: read('.shomraignore') ?? '',
-    baseline: read('.shomra/baseline.json'),
-    policy,
-    markLines: (rel) => {
-      if (!marks.has(rel)) {
-        const lines = (read(rel) ?? '').split(/\r?\n/).filter((line) => /shomra-ignore/i.test(line)).map((line) => line.trim());
-        marks.set(rel, new Set(lines));
-      }
-      return marks.get(rel);
-    },
-  };
 }
 
 const GH_LEVEL = { CRITICAL: 'failure', HIGH: 'failure', MEDIUM: 'warning', LOW: 'notice', INFO: 'notice' };
@@ -224,9 +197,11 @@ async function postCheckRun(token, repo, checkRun, flags) {
   }
 }
 
-async function reportNothingChanged({ flags, token, dryRun, repo, headSha }) {
+async function reportNothingChanged({ flags, token, dryRun, repo, headSha, prNumber, base, scope }) {
   emitSarif(flags, []);
-  if (!flags.json && flags.sarif !== true) console.log(green('\n  ✓ No AI artifacts changed in this PR.\n'));
+  if (flags.json && flags.sarif !== true) {
+    console.log(JSON.stringify({ repo, prNumber: prNumber ?? null, headSha, base, comparedWith: scope?.against ?? null, conclusion: 'success', artifacts: 0, findings: 0, notes: [] }, null, 2));
+  } else if (flags.sarif !== true) console.log(green('\n  ✓ No AI artifacts changed in this PR.\n'));
   if (!token || dryRun) return;
 
   await githubApi(token, 'POST', `/repos/${repo}/check-runs`, {
@@ -256,11 +231,10 @@ export async function cmdPr(flags, positional) {
     console.error(`  ${yellow('⚠')} ${dim(`base branch "${base}" not found in this checkout - checking every AI artifact, without trusting suppressions or repo policy. Use fetch-depth: 0 to check only the pull request's changes.`)}`);
   }
   const allArtifacts = walkArtifacts(root);
-  const changedSet = scope ? new Set(scope.files) : null;
-  const artifacts = changedSet ? allArtifacts.filter((artifact) => changedSet.has(artifact.rel)) : allArtifacts;
+  const artifacts = scope ? touchedArtifacts(root, allArtifacts, scope.files) : allArtifacts;
 
   if (!artifacts.length) {
-    await reportNothingChanged({ flags, token, dryRun, repo, headSha });
+    await reportNothingChanged({ flags, token, dryRun, repo, headSha, prNumber, base, scope });
     return;
   }
 

@@ -1,15 +1,17 @@
-import fs from 'node:fs';
-import { MAX_ARTIFACT_BYTES } from '../artifacts/matchers.mjs';
+import path from 'node:path';
+import { readArtifactBounded } from '../artifacts/matchers.mjs';
 import { api, gateMachine } from '../core/api-client.mjs';
 import { clampInt } from '../core/numbers.mjs';
 import { SEV_COLOR, bold, dim, gray, green, red, yellow } from '../core/terminal.mjs';
 import { grade, localGate } from '../detect/guard-signals.mjs';
 import { applyRepoPolicy, loadRepoPolicy, parseRepoPolicy } from './repo-policy.mjs';
 import { isGateVerdict, localAsGateResult } from './result.mjs';
-import { collectLocalSast, mergeSastIntoResult } from './sast.mjs';
+import { bundledFindings, collectLocalSast, mergeSastIntoResult } from './sast.mjs';
 import { withMcpAdvisories } from './advisories.mjs';
 import { maskSecrets } from '../detect/secret-mask.mjs';
 import { loadBaseline, loadIgnoreRules, parseBaseline, parseIgnoreRules, suppressResult } from './suppressions.mjs';
+
+export { readArtifactBounded };
 
 const DEFAULT_CONCURRENCY = 8;
 const MIN_CONCURRENCY = 1;
@@ -17,36 +19,7 @@ const MAX_CONCURRENCY = 32;
 const MAX_FINDINGS_SHOWN = 3;
 const FAIL_ON_RANK = { critical: 3, high: 2, medium: 1 };
 
-const HALF_WINDOW = Math.floor(MAX_ARTIFACT_BYTES / 2);
 const DEC_ORDER = { ALLOW: 0, FLAG: 1, BLOCK: 2 };
-
-export function readArtifactBounded(full) {
-  let fd;
-  try {
-    fd = fs.openSync(full, fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0));
-    const st = fs.fstatSync(fd);
-    if (!st.isFile()) return { skip: 'not a regular file' };
-    if (st.size <= MAX_ARTIFACT_BYTES) {
-      const buf = Buffer.alloc(st.size);
-      const n = fs.readSync(fd, buf, 0, st.size, 0);
-      return { content: buf.subarray(0, n).toString('utf8') };
-    }
-    const head = Buffer.alloc(HALF_WINDOW);
-    const tail = Buffer.alloc(HALF_WINDOW);
-    const hn = fs.readSync(fd, head, 0, HALF_WINDOW, 0);
-    const tn = fs.readSync(fd, tail, 0, HALF_WINDOW, st.size - HALF_WINDOW);
-    return { content: `${head.subarray(0, hn).toString('utf8')}\n${tail.subarray(0, tn).toString('utf8')}`, unread: Math.max(0, st.size - hn - tn) };
-  } catch (error) {
-    return { skip: `could not be read (${error.code ?? error.message})` };
-  } finally {
-    if (fd !== undefined) {
-      try {
-        fs.closeSync(fd);
-      } catch {
-      }
-    }
-  }
-}
 
 export function withUnreadMiddle(local, unread) {
   const findings = [...local.findings, {
@@ -56,6 +29,14 @@ export function withUnreadMiddle(local, unread) {
   }];
   const g = grade(findings);
   return { ...local, findings, verdict: DEC_ORDER[g.verdict] > DEC_ORDER[local.verdict] ? g.verdict : local.verdict, riskScore: Math.max(local.riskScore ?? 0, g.riskScore) };
+}
+
+const UNREAD_MIDDLE_RE = /^Artifact too large to read whole - /;
+
+export function carriedPastMasking(local, sent, { kind, path }, serverFindings) {
+  const reported = new Set((serverFindings || []).map((f) => f.title));
+  const visible = sent?.masked ? new Set(localGate(sent.text, { kind, path }).findings.map((f) => f.title)) : null;
+  return (local?.findings || []).filter((f) => !reported.has(f.title) && (UNREAD_MIDDLE_RE.test(String(f.title)) || (visible && !visible.has(f.title))));
 }
 
 function notAnalyzedResult(artifact, why) {
@@ -70,10 +51,10 @@ function notAnalyzedResult(artifact, why) {
   };
 }
 
-function analyseLocally(artifacts, quiet) {
+function analyseLocally(artifacts, quiet, root) {
   const prepared = [];
   for (const artifact of artifacts) {
-    const read = artifact.skip ? { skip: artifact.skip } : artifact.read ?? readArtifactBounded(artifact.full);
+    const read = Object.hasOwn(artifact, 'skip') && artifact.skip ? { skip: artifact.skip } : Object.hasOwn(artifact, 'read') ? artifact.read : readArtifactBounded(artifact.full);
     if (read.skip) {
       if (!quiet) console.log(`  ${gray('•')} ${dim(artifact.rel)} ${yellow(`not analyzed - ${read.skip}`)}`);
       prepared.push({ artifact, skipped: read.skip });
@@ -84,7 +65,7 @@ function analyseLocally(artifacts, quiet) {
       artifact,
       content: read.content,
       local: read.unread ? withUnreadMiddle(local, read.unread) : local,
-      sast: collectLocalSast({ fullPath: artifact.full, relPath: artifact.rel, kind: artifact.kind, content: read.content, scripts: artifact.scripts }),
+      sast: collectLocalSast({ fullPath: artifact.full, relPath: artifact.rel, kind: artifact.kind, content: read.content, scripts: Object.hasOwn(artifact, 'scripts') ? artifact.scripts : undefined, root }),
     });
   }
   return prepared;
@@ -109,10 +90,12 @@ async function requestServerVerdicts(prepared, { apiKey, url, env, flags, quiet 
       const { artifact, content, skipped } = prepared[index];
       if (skipped) continue;
       try {
+        const sent = maskSecrets(content);
+        prepared[index].sent = sent;
         const verdict = await api(url, apiKey, '/gate/check', {
           kind: artifact.kind,
           path: artifact.rel,
-          content: maskSecrets(content).text,
+          content: sent.text,
           machine: gateMachine(),
           env,
           ...(flags.project ? { projectId: String(flags.project) } : {}),
@@ -157,6 +140,15 @@ function printResult(result, artifact, source) {
   if (remaining > 0) console.log(`      ${dim(`… and ${remaining} more (run with --json for all)`)}`);
 }
 
+const asGateFinding = (f) => ({ severity: f.severity, title: f.title, remediationText: f.remediationText, ...(f.line ? { line: f.line } : {}) });
+
+function recheckFor(artifact) {
+  const own = path.resolve(artifact.full);
+  return (source, text) => (source === own
+    ? localGate(text, { kind: artifact.kind, path: artifact.rel }).findings.map(asGateFinding)
+    : bundledFindings({ rel: path.relative(process.cwd(), source).split(path.sep).join('/'), content: text }));
+}
+
 function resolveSuppression(flags, root, trusted) {
   const enabled = !flags['no-suppress'];
   const useBaseline = enabled && !flags['no-baseline'];
@@ -165,7 +157,7 @@ function resolveSuppression(flags, root, trusted) {
     rules: !enabled ? parseIgnoreRules('') : trusted ? parseIgnoreRules(trusted.ignore) : loadIgnoreRules(root),
     baseline: !useBaseline ? null : trusted ? parseBaseline(trusted.baseline) : loadBaseline(root),
     lineCache: new Map(),
-    trustedMarks: trusted?.markLines ?? null,
+    trustedMarks: trusted?.markTrust ?? null,
     markNote: trusted?.markNote,
   };
 }
@@ -182,7 +174,7 @@ export async function gateArtifactList(artifacts, { apiKey, url, env, flags, roo
   const suppression = resolveSuppression(flags, workingRoot, trusted);
   const policy = resolvePolicy(flags, workingRoot, trusted);
 
-  const prepared = analyseLocally(artifacts, quiet);
+  const prepared = analyseLocally(artifacts, quiet, workingRoot);
   const { verdicts, rejected, backendDown, authFailed } = await requestServerVerdicts(prepared, { apiKey, url, env, flags, quiet });
 
   let advisoryOutage = false;
@@ -199,16 +191,20 @@ export async function gateArtifactList(artifacts, { apiKey, url, env, flags, roo
   let flagged = 0;
   let suppressed = 0;
 
-  prepared.forEach(({ artifact, local, sast, skipped }, index) => {
+  prepared.forEach(({ artifact, local, sast, skipped, sent }, index) => {
     const serverVerdict = verdicts[index];
     const source = serverVerdict ? 'server' : 'local';
     const base = skipped ? notAnalyzedResult(artifact, skipped) : serverVerdict || localAsGateResult(local, artifact.rel.split('/').pop(), artifact.kind);
-    const merged = skipped ? base : mergeSastIntoResult(base, sast);
+    const carried = serverVerdict && !skipped ? carriedPastMasking(local, sent, { kind: artifact.kind, path: artifact.rel }, serverVerdict.findings) : [];
+    const merged = skipped ? base : mergeSastIntoResult(base, [...carried, ...(sast || [])]);
 
     const raw = { path: artifact.rel, full: artifact.full, kind: artifact.kind, source, ...merged, ...(serverVerdict ? { orgDecision: serverVerdict.decision } : {}) };
-    if (typeof artifact.read?.content === 'string') suppression.lineCache.set(artifact.full, artifact.read.content.split(/\r?\n/));
+    if (Object.hasOwn(artifact, 'read') && typeof artifact.read?.content === 'string') suppression.lineCache.set(path.resolve(artifact.full), artifact.read.content.split(/\r?\n/));
+    for (const script of Object.hasOwn(artifact, 'scripts') && Array.isArray(artifact.scripts) ? artifact.scripts : []) {
+      if (typeof script?.content === 'string') suppression.lineCache.set(path.resolve(script.rel), script.content.split(/\r?\n/));
+    }
     const withSuppressions = suppression.enabled
-      ? suppressResult(raw, suppression.rules, suppression.baseline, suppression.lineCache, suppression.trustedMarks, suppression.markNote)
+      ? suppressResult(raw, suppression.rules, suppression.baseline, suppression.lineCache, suppression.trustedMarks, suppression.markNote, { recheck: recheckFor(artifact) })
       : raw;
     const result = applyRepoPolicy(withSuppressions, policy);
 

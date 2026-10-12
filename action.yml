@@ -75,7 +75,7 @@ runs:
           echo "::error::version must be an npm dist-tag or an exact version"
           exit 3
         fi
-        read -r -a argv <<< "$SHOMRA_ACTION_ARGS"
+        read -r -d '' -a argv <<< "$SHOMRA_ACTION_ARGS" || true
         # --strict is appended rather than baked into the default, so a caller who
         # passes their own args still gets the fail-on-flag behaviour they asked
         # for, and passing --strict twice stays harmless.

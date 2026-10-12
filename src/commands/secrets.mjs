@@ -1,13 +1,14 @@
 import { git, gitLines } from '../core/git-exec.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
-import { MAX_ARTIFACT_BYTES, SKIP_DIRS, resolveScanTarget } from '../artifacts/matchers.mjs';
+import { SKIP_DIRS, readRegularFile, resolveScanTarget } from '../artifacts/matchers.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { clampInt } from '../core/numbers.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { SECRET_PATTERNS, localScan } from '../detect/guard-signals.mjs';
 
 const MAX_FILES = 50000;
+const MAX_SECRET_FILE_BYTES = 8 * 1024 * 1024;
 const HISTORY_TIMEOUT_MS = 600000;
 
 function redactSecret(s) {
@@ -42,14 +43,9 @@ export function walkFiles(root, cap = MAX_FILES) {
 }
 
 function scanFile(root, rel) {
-  let content;
-  try {
-    const full = path.join(root, rel);
-    if (fs.statSync(full).size > MAX_ARTIFACT_BYTES) return { skipped: 'too large' };
-    content = fs.readFileSync(full, 'utf8');
-  } catch {
-    return { skipped: 'unreadable' };
-  }
+  const read = readRegularFile(path.join(root, rel), MAX_SECRET_FILE_BYTES);
+  if (read.skip) return { skipped: read.skip === 'too large' ? 'too large' : read.skip === 'not a regular file' ? 'special' : 'unreadable' };
+  const { content } = read;
   if (content.includes('\0')) return { hits: [] };
   const byLine = new Map();
   for (const f of localScan(content, { categories: ['secret'] }).findings) {
@@ -99,10 +95,10 @@ export async function cmdSecrets(flags, positional) {
   const files = target.single ? [target.single.rel] : walkFiles(root);
   const capped = !target.single && files.capped;
   const hits = [];
-  let skipped = 0;
+  const skipped = { 'too large': 0, unreadable: 0, special: 0 };
   for (const rel of files) {
     const scanned = scanFile(root, rel);
-    if (scanned.skipped) skipped += 1;
+    if (scanned.skipped) skipped[scanned.skipped] += 1;
     else hits.push(...scanned.hits);
   }
   const isGit = isGitRepo(root);
@@ -111,6 +107,8 @@ export async function cmdSecrets(flags, positional) {
   if (history) hits.push(...history.hits);
   const incomplete = [
     ...(capped ? [`stopped after ${MAX_FILES} files - scan a narrower folder to cover the rest`] : []),
+    ...(skipped['too large'] ? [`${skipped['too large']} file(s) over ${MAX_SECRET_FILE_BYTES / (1024 * 1024)} MB were not scanned`] : []),
+    ...(skipped.unreadable ? [`${skipped.unreadable} file(s) could not be read`] : []),
     ...(history?.error ? [`the git history scan failed (${history.error}) - history was not fully checked`] : []),
     ...(flags.history && !isGit ? ['not a git repository, so there is no history to scan'] : []),
   ];
@@ -120,8 +118,8 @@ export async function cmdSecrets(flags, positional) {
     console.log(JSON.stringify({
       workingTree: hits.filter((h) => h.where === 'working-tree').length,
       history: history ? history.hits.length : null,
-      filesScanned: files.length - skipped,
-      filesSkipped: skipped,
+      filesScanned: files.length - skipped['too large'] - skipped.unreadable - skipped.special,
+      filesSkipped: skipped['too large'] + skipped.unreadable,
       complete: !incomplete.length,
       incomplete,
       hits,

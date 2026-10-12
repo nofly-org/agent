@@ -1,4 +1,5 @@
 const MAX_BYTES = 1024 * 1024;
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const MAX_DEPTH = 64;
 const MAX_ALIASES = 1000;
 const MAX_EXPANDED = 100_000;
@@ -74,7 +75,7 @@ function parseFlow(src, ctx) {
         ws();
         let v = null;
         if (src[i] === ':') { i++; v = value(depth + 1); }
-        out[String(k ?? '')] = v;
+        if (!UNSAFE_KEYS.has(String(k ?? ''))) out[String(k ?? '')] = v;
         ws();
         if (src[i] === ',') i++;
         else if (src[i] !== '}') throw new YamlError('flow map');
@@ -318,9 +319,9 @@ export function parseYaml(text) {
       const key = m.key;
       const val = inlineValue(m.rest ?? '', indent, depth);
       if (key === '<<') merges.push(...(Array.isArray(val) ? val : [val]));
-      else out[key] = val;
+      else if (!UNSAFE_KEYS.has(key)) out[key] = val;
     }
-    for (const src of merges) if (src && typeof src === 'object' && !Array.isArray(src)) for (const [k, v] of Object.entries(src)) if (!(k in out)) out[k] = v;
+    for (const src of merges) if (src && typeof src === 'object' && !Array.isArray(src)) for (const [k, v] of Object.entries(src)) if (!Object.hasOwn(out, k) && !UNSAFE_KEYS.has(k)) out[k] = v;
     return out;
   }
 

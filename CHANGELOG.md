@@ -22,6 +22,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   command.
 - **The baseline counts.** A new copy of an accepted finding now fails; run
   `shomra baseline` again to accept it.
+- **The pre-receive hook reads pushed commits straight from git** with the new
+  `shomra check --rev <sha> [--base-rev <sha>]`. It checks what a push changes,
+  takes waivers only from before the push, and cannot be blinded by a pushed
+  `.gitattributes`. Re-run `shomra install-precommit --pre-receive` to upgrade an
+  existing hook (a backup is kept).
+- **A `shomra-ignore` mark covers only the line it governs.** In a pull request
+  it counts only together with the line it covered on the base branch, a file
+  mark only if the base branch had it in the first five lines, and the same
+  problem on another line of the file is still reported.
 - **`check --changed` includes files git does not track yet.**
 - **`install-hook` adds a prompt hook for Codex and Gemini CLI**, and the
   GitHub Action and the `pr --init` workflow now run on Node 22 (Node 20 is
@@ -133,6 +142,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   same base for pull request annotations. `gate <file> --sarif` works, and
   `report --json` and `pr --sarif` print one clean document.
 - **`pr` uses `GITHUB_API_URL`** on GitHub Enterprise Server.
+- **Edits to what an artifact pulls in count as edits to it.** `--staged`,
+  `--changed` and `pr` now check a skill when only its scripts change, and a
+  symlinked artifact when only its target changes. Staged links through a
+  linked folder, and linked skill scripts, are read from the index; a staged
+  link to nothing is reported, not dropped.
+- **Limits report what they skipped.** A bundled file over 1 MB is read at both
+  ends with a HIGH note on the middle, and files past the 200-file or 16 MB
+  limit (skills and extension bundles) each raise a HIGH "not analyzed" finding.
+- **An enrolled verdict is never weaker than the offline one.** Masked secrets
+  keep their fixed parts (`AWS_SECRET_ACCESS_KEY=`, PEM headers, webhook hosts)
+  and JSON escapes, and anything masking still hid from the server, plus the
+  "not read whole" warning, is added to its verdict.
+- **A config cannot reach the object prototype** (`__proto__` keys in TOML,
+  YAML or frontmatter are refused), so a crafted `.mcp.json` can no longer make
+  other files read as clean.
+- **`pr --json` prints JSON when nothing changed**, the Action passes every line
+  of a multi-line `args`, `secrets` skips devices like `/dev/zero` and reports
+  files too large to scan, and launching MCP servers on Windows stays fast on
+  long runs of backslashes.
+- **Large rules files check fast.** A long paragraph no longer takes seconds to
+  split into sentences.
 - **The GitHub Action no longer pastes its inputs into a shell script.**
 
 ### Detection
