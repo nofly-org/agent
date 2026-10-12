@@ -658,9 +658,10 @@ reported as *ignored locally, still blocked by org policy*. Accept the risk or
 add an exception in the platform instead:
 
 - **`shomra baseline`** records every current finding (line-independent
-  fingerprints) in `.shomra/baseline.json` - commit it so the whole team shares
-  it. From then on only findings introduced *after* the baseline fail; re-run it
-  to refresh after cleanups. Skip it per-run with `--no-baseline`.
+  fingerprints, with how many of each) in `.shomra/baseline.json` - commit it so
+  the whole team shares it. From then on only findings introduced *after* the
+  baseline fail, including a new copy of one it accepted; re-run it to refresh
+  after cleanups. Skip it per-run with `--no-baseline`.
 - **`.shomraignore`** - a repo file of `path/glob` lines (skip the file) or
   `path/glob :: title-substring` lines (skip one finding class in those files).
   The runtime firewall honors it too, so test fixtures and detection source
@@ -668,6 +669,11 @@ add an exception in the platform instead:
   `# shomra-ignore`) on the finding's line or the line above, or opt a whole
   file out with `shomra-ignore-file` in its first lines (works in JSON as a
   `"_shomra": "shomra-ignore-file"` key). `--no-suppress` ignores all of this.
+- **In `shomra pr` these waivers come from the base branch**, never from the
+  pull request itself: a `.shomraignore`, baseline, policy or ignore mark the
+  pull request adds takes effect once it is merged, so nobody can approve their
+  own findings by committing a waiver beside them. With no base branch in the
+  checkout, `pr` checks every artifact and trusts no waiver.
 - **`.shomra/policy.yml`** - policy-as-code, reviewed in PRs like any code:
 
   ```yaml
