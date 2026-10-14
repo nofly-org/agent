@@ -22,7 +22,7 @@ const PRECEDENCE_MARKERS = new RegExp(
 
 const OVERRIDE_MARKERS = new RegExp(`${MALICIOUS_OVERRIDE.source}|${PRECEDENCE_MARKERS.source}`, 'i');
 
-const AUTHORITY_SPOOF_STRONG = /(^|\n)\s*(#{0,3}\s*system\s+(prompt|message|instruction)s?\s*[:>]|\[system\]|<\/?system>|\bas an? (system|admin|root|developer)[- ]?(instruction|directive|message|mode)|authority\s*[:=]\s*(system|admin|root)|you are now\b|new (system )?(instructions?|directive)s?\s*[:>])/i;
+const AUTHORITY_SPOOF_STRONG = /(^|\n)[^\S\n]*((?:#{1,3}\s*)?system\s+(prompt|message|instruction)s?\s*[:>]|\[system\]|<\/?system>|\bas an? (system|admin|root|developer)[- ]?(instruction|directive|message|mode)|authority\s*[:=]\s*(system|admin|root)|you are now\b|new (system )?(instructions?|directive)s?\s*[:>])/i;
 
 const AUTHORITY_SPOOF = AUTHORITY_SPOOF_STRONG;
 

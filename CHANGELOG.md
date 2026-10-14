@@ -168,6 +168,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `/dev/zero` are skipped, and anything larger is reported as not scanned.
 - **Large rules files check fast.** A long paragraph no longer takes seconds to
   split into sentences.
+- **No input can stall the guard for minutes.** A YAML write of mostly blank
+  lines, a memory file of blank lines before an authority claim, and a command
+  of repeated substitutions or separators each took from seconds to hours to
+  grade, long past the hook's wait - and a guard that gives up lets the call
+  run. Five patterns that backtracked over runs of whitespace now read each
+  character once, and they agree with the old ones on every input tested.
 - **The GitHub Action no longer pastes its inputs into a shell script.**
 
 ### Detection

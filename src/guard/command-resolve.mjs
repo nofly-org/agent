@@ -7,7 +7,12 @@ const MAX_PATH_ENTRIES = 64;
 
 const ASSIGN_PREFIX = /^\s*([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S*)\s+/;
 const VAR_RE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g;
-const SUBST_RE = /\$\([^)]*\)|`[^`\n]*`/;
+const BACKTICK_SUBST_RE = /`[^`\n]*`/;
+
+function hasSubstitution(text) {
+  const open = text.indexOf('$(');
+  return (open !== -1 && text.indexOf(')', open + 2) !== -1) || BACKTICK_SUBST_RE.test(text);
+}
 const POSITIONAL_RE = /\$[@*#?$0-9]/;
 const INDIRECTION = /[$`]/;
 const ALIAS_OR_FUNCTION = /(?:^|[\s;&|(])(?:alias\s+[A-Za-z_][\w-]*\s*=|function\s+[A-Za-z_][\w-]*\s*(?:\(\s*\))?\s*\{|[A-Za-z_][\w-]*\s*\(\s*\)\s*\{)/;
@@ -121,7 +126,7 @@ export function resolveCommand(command, opts = {}) {
   if (!INDIRECTION.test(cmd) && !ALIAS_OR_FUNCTION.test(cmd)) return null;
 
   const unresolved = [];
-  if (SUBST_RE.test(cmd)) unresolved.push('command-substitution');
+  if (hasSubstitution(cmd)) unresolved.push('command-substitution');
   if (POSITIONAL_RE.test(cmd)) unresolved.push('positional-parameter');
   if (ALIAS_OR_FUNCTION.test(cmd)) unresolved.push('alias-or-function');
 
@@ -130,7 +135,7 @@ export function resolveCommand(command, opts = {}) {
 
   const effectivePath = vars.has('PATH') ? substitute(vars.get('PATH'), vars, env, []) : env.PATH;
   const word = substitute(rest, vars, env, []).trim().split(/\s+/)[0] ?? '';
-  const executable = SUBST_RE.test(word) || word.includes('$') ? null : locate(word, effectivePath, cwd, statSync);
+  const executable = hasSubstitution(word) || word.includes('$') ? null : locate(word, effectivePath, cwd, statSync);
 
   if (resolved === cmd && !executable && !unresolved.length) return null;
   return {
