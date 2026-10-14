@@ -225,17 +225,20 @@ test('SARIF paths share one base, are encoded, and single-file gate speaks SARIF
   }
 });
 
-test('secrets skips devices and says which files were too large to read', { skip: process.platform === 'win32' && 'device files' }, () => {
+test('secrets reads big files in parts, skips devices, and says which files were too large to read', { skip: process.platform === 'win32' && 'device files' }, () => {
   const s = sandbox();
   try {
     fs.symlinkSync('/dev/zero', path.join(s.dir, 'zero.txt'));
-    s.write('big.log', `${'x'.repeat(9 * 1024 * 1024)}\n${TOKEN}\n`);
-    s.write('notes.txt', 'nothing here\n');
+    s.write('app.log', `${'request served in 12ms\n'.repeat(400000)}token=${TOKEN}\n`);
+    const huge = fs.openSync(path.join(s.dir, 'huge.log'), 'w');
+    fs.ftruncateSync(huge, 65 * 1024 * 1024);
+    fs.closeSync(huge);
     const res = s.run(['secrets', '--json']);
     assert.notEqual(res.signal, 'SIGTERM', 'a device never hangs the scan');
     const out = JSON.parse(res.stdout);
+    assert.ok(out.hits.some((h) => h.file === 'app.log' && h.line === 400001), JSON.stringify(out.hits));
     assert.equal(out.complete, false);
-    assert.match(out.incomplete.join(' '), /over 8 MB were not scanned/);
+    assert.match(out.incomplete.join(' '), /over 64 MB were not scanned/);
   } finally {
     s.done();
   }

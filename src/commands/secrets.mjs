@@ -1,14 +1,16 @@
 import { git, gitLines } from '../core/git-exec.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
-import { SKIP_DIRS, readRegularFile, resolveScanTarget } from '../artifacts/matchers.mjs';
+import { SKIP_DIRS, resolveScanTarget } from '../artifacts/matchers.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { clampInt } from '../core/numbers.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { SECRET_PATTERNS, localScan } from '../detect/guard-signals.mjs';
 
 const MAX_FILES = 50000;
-const MAX_SECRET_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_SECRET_FILE_BYTES = 64 * 1024 * 1024;
+const CHUNK_BYTES = 4 * 1024 * 1024;
+const CHUNK_OVERLAP = 64 * 1024;
 const HISTORY_TIMEOUT_MS = 600000;
 
 function redactSecret(s) {
@@ -42,21 +44,65 @@ export function walkFiles(root, cap = MAX_FILES) {
   return found;
 }
 
-function scanFile(root, rel) {
-  const read = readRegularFile(path.join(root, rel), MAX_SECRET_FILE_BYTES);
-  if (read.skip) return { skipped: read.skip === 'too large' ? 'too large' : read.skip === 'not a regular file' ? 'special' : 'unreadable' };
-  const { content } = read;
-  if (content.includes('\0')) return { hits: [] };
-  const byLine = new Map();
-  for (const f of localScan(content, { categories: ['secret'] }).findings) {
-    const label = f.label.replace(/^Live credential:\s*/, '');
-    const key = f.line ?? 0;
-    const prior = byLine.get(key);
-    if (prior) {
-      if (!prior.secret.split(', ').includes(label)) prior.secret = `${prior.secret}, ${label}`;
-    } else byLine.set(key, { where: 'working-tree', file: rel, line: f.line, secret: label });
+function newlinesBefore(buf, end) {
+  let n = 0;
+  for (let i = buf.indexOf(10); i !== -1 && i < end; i = buf.indexOf(10, i + 1)) n++;
+  return n;
+}
+
+function readChunks(full, onChunk) {
+  let fd;
+  try {
+    fd = fs.openSync(full, fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0));
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) return { skipped: 'special' };
+    if (st.size > MAX_SECRET_FILE_BYTES) return { skipped: 'too large' };
+    const buf = Buffer.alloc(Math.max(1, Math.min(st.size, CHUNK_BYTES + CHUNK_OVERLAP)));
+    let offset = 0;
+    let line = 1;
+    for (;;) {
+      const n = fs.readSync(fd, buf, 0, buf.length, offset);
+      if (n <= 0) break;
+      const chunk = buf.subarray(0, n);
+      if (onChunk(chunk, line) === false || offset + n >= st.size) break;
+      const step = Math.min(CHUNK_BYTES, n);
+      line += newlinesBefore(chunk, step);
+      offset += step;
+    }
+    return {};
+  } catch {
+    return { skipped: 'unreadable' };
+  } finally {
+    if (fd !== undefined) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+      }
+    }
   }
-  return { hits: [...byLine.values()] };
+}
+
+function scanFile(root, rel) {
+  const byLine = new Map();
+  let binary = false;
+  const read = readChunks(path.join(root, rel), (chunk, firstLine) => {
+    if (chunk.includes(0)) {
+      binary = true;
+      return false;
+    }
+    for (const f of localScan(chunk.toString('utf8'), { categories: ['secret'] }).findings) {
+      const label = f.label.replace(/^Live credential:\s*/, '');
+      const line = f.line ? firstLine + f.line - 1 : undefined;
+      const key = line ?? 0;
+      const prior = byLine.get(key);
+      if (prior) {
+        if (!prior.secret.split(', ').includes(label)) prior.secret = `${prior.secret}, ${label}`;
+      } else byLine.set(key, { where: 'working-tree', file: rel, line, secret: label });
+    }
+    return true;
+  });
+  if (read.skipped) return read;
+  return { hits: binary ? [] : [...byLine.values()] };
 }
 
 async function scanGitHistory(root, depth) {

@@ -161,9 +161,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   YAML or frontmatter are refused), so a crafted `.mcp.json` can no longer make
   other files read as clean.
 - **`pr --json` prints JSON when nothing changed**, the Action passes every line
-  of a multi-line `args`, `secrets` skips devices like `/dev/zero` and reports
-  files too large to scan, and launching MCP servers on Windows stays fast on
+  of a multi-line `args`, and launching MCP servers on Windows stays fast on
   long runs of backslashes.
+- **`secrets` reads big files.** Files up to 64 MB are read in overlapping
+  parts, so a token in a large log is found with its line number; devices like
+  `/dev/zero` are skipped, and anything larger is reported as not scanned.
 - **Large rules files check fast.** A long paragraph no longer takes seconds to
   split into sentences.
 - **The GitHub Action no longer pastes its inputs into a shell script.**
