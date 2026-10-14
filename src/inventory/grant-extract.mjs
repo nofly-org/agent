@@ -1,4 +1,5 @@
 import { parseToml } from '../core/toml-lite.mjs';
+import { maskNamedSecretsIn } from '../detect/signals/mcp-config.mjs';
 
 const MAX_DEPTH = 12;
 const MAX_NODES = 5000;
@@ -81,9 +82,13 @@ const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
 const asList = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : typeof v === 'string' ? [v] : []);
 
+const CREDENTIAL_ASSIGNMENT = /\b([A-Za-z0-9_]*(?:PASSWORD|PASSWD|PASSPHRASE|TOKEN|SECRET|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY|CREDENTIALS?)[A-Za-z0-9_]*)=("[^"]*"|'[^']*'|[^\s"';&|)]+)/gi;
+
 function clean(s) {
-  const t = String(s).slice(0, STR_CAP).replace(/^([a-z]+:\/\/)[^/@\s]*@/i, '$1');
-  return SECRETISH.test(t) ? null : t;
+  const t = String(s).slice(0, STR_CAP)
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^/@\s]*@/gi, '$1')
+    .replace(CREDENTIAL_ASSIGNMENT, '$1=[redacted]');
+  return SECRETISH.test(t) ? null : maskNamedSecretsIn(t);
 }
 
 function addAll(sink, values) {

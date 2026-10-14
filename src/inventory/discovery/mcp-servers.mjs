@@ -4,6 +4,7 @@ import { readTextBounded } from './fs-read.mjs';
 import { redactEnv } from './model-keys.mjs';
 import { PLAT, userDirs } from './platform.mjs';
 import { walkWorkspace } from './workspace.mjs';
+import { boundedJson } from '../../core/wire-limits.mjs';
 import { maskServerSecrets, parseConfigDoc, readMcpServers } from '../../detect/signals/mcp-config.mjs';
 import { claudeDataDir, jetbrainsOptionFiles, readClaudeExtensions, readJetbrainsMcpServers, readSqliteMcpServers, warpDatabases } from './mcp-stores.mjs';
 
@@ -171,7 +172,7 @@ export function discoverMcpServers(roots = [process.cwd()], files = null, opts =
           ...(s.scope ? { projectScope: s.scope } : {}),
           ...(s.disabled ? { disabled: true } : {}),
         },
-        content: JSON.stringify({ command, url: s.url, env: s.env || {}, server: s }),
+        content: boundedJson({ command, url: s.url, env: s.env || {}, server: s }),
       });
     }
   }

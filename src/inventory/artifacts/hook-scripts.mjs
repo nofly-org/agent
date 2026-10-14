@@ -1,15 +1,16 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from '../../core/config.mjs';
 import { redactLocally } from '../../detect/local-redact.mjs';
 import { readText } from './file-read.mjs';
-import { MAX_BUNDLED } from './limits.mjs';
+import { CREDENTIAL_STORE, MAX_BUNDLED, SECRET_PATH } from './limits.mjs';
+import { insideOf } from './walk.mjs';
 import { userDirs } from '../discovery/platform.mjs';
 
 export const HOOK_SCRIPT_MODES = ['full', 'hash', 'off'];
 
 const SCRIPT_EXT = /\.(?:sh|bash|zsh|ps1|psm1|bat|cmd|py|js|mjs|cjs|ts|rb|pl|php|lua)$/i;
-const SECRET_PATH = /(?:^|[\\/])(?:\.env|\.ssh|\.aws|\.gnupg|\.netrc|\.npmrc|\.kube|\.docker)(?:[\\/]|$)|id_(?:rsa|dsa|ecdsa|ed25519)|secret|credential|password|\.pem$|\.key$/i;
 const COMMAND_KEYS = new Set(['command', 'bash', 'sh', 'powershell', 'pwsh', 'windows', 'linux', 'osx']);
 const EXTS = 'sh|bash|zsh|ps1|psm1|bat|cmd|py|js|mjs|cjs|ts|rb|pl|php|lua';
 const REF_RE = new RegExp(`(?:^|["'\\s=;&|(\`])((?:\\$\\{?[A-Za-z_]\\w*\\}?|%[A-Za-z_]\\w*%|~|[A-Za-z]:)?[\\\\/]?(?:[\\w.@-]+[\\\\/])*[\\w.@-]+\\.(?:${EXTS}))(?=["'\\s;|&)\`]|$)`, 'g');
@@ -88,12 +89,30 @@ export function resolveRef(ref, { hookFile, projectDir, home }) {
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
+function realOrSelf(p) {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+
+function credentialTarget(target, bases) {
+  const real = realOrSelf(target);
+  const inside = bases.filter(Boolean).map((b) => insideOf(realOrSelf(b), real)).filter((r) => r !== null);
+  if (!inside.length) return CREDENTIAL_STORE.test(real);
+  return SECRET_PATH.test(inside.sort((a, b) => a.length - b.length)[0]);
+}
+
 export function bundleHookScripts(artifact, hookFile, { projectDir, relPath, budget, capped, mode = hookScriptMode(), home }) {
   if (mode === 'off') return;
   const refs = [...new Set(hookCommands(artifact.content).flatMap(scriptRefs))].filter((r) => SCRIPT_EXT.test(r));
   const scripts = [];
   for (const ref of refs) {
-    if (SECRET_PATH.test(ref)) continue;
+    if (SECRET_PATH.test(ref)) {
+      scripts.push({ ref, state: 'withheld', reason: 'credential-path' });
+      continue;
+    }
     if (SHOMRA_GUARD_RE.test(ref)) {
       scripts.push({ ref, state: 'shomra-guard' });
       continue;
@@ -103,8 +122,12 @@ export function bundleHookScripts(artifact, hookFile, { projectDir, relPath, bud
       break;
     }
     const target = resolveRef(ref, { hookFile, projectDir, home }).find((p) => readText(p) != null);
-    if (!target || SECRET_PATH.test(target)) {
+    if (!target) {
       scripts.push({ ref, state: 'missing' });
+      continue;
+    }
+    if (credentialTarget(target, [projectDir, userDirs(home).HOME, pluginRootOf(hookFile)])) {
+      scripts.push({ ref, state: 'withheld', reason: 'credential-path' });
       continue;
     }
     const read = readText(target);

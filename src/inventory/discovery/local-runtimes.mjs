@@ -12,7 +12,7 @@ export function discoverLocalRuntimes(opts = {}) {
     { vendor: 'lmstudio', name: 'LM Studio', dirs: [path.join(HOME, '.lmstudio'), path.join(HOME, '.cache', 'lm-studio'), path.join(LOCALAPPDATA, 'LM Studio')], proc: ['lm studio', 'lmstudio', 'lms'] },
     { vendor: 'jan', name: 'Jan', dirs: [path.join(HOME, 'jan'), path.join(HOME, '.jan'), path.join(APPDATA, 'Jan')], proc: ['jan'] },
     { vendor: 'gpt4all', name: 'GPT4All', dirs: [path.join(HOME, '.cache', 'gpt4all'), path.join(HOME, 'Library', 'Application Support', 'nomic.ai', 'GPT4All'), path.join(LOCALAPPDATA, 'nomic.ai', 'GPT4All')], proc: ['gpt4all'] },
-    { vendor: 'huggingface', name: 'Hugging Face cache', dirs: [path.join(HOME, '.cache', 'huggingface'), path.join(process.env.HF_HOME || '', 'hub')], proc: [] },
+    { vendor: 'huggingface', name: 'Hugging Face cache', dirs: [path.join(HOME, '.cache', 'huggingface'), ...(own && process.env.HF_HOME && path.isAbsolute(process.env.HF_HOME) ? [path.join(process.env.HF_HOME, 'hub')] : [])], proc: [] },
     { vendor: 'localai', name: 'LocalAI', dirs: [path.join(HOME, '.localai')], proc: ['local-ai', 'localai'] },
     { vendor: 'textgen', name: 'Text Generation WebUI', dirs: [], proc: ['text-generation', 'oobabooga'] },
     { vendor: 'vllm', name: 'vLLM', dirs: [], proc: ['vllm'] },

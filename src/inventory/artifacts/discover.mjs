@@ -221,7 +221,12 @@ function bundleSkillFiles({ skills, walked, state }) {
   }
 }
 
-function walkSites(sites, budget) {
+function linkRoots(site, home) {
+  if (site.managed) return [];
+  return site.scope === 'project' ? [path.dirname(site.dir)] : [userDirs(home).HOME];
+}
+
+function walkSites(sites, budget, home, capped) {
   const walked = [];
   const seenRoot = new Set();
   for (const site of sites) {
@@ -233,7 +238,7 @@ function walkSites(sites, budget) {
     }
     if (seenRoot.has(realRoot)) continue;
     seenRoot.add(realRoot);
-    walked.push({ site, files: walkRoot(site.dir, budget) });
+    walked.push({ site, files: walkRoot(site.dir, budget, { within: linkRoots(site, home), refused: capped }) });
   }
   return walked;
 }
@@ -260,7 +265,7 @@ export function discoverAgentArtifacts(cwd = process.cwd(), roots = null, opts =
     availableBy: new Map(),
   };
 
-  const walked = walkSites(sites, state.budget);
+  const walked = walkSites(sites, state.budget, home, state.capped);
   for (const { site, files } of walked) collectFromSite({ site, files, state, project });
   collectInstalledPlugins({ sites, state, project, home });
   bundleSkillFiles({ skills: state.skills, walked, state });

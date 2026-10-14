@@ -46,5 +46,22 @@ export function printArtifacts(artifacts, capped = [], available = []) {
   }
   if (capped.length) {
     console.log(dim(`\n  Sweep capped (${capped.length}) - this list is a floor, not a total.`));
+    const byReason = new Map();
+    for (const c of capped) byReason.set(c?.reason, (byReason.get(c?.reason) ?? 0) + 1);
+    for (const [reason, n] of byReason) console.log(`      ${dim(CAP_LABELS[reason] ?? String(reason ?? 'Unknown'))} ${gray(n)}`);
   }
 }
+
+const CAP_LABELS = {
+  'artifact-cap': 'Artifact Limit Reached',
+  'walk-budget': 'Folder Limit Reached',
+  'byte-budget': 'Size Budget Reached',
+  'bundle-cap': 'Bundled File Limit Reached',
+  'link-outside': 'Links Leaving Your Home Or Project, Not Followed',
+  'link-withheld': 'Links To Key Or Credential Files, Not Read',
+  'source-failed': 'Discovery Step Failed',
+  'manifest-too-large': 'Manifest Too Large To Read',
+  'parse-failed': 'File Could Not Be Parsed',
+  oversized: 'File Too Large To Read',
+  'sqlite-unavailable': 'Database Reader Unavailable',
+};

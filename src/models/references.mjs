@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { MAX_ARTIFACT_BYTES } from '../artifacts/matchers.mjs';
+import { MAX_ARTIFACT_BYTES, readRegularFile } from '../artifacts/matchers.mjs';
 import { isModelRefScannable, scanModelRefs } from '../detect/model-refs.mjs';
 import { MODEL_SEV_RANK, modelFixPlan, modelLookup } from './lookup.mjs';
 
@@ -17,14 +17,8 @@ export function resolveScanScope(target, walkFiles) {
 }
 
 function readScannableFile(root, relativePath) {
-  try {
-    const full = path.join(root, relativePath);
-    if (fs.statSync(full).size > MAX_ARTIFACT_BYTES) return null;
-    const content = fs.readFileSync(full, 'utf8');
-    return content.includes('\0') ? null : content;
-  } catch {
-    return null;
-  }
+  const read = readRegularFile(path.join(root, relativePath), MAX_ARTIFACT_BYTES);
+  return typeof read.content === 'string' && !read.content.includes('\0') ? read.content : null;
 }
 
 export function collectModelReferences(root, entries) {

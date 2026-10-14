@@ -6,8 +6,9 @@ import { exitNotConfigured } from '../core/exit-codes.mjs';
 import { clampInt } from '../core/numbers.mjs';
 import { SEV_COLOR, VERDICT_COLOR, bold, cyan, dim, gray, green, red, yellow } from '../core/terminal.mjs';
 import { VERSION } from '../core/version.mjs';
+import { maskDeep } from '../detect/secret-mask.mjs';
 import { discoverAgentArtifacts } from '../inventory/agent-artifacts.mjs';
-import { discoverAll } from '../inventory/discovery.mjs';
+import { discoverAll, discoveryFailures } from '../inventory/discovery.mjs';
 import { unreadMcpStores } from '../inventory/discovery/mcp-servers.mjs';
 import { mergeHomeArtifacts, mergeHomeAssets } from '../inventory/multi-home.mjs';
 import { consoleUser, isPrivileged, listUserHomes, orderHomes } from '../core/user-homes.mjs';
@@ -38,11 +39,16 @@ function discoverAllUsers(flags) {
   return { assets: mergeHomeAssets(runs), ...mergeHomeArtifacts(runs), unreadStores, homes: ordered.map((h) => ({ user: h.user, home: h.home })) };
 }
 
+function withFailures(found) {
+  const failed = discoveryFailures();
+  return failed.length ? { ...found, capped: [...(found.capped ?? []), ...failed] } : found;
+}
+
 function discoverEverything(flags) {
-  if (flags['all-users']) return discoverAllUsers(flags);
+  if (flags['all-users']) return withFailures(discoverAllUsers(flags));
   const assets = discover(flags);
   const found = discoverArtifacts(flags);
-  return { assets, ...found, unreadStores: unreadMcpStores() };
+  return withFailures({ assets, ...found, unreadStores: unreadMcpStores() });
 }
 
 export async function cmdScan(flags) {
@@ -53,7 +59,7 @@ export async function cmdScan(flags) {
   const { assets, artifacts, capped, available, unreadStores, homes } = discoverEverything(flags);
   
   if (flags.json && !flags.report) {
-    console.log(JSON.stringify({ machine: machineInfo(cfg), ...(homes ? { homes } : {}), assets, artifacts, capped, available, ...(unreadStores.length ? { unreadMcpStores: unreadStores } : {}) }, null, 2));
+    console.log(JSON.stringify({ machine: machineInfo(cfg), ...(homes ? { homes } : {}), assets: maskDeep(assets), artifacts: maskDeep(artifacts), capped, available, ...(unreadStores.length ? { unreadMcpStores: unreadStores } : {}) }, null, 2));
     return;
   }
   if (!flags.json) {
@@ -87,8 +93,8 @@ async function sendReport(cfg, assets, flags, extra = {}) {
   try {
     const res = await api(url, apiKey, '/agent/report', {
       machine: { ...machineInfo(cfg), scope: flags['all-users'] ? 'all-users' : 'user' },
-      assets,
-      artifacts,
+      assets: maskDeep(assets),
+      artifacts: maskDeep(artifacts),
 
       capped,
 

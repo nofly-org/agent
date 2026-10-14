@@ -24,3 +24,14 @@ export function maskSecrets(text) {
   };
   return { text: out, masked: originals.size, restore };
 }
+
+const MAX_MASK_DEPTH = 64;
+const MIN_MASKABLE = 8;
+
+export function maskDeep(value, depth = 0) {
+  if (typeof value === 'string') return value.length >= MIN_MASKABLE ? maskSecrets(value).text : value;
+  if (!value || typeof value !== 'object') return value;
+  if (depth >= MAX_MASK_DEPTH) return null;
+  if (Array.isArray(value)) return value.map((item) => maskDeep(item, depth + 1));
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, maskDeep(item, depth + 1)]));
+}

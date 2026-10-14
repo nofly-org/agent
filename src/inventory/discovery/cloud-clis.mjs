@@ -268,13 +268,15 @@ function docker(HOME) {
  * ⚠ An agent that can publish is an agent that can ship code to everyone who
  * installs it. It is inventory for the same reason the cloud entries are.
  */
+const withoutUserinfo = (url) => String(url).replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@\s]*@/i, '$1');
+
 function packageRegistries(HOME) {
   const out = [];
   const npmrc = path.join(HOME, '.npmrc');
   if (exists(npmrc)) {
     const t = readText(npmrc) ?? '';
     const reg = /registry\s*=\s*(\S+)/.exec(t);
-    out.push(asset('npm', 'npm', npmrc, { provider: 'registry', account: reg ? reg[1] : 'registry.npmjs.org', principal: null, hasStaticKey: /_authToken\s*=/.test(t) }));
+    out.push(asset('npm', 'npm', npmrc, { provider: 'registry', account: reg ? withoutUserinfo(reg[1]) : 'registry.npmjs.org', principal: null, hasStaticKey: /_authToken\s*=|:_password\s*=|^\s*_auth\s*=/m.test(t) || /:\/\/[^/@\s]+@/.test(reg?.[1] ?? '') }));
   }
   const pypirc = path.join(HOME, '.pypirc');
   if (exists(pypirc)) {

@@ -209,6 +209,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **The docs and `status` say exactly what leaves the machine without a key**:
   only pinned MCP package names, checked against osv.dev (`SHOMRA_OFFLINE=1`
   stops that).
+- **`scan` and `report` never send a credential.** Every asset and artifact is
+  masked before it is printed or uploaded, including permission allow-lists,
+  registry addresses with a login in them and files bundled with a skill.
+- **One odd file no longer stops the inventory.** A config nested thousands of
+  levels deep, a named pipe or a link to a device is skipped and listed instead
+  of crashing or hanging `scan`, `report`, `models` and `corpus`, and a failed
+  discovery step is listed as skipped instead of ending the scan.
+- **Agent folders linked from a dotfiles folder are scanned.** Links inside your
+  home (or inside the project, for project folders) are followed; a link that
+  leaves them, or points into a key or credential folder, is not read and is
+  listed as skipped, and the scan summary says why each item was skipped.
+- **A hook script in a folder whose name looks sensitive is still checked.**
+  Only the part of the path inside the project or home is judged, and a script
+  that resolves into a key folder is reported as withheld, not missing.
 
 
 ### Agent identity registration

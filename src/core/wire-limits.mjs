@@ -51,3 +51,21 @@ export function clampArtifact(artifact) {
       : {}),
   };
 }
+
+export const MAX_WIRE_DEPTH = 32;
+export const TOO_DEEP = '[shomra: nested too deep to read]';
+
+export function pruneDepth(value, depth = 0) {
+  if (!value || typeof value !== 'object') return value;
+  if (depth >= MAX_WIRE_DEPTH) return TOO_DEEP;
+  if (Array.isArray(value)) return value.map((item) => pruneDepth(item, depth + 1));
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, pruneDepth(item, depth + 1)]));
+}
+
+export function boundedJson(value, space) {
+  try {
+    return JSON.stringify(pruneDepth(value), null, space);
+  } catch {
+    return JSON.stringify(TOO_DEEP);
+  }
+}

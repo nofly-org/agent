@@ -11,25 +11,41 @@ import { discoverVectorStores } from './vector-stores.mjs';
 import { userDirs } from './platform.mjs';
 import { resolveRoots, walkWorkspace } from './workspace.mjs';
 
+const failures = [];
+
+export function discoveryFailures() {
+  return failures.slice();
+}
+
+function fromSource(source, read) {
+  try {
+    const found = read();
+    return Array.isArray(found) ? found : [];
+  } catch (error) {
+    failures.push({ reason: 'source-failed', path: source, detail: String(error?.message ?? error).slice(0, 200) });
+    return [];
+  }
+}
+
 export function discoverAll(roots = [process.cwd()], opts = {}) {
   const { autoExpand = true, home } = opts;
   const own = userDirs(home).own;
   const scanRoots = resolveRoots(roots, autoExpand, home);
   const files = walkWorkspace(scanRoots);
   const all = [
-    ...discoverMcpServers(scanRoots, files, { home }),
-    ...discoverRulesFiles(scanRoots, files),
-    ...discoverAiDependencies(scanRoots, files),
-    ...discoverAiUsageInCode(scanRoots, files),
-    ...discoverMcpClients(scanRoots, files),
-    ...discoverVectorStores(scanRoots, files),
-    ...discoverDotenvKeys(scanRoots, files),
-    ...discoverAiTools({ home }),
-    ...discoverCodingAgents(scanRoots, { home }),
-    ...(own ? discoverModelKeys() : []),
+    ...fromSource('mcp-servers', () => discoverMcpServers(scanRoots, files, { home })),
+    ...fromSource('rules-files', () => discoverRulesFiles(scanRoots, files)),
+    ...fromSource('ai-dependencies', () => discoverAiDependencies(scanRoots, files)),
+    ...fromSource('ai-usage-in-code', () => discoverAiUsageInCode(scanRoots, files)),
+    ...fromSource('mcp-clients', () => discoverMcpClients(scanRoots, files)),
+    ...fromSource('vector-stores', () => discoverVectorStores(scanRoots, files)),
+    ...fromSource('dotenv-keys', () => discoverDotenvKeys(scanRoots, files)),
+    ...fromSource('ai-tools', () => discoverAiTools({ home })),
+    ...fromSource('coding-agents', () => discoverCodingAgents(scanRoots, { home })),
+    ...(own ? fromSource('model-keys', () => discoverModelKeys()) : []),
     // ⚠ What this HOST is logged into - the reach an agent with a shell
     // inherits and no agent policy granted. See `cloud-clis.mjs`.
-    ...discoverCloudClis({ home }),
+    ...fromSource('cloud-clis', () => discoverCloudClis({ home })),
   ];
 
   const clamped = all.map(clampAsset);
