@@ -225,6 +225,22 @@ test('SARIF paths share one base, are encoded, and single-file gate speaks SARIF
   }
 });
 
+test('secrets skips devices and says which files were too large to read', { skip: process.platform === 'win32' && 'device files' }, () => {
+  const s = sandbox();
+  try {
+    fs.symlinkSync('/dev/zero', path.join(s.dir, 'zero.txt'));
+    s.write('big.log', `${'x'.repeat(9 * 1024 * 1024)}\n${TOKEN}\n`);
+    s.write('notes.txt', 'nothing here\n');
+    const res = s.run(['secrets', '--json']);
+    assert.notEqual(res.signal, 'SIGTERM', 'a device never hangs the scan');
+    const out = JSON.parse(res.stdout);
+    assert.equal(out.complete, false);
+    assert.match(out.incomplete.join(' '), /over 8 MB were not scanned/);
+  } finally {
+    s.done();
+  }
+});
+
 test('secrets exits 1 on a find in every output mode, and refuses a path that is not there', () => {
   const s = sandbox();
   try {

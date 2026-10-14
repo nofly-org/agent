@@ -198,17 +198,19 @@ export async function cmdBaseline(flags, positional) {
     process.stdout.write(dim(`  Scanning ${artifacts.length} artifact${artifacts.length > 1 ? 's' : ''} to baseline… `));
   }
 
-  const { results } = await gateArtifactList(artifacts, {
-    apiKey, url, env, root, flags: { ...flags, json: true, 'no-suppress': true },
+  const { results, acceptedLines } = await gateArtifactList(artifacts, {
+    apiKey, url, env, root, acceptLines: true, flags: { ...flags, json: true, 'no-suppress': true },
   });
 
   const counts = {};
-  for (const result of results) {
+  const lines = {};
+  results.forEach((result, index) => {
     for (const finding of result.findings || []) {
       const fp = findingFingerprint(result.path, finding);
       counts[fp] = (counts[fp] ?? 0) + 1;
     }
-  }
+    Object.assign(lines, acceptedLines[index]);
+  });
   const fingerprints = new Set(Object.keys(counts));
 
   const directory = path.join(root, '.shomra');
@@ -220,6 +222,7 @@ export async function cmdBaseline(flags, positional) {
     count: fingerprints.size,
     fingerprints: [...fingerprints],
     counts,
+    lines,
   }, null, 2));
 
   const relative = path.relative(process.cwd(), file).split(path.sep).join('/');

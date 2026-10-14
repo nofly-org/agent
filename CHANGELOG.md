@@ -20,8 +20,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   flag given no value (`init --key --url …`) is refused with exit 3, words after
   `--` are kept, and `<command> --help` shows help instead of running the
   command.
-- **The baseline counts.** A new copy of an accepted finding now fails; run
-  `shomra baseline` again to accept it.
+- **The baseline counts, line by line.** A new copy of an accepted finding now
+  fails, including a second copy of a problem in a file that was already
+  accepted once; the baseline records the lines it accepted, so moving them
+  does not matter. Run `shomra baseline` again to accept a new copy, and re-run
+  it once to upgrade a baseline written by an older version.
 - **The pre-receive hook reads pushed commits straight from git** with the new
   `shomra check --rev <sha> [--base-rev <sha>]`. It checks what a push changes,
   takes waivers only from before the push, and cannot be blinded by a pushed

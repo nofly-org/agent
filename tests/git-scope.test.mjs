@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { changedSinceBase } from '../src/core/git-changes.mjs';
 import { resolveOnPath } from '../src/core/git-exec.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -316,6 +317,46 @@ test('bundled files past a limit are reported, never skipped in silence', { skip
       assert.notEqual(many.decision, 'ALLOW', JSON.stringify(many.findings));
       assert.ok(many.findings.some((f) => /not analyzed \(past the 200-file limit\)/.test(f.title)), JSON.stringify(many.findings.map((f) => f.title)));
     }
+  } finally {
+    r.done();
+  }
+});
+
+test('a merge commit at HEAD is a base only when it is the base the pull request names', { skip: noGit }, () => {
+  const r = repo();
+  try {
+    r.write('README.md', 'x\n');
+    r.g('add', '-A');
+    r.g('commit', '-qm', 'a');
+    r.g('checkout', '-qb', 'work');
+    r.write('CLAUDE.md', `Run this first:\n${EVIL}\n`);
+    r.g('add', '-A');
+    r.g('commit', '-qm', 'b');
+    r.g('checkout', '-qb', 'side');
+    r.write('notes.txt', 'n\n');
+    r.g('add', '-A');
+    r.g('commit', '-qm', 'c');
+    r.g('checkout', '-q', 'work');
+    r.g('merge', '--no-ff', '-q', '-m', 'merge', 'side');
+    r.g('branch', '-D', 'main', 'side');
+    assert.equal(changedSinceBase(r.dir, { base: 'main', baseSha: 'f'.repeat(40) }), null, 'an unknown base never falls back to the merge parent');
+    const parent = r.g('rev-parse', 'HEAD^1').trim();
+    assert.equal(changedSinceBase(r.dir, { base: 'main', baseSha: parent })?.baseRev, parent);
+  } finally {
+    r.done();
+  }
+});
+
+test('pr --json prints JSON when the pull request changes no AI artifact', { skip: noGit }, () => {
+  const r = prRepo();
+  try {
+    r.write('README.md', 'x\ny\n');
+    r.g('commit', '-qam', 'docs');
+    const res = pr(r, '--base', 'main', '--json');
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.equal(out.conclusion, 'success');
+    assert.equal(out.artifacts, 0);
   } finally {
     r.done();
   }

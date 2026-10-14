@@ -9,7 +9,7 @@ import { isGateVerdict, localAsGateResult } from './result.mjs';
 import { bundledFindings, collectLocalSast, mergeSastIntoResult } from './sast.mjs';
 import { withMcpAdvisories } from './advisories.mjs';
 import { maskSecrets } from '../detect/secret-mask.mjs';
-import { loadBaseline, loadIgnoreRules, parseBaseline, parseIgnoreRules, suppressResult } from './suppressions.mjs';
+import { acceptedLines, loadBaseline, loadIgnoreRules, parseBaseline, parseIgnoreRules, suppressResult } from './suppressions.mjs';
 
 export { readArtifactBounded };
 
@@ -168,7 +168,7 @@ function resolvePolicy(flags, root, trusted) {
   return trusted.policy ? parseRepoPolicy(trusted.policy.text, trusted.policy.file) : null;
 }
 
-export async function gateArtifactList(artifacts, { apiKey, url, env, flags, root, trusted }) {
+export async function gateArtifactList(artifacts, { apiKey, url, env, flags, root, trusted, acceptLines = false }) {
   const quiet = flags.json || flags.sarif;
   const workingRoot = root || process.cwd();
   const suppression = resolveSuppression(flags, workingRoot, trusted);
@@ -187,6 +187,7 @@ export async function gateArtifactList(artifacts, { apiKey, url, env, flags, roo
   if (advisoryOutage && !quiet) console.log(`  ${yellow('⚠')} ${dim('Advisory lookup (OSV) unreachable - pinned MCP packages were not checked for published CVEs.')}`);
 
   const results = [];
+  const accepted = [];
   let blocked = 0;
   let flagged = 0;
   let suppressed = 0;
@@ -210,13 +211,14 @@ export async function gateArtifactList(artifacts, { apiKey, url, env, flags, roo
 
     suppressed += result.suppressedCount || 0;
     results.push(result);
+    if (acceptLines) accepted.push(acceptedLines(raw, suppression.lineCache, recheckFor(artifact)));
     if (result.decision === 'BLOCK') blocked += 1;
     else if (result.decision === 'FLAG') flagged += 1;
 
     if (!quiet) printResult(result, artifact, source);
   });
 
-  return { results, blocked, flagged, suppressed, backendDown, rejected, authFailed };
+  return { results, blocked, flagged, suppressed, backendDown, rejected, authFailed, ...(acceptLines ? { acceptedLines: accepted } : {}) };
 }
 
 export function failOnHit(flags, blocked, flagged) {
