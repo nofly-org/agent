@@ -4,7 +4,7 @@ import { exitNotConfigured } from '../core/exit-codes.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { VERSION } from '../core/version.mjs';
 import { resolveAgentIdentityHandle } from './agent-identity.mjs';
-import { keyedFetch } from '../core/keyed-fetch.mjs';
+import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
 import { currentUsername } from '../core/api-client.mjs';
 
 export const LLM_PROVIDERS = ['openai', 'anthropic', 'gemini', 'groq', 'mistral', 'xai', 'deepseek', 'openrouter', 'together', 'cohere', 'voyage', 'jina'];
@@ -175,9 +175,9 @@ function createProxyHandler({ url, headerContext, providerPattern }) {
         body: BODYLESS_METHODS.includes(request.method) ? undefined : body,
       });
     } catch (error) {
-      const cause = error.cause ? ` (${error.cause.code ?? ''} ${error.cause.message ?? error.cause})` : '';
-      sendJson(response, 502, { error: { message: `Shomra backend unreachable at ${url}: ${error.message}${cause}` } });
-      console.log(`  ${red('✗')} ${request.method} ${request.url} ${red('backend unreachable')}${dim(cause)} ${dim(`hdrs: ${Object.keys(headers).join(',')}`)}`);
+      const why = describeFetchError(error, url);
+      sendJson(response, 502, { error: { message: `Shomra backend unreachable: ${why}` } });
+      console.log(`  ${red('✗')} ${request.method} ${request.url} ${red('backend unreachable')} ${dim(why)}`);
       return;
     }
 

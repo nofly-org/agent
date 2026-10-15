@@ -349,6 +349,9 @@ const ENV = () => `${bold('ENV')}
   SHOMRA_MODEL_CACHE_TTL_MS   Model-cache freshness window (default 7 days)
   SHOMRA_ALLOW_USER_NODE=1    Let a machine-wide schedule or managed hook run a Node or Shomra a normal user
                               can change (same as --allow-user-writable)
+  NODE_USE_ENV_PROXY=1        Send the CLI's requests through HTTPS_PROXY / HTTP_PROXY, honouring NO_PROXY
+                              (Node releases whose \`node --help\` lists --use-env-proxy)
+  NODE_EXTRA_CA_CERTS=<file>  Trust a company CA bundle, e.g. for a proxy that inspects HTTPS
 `;
 
 export const HELP_DETAILS = {

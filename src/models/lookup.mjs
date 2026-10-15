@@ -5,6 +5,7 @@ import { CONFIG_DIR } from '../core/config.mjs';
 import { clampInt } from '../core/numbers.mjs';
 import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
 import { readRegularText } from '../core/safe-read.mjs';
+import { describeFetchError } from '../core/keyed-fetch.mjs';
 
 const MODEL_CACHE_FILE = path.join(CONFIG_DIR, 'model-cache.json');
 
@@ -56,7 +57,7 @@ export async function modelLookup(url, id, sha, timeoutMs) {
   } catch (e) {
     breakerTrip();
     if (hit && hit.data) return { ...hit.data, cached: true, stale: true };
-    throw e;
+    throw e?.cause || e?.name === 'AbortError' ? new Error(describeFetchError(e, url)) : e;
   } finally { clearTimeout(timer); }
 }
 

@@ -8,7 +8,7 @@ import { emitResultBlock, emitResultContext } from './emit.mjs';
 import { guardPathAllowlisted } from './ignore.mjs';
 import { normalizeGuardInput } from './normalize.mjs';
 import { envFlag, guardWait, resolveAgentFlag } from './options.mjs';
-import { keyedFetch } from '../core/keyed-fetch.mjs';
+import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
 import { resultText, sendableResponse, withheldOutput } from './result-shape.mjs';
 import { readHookPayload as readPayload } from './payload.mjs';
 
@@ -108,7 +108,7 @@ async function requestServerDecision({ url, apiKey, body, agent, strict, screen,
   } catch (error) {
     clearTimeout(timer);
     breakerTrip();
-    if (strict) refuse(`Shomra result-guard could not be reached (${error.message}); blocked by fail-closed policy.`);
+    if (strict) refuse(`Shomra result-guard could not be reached (${describeFetchError(error, url)}); blocked by fail-closed policy.`);
     return exitWithoutVerdict(agent, screen);
   }
 }

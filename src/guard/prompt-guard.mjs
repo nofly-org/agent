@@ -7,7 +7,7 @@ import { detectEnv } from '../gate/environment.mjs';
 import { parentSessionFrom } from './normalize.mjs';
 import { envFlag, guardWait, resolveAgentFlag } from './options.mjs';
 import { reportGuardDecision } from './report.mjs';
-import { keyedFetch } from '../core/keyed-fetch.mjs';
+import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
 import { stoppedNote } from './emit.mjs';
 import { readHookPayload as readPayload } from './payload.mjs';
 
@@ -116,7 +116,7 @@ async function requestServerDecision({ url, apiKey, body, agent, strict, injecti
     clearTimeout(timer);
     breakerTrip();
     if (injection.length) emitPromptContext(agent, promptInjectionNote(injection));
-    if (strict) emitPromptDeny(agent, `Shomra prompt-guard could not be reached (${error.message}); blocked by fail-closed policy.`);
+    if (strict) emitPromptDeny(agent, `Shomra prompt-guard could not be reached (${describeFetchError(error, url)}); blocked by fail-closed policy.`);
     return process.exit(0);
   }
 }

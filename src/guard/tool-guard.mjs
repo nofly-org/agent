@@ -31,7 +31,7 @@ import { envFlag, guardWait, resolveAgentFlag } from './options.mjs';
 import { recordSelftest, selftestField } from './selftest-marker.mjs';
 import { buildGuardBody, flushQueuedReports, reportGuardDecision } from './report.mjs';
 import { guardHookTamper, guardStateTamper, hookTamperReason, refuseOrAsk, tamperReason } from './self-protect.mjs';
-import { keyedFetch } from '../core/keyed-fetch.mjs';
+import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
 import { readRegularText } from '../core/safe-read.mjs';
 
 const ALLOW_VERDICT = { verdict: 'ALLOW', top: null, findings: [] };
@@ -311,8 +311,9 @@ async function requestServerDecision({ url, apiKey, agentId, body, agent, strict
   } catch (error) {
     clearTimeout(timer);
     breakerTrip();
-    if (strict) emitGuardDeny(agent, `Shomra guard could not be reached (${error.message}); blocked by fail-closed policy.`);
-    return onUnreachable(error.message, { breaker: true });
+    const why = describeFetchError(error, url);
+    if (strict) emitGuardDeny(agent, `Shomra guard could not be reached (${why}); blocked by fail-closed policy.`);
+    return onUnreachable(why, { breaker: true });
   }
 }
 

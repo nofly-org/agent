@@ -14,6 +14,7 @@ import { touchedArtifacts } from '../gate/scope.mjs';
 import { trustedConfig } from '../gate/trusted.mjs';
 import { writeFileAtomic } from '../core/json-file.mjs';
 import { readRegularText } from '../core/safe-read.mjs';
+import { keyedFetch } from '../core/keyed-fetch.mjs';
 
 const PR_WORKFLOW = `name: Shomra AI Security
 on: pull_request
@@ -51,7 +52,7 @@ function githubApiBase() {
 }
 
 async function githubApi(token, method, apiPath, body) {
-  const res = await fetch(`${githubApiBase()}${apiPath}`, {
+  const res = await keyedFetch(`${githubApiBase()}${apiPath}`, {
     method,
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json', 'User-Agent': 'shomra-agent' },
     body: body ? JSON.stringify(body) : undefined,

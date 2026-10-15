@@ -307,6 +307,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `add skill` or `mcp … --config` is now named and skipped; before, every hook
   and command could hang on it, and a repo linking `.shomraignore` to
   `/dev/zero` held `shomra check` until the CI job timed out.
+- **A backend that cannot be reached is named in plain words.** "fetch failed"
+  now reads as a refused connection, a name that does not resolve, a closed
+  connection, a timeout or a TLS certificate that could not be verified (with
+  the `NODE_EXTRA_CA_CERTS` fix for a company proxy), and says when
+  `HTTPS_PROXY` is set but Node is not using it (`NODE_USE_ENV_PROXY=1`). A
+  `null` answer, a sign-in page or an HTML error page is refused in words
+  instead of crashing the command or printing the page, and the GitHub token
+  used by `shomra pr` never follows a redirect to another host.
 - **A config that cannot be read is reported, never read as empty.** `mcp list`
   says a config is broken instead of listing no servers, reads comments, and
   skips entries that are not servers; `mcp guard` no longer claims servers were
