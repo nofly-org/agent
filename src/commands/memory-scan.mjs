@@ -229,6 +229,7 @@ export async function cmdMemoryScan(flags, positional) {
 
   let worst = 'PASS';
   let unread = 0;
+  let failed = 0;
   const stores = [];
   for (const file of files) {
     const { content, unreadable, format } = readStore(file);
@@ -251,6 +252,7 @@ export async function cmdMemoryScan(flags, positional) {
         ...(format ? { format } : {}),
       });
     } catch (error) {
+      failed++;
       console.error(`  ${red('✗')} ${file.rel} ${red(`ingest error: ${error.message}`)}`);
       continue;
     }
@@ -262,13 +264,15 @@ export async function cmdMemoryScan(flags, positional) {
   }
 
   if (flags.json) {
-    console.log(JSON.stringify({ scanned: stores.length, unread, worst, stores, serverSide: SERVER_SIDE_MEMORY }, null, 2));
+    console.log(JSON.stringify({ scanned: stores.length, unread, failed, worst, stores, serverSide: SERVER_SIDE_MEMORY }, null, 2));
   } else {
     if (unread) console.log(`\n  ${yellow('⚠')} ${unread} store${unread > 1 ? 's were' : ' was'} found but not read - reported as not looked inside, never as clean.`);
+    if (failed) console.log(`\n  ${red('✗')} ${failed} of ${files.length} store${files.length > 1 ? 's' : ''} could not be sent for checking - ${failed === files.length ? 'nothing was checked' : 'the result below covers only the rest'}.`);
     console.log(dim(`\n  Not scannable from this machine: ${SERVER_SIDE_MEMORY.map((s) => s.vendor).join(', ')} keep memory server-side.`));
-    console.log(`\n  ${summaryLine(worst)}${dim(' Full timeline + rollback in the Shomra dashboard → Memory.\n')}`);
+    if (stores.length) console.log(`\n  ${summaryLine(worst)}${dim(' Full timeline + rollback in the Shomra dashboard → Memory.\n')}`);
+    else console.log('');
   }
 
-  if (worst === 'FAIL') process.exitCode = 1;
+  if (worst === 'FAIL' || failed) process.exitCode = 1;
   else if (worst === 'REVIEW' && flags.strict) process.exitCode = 2;
 }

@@ -47,6 +47,7 @@ async function backend(handler) {
 function run(args, url) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-backend-fail-'));
   fs.writeFileSync(path.join(home, 'w.zip'), Buffer.from([0x50, 0x4b, 0x05, 0x06, ...new Array(18).fill(0)]));
+  fs.writeFileSync(path.join(home, 'CLAUDE.md'), '# Rules\nUse pnpm.\n');
   return new Promise((done) => {
     const child = spawn(process.execPath, [CLI, ...args], {
       cwd: home,
@@ -79,5 +80,17 @@ test('commands answered with null, a web page or an HTML error say so instead of
     assert.doesNotMatch(zip.out, /<html|DOCTYPE/);
   } finally {
     await Promise.all([nul.close(), page.close(), broken.close()]);
+  }
+});
+
+test('a memory scan whose uploads all failed says nothing was checked and exits 1', async () => {
+  const down = await backend((req, res) => { res.writeHead(503, { 'content-type': 'application/json' }); res.end('{"message":"Service Unavailable"}'); });
+  try {
+    const r = await run(['memory-scan', 'CLAUDE.md'], down.url);
+    assert.equal(r.code, 1);
+    assert.match(r.out, /could not be sent for checking - nothing was checked/);
+    assert.doesNotMatch(r.out, /No memory poisoning found/);
+  } finally {
+    await down.close();
   }
 });

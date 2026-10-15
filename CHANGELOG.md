@@ -206,6 +206,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   is refused with exit 3 instead of switching the gate off, `campaign --turns`
   is held to the server's 2-12, and "All scenarios defended" needs every
   attempt graded.
+- **`memory-scan` fails when it could not send what it found.** A store whose
+  upload failed is counted (`failed` in `--json`), the summary says nothing
+  was checked instead of "No memory poisoning found", and the exit code is 1.
 - **`shomra run` passes only a run that reports COMPLETED.** A run still
   running, or one with no status, used to print "Completed" and exit 0.
 - **Gates fail on what they could not analyze.** Skill folders named build or
