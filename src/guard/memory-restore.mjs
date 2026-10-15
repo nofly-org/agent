@@ -17,6 +17,24 @@ const realOf = (p) => {
 };
 
 export const MAX_RESTORE_BYTES = 256 * 1024;
+
+const NEVER_RESTORE_NAMES = new Set([
+  'hooks.json', '.mcp.json', 'mcp.json', 'mcp_config.json', 'settings.json', 'settings.local.json', 'managed-settings.json',
+  'gemini-extension.json', 'qwen-extension.json', 'plugin.json', 'marketplace.json', 'installed_plugins.json', 'known_marketplaces.json',
+  'package.json', 'package-lock.json', 'claude_desktop_config.json', '.claude.json', 'config.toml', 'config.json', 'config.yaml', 'config.yml',
+  'keybindings.json', 'extensions.json', '.npmrc', '.netrc', 'makefile', 'dockerfile',
+]);
+const NEVER_RESTORE_EXT = /\.(?:sh|bash|zsh|fish|ps1|psm1|bat|cmd|command|py|pyw|js|mjs|cjs|ts|mts|cts|rb|pl|pm|php|lua|exe|dll|so|dylib)$/i;
+const NEVER_RESTORE_DIR = /(?:^|\/)(?:\.claude-plugin|hooks)\//i;
+
+export function restoreRefusal(p) {
+  const norm = String(p).split(path.sep).join('/');
+  const base = path.posix.basename(norm).toLowerCase();
+  if (NEVER_RESTORE_NAMES.has(base) || /^\.env(?:\.|$)/.test(base)) return 'it is an agent or tool configuration file, which a rollback never writes';
+  if (NEVER_RESTORE_EXT.test(base)) return 'it is a script or program, which a rollback never writes';
+  if (NEVER_RESTORE_DIR.test(norm)) return 'it sits in a hooks or plugin manifest folder, which a rollback never writes';
+  return null;
+}
 export const MAX_RESTORES = 20;
 
 const readOrNull = (p) => {
@@ -32,14 +50,17 @@ export function restoreVerdict(item, { read = readOrNull, ledger = readLedger } 
   const p = raw ? path.resolve(raw) : '';
   if (!raw || !path.isAbsolute(raw)) return { ok: false, reason: 'the path it named is not an absolute path on this machine' };
   if (!isMemoryPath(p)) return { ok: false, reason: 'the path it named is not an agent memory or rules file, so the hook will not write it' };
+  const refusal = restoreRefusal(p);
+  if (refusal) return { ok: false, reason: `the hook will not write it: ${refusal}` };
   if (!ledger(p)) return { ok: false, reason: 'the hook has never seen this file on this machine' };
   if (typeof item.content !== 'string' || Buffer.byteLength(item.content, 'utf8') > MAX_RESTORE_BYTES) return { ok: false, reason: 'the version it sent is missing or too large to write back' };
   if (sha256(item.content) !== item.hash) return { ok: false, reason: 'the version it sent does not match its own hash' };
   const current = read(p);
   if (current == null) return { ok: false, reason: 'the file is no longer on disk' };
-  if (sha256(current) !== item.replaces) return { ok: false, reason: 'the file changed since the rollback was asked for, so writing it back could lose someone’s edits' };
   const target = realOf(p);
-  if (target !== p && !isMemoryPath(target)) return { ok: false, reason: `the file is a link to ${target}, which is not an agent memory or rules file, so the hook will not write through it` };
+  if (target !== p && (!isMemoryPath(target) || restoreRefusal(target))) return { ok: false, reason: `the file is a link to ${target}, which is not an agent memory or rules file, so the hook will not write through it` };
+  if (sha256(current) === item.hash) return { ok: true, path: p, target, already: true };
+  if (sha256(current) !== item.replaces) return { ok: false, reason: 'the file changed since the rollback was asked for, so writing it back could lose someone’s edits' };
   return { ok: true, path: p, target };
 }
 
@@ -80,7 +101,11 @@ export async function applyPendingRestores({ url, apiKey, read = readOrNull, wri
   for (const item of listed.restores.slice(0, MAX_RESTORES)) {
     const verdict = restoreVerdict(item, { read, ledger });
     let ack;
-    if (verdict.ok) {
+    if (verdict.ok && verdict.already) {
+      record(verdict.path, [item.hash]);
+      ack = { applied: true, contentHash: item.hash };
+      out.applied.push(verdict.path);
+    } else if (verdict.ok) {
       try {
         const written = write(verdict.path, item.content);
         record(verdict.path, [written]);

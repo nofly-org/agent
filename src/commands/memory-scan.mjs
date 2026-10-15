@@ -112,18 +112,22 @@ export function machineMemoryFiles() {
 }
 
 export async function reportMemoryWrite(url, apiKey, body) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), guardTimeoutMs());
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), guardTimeoutMs());
-    await keyedFetch(`${url}/memory/ingest`, {
+    const res = await keyedFetch(`${url}/memory/ingest`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Shomra-Key': apiKey, Connection: 'close' },
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });
-    clearTimeout(timer);
+    res.body?.cancel?.().catch(() => {});
+    if (res.ok) return 'sent';
+    return res.status >= 500 || res.status === 429 || res.status === 408 ? 'failed' : 'rejected';
   } catch {
-    return;
+    return 'failed';
+  } finally {
+    clearTimeout(timer);
   }
 }
 

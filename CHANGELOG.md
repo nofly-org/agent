@@ -97,6 +97,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Search and replace edits are read line by line**, so a large edit no longer
   takes minutes to read, a block that deletes text is applied correctly, and a
   Roo Code `:start_line:` hint is understood.
+- **A memory change seen during an outage is reported once the server is back.**
+  It used to be marked as delivered when the server never received it.
+- **Rollbacks write only memory and rules documents.** A rollback naming a
+  hooks file, an MCP config, a settings file, an extension manifest or a script
+  is refused, even inside a folder named "memory", and a rollback that is
+  already in place after a lost acknowledgement is reported as applied.
+- **Outage counts are never lost to a damaged ledger.** A window whose start
+  time is unreadable is still reported, with its length marked as not measured.
+- **On-machine masking covers every match**, not the first 5,000 of each kind.
 
 ### Agent installs
 - **Hooks are written in the format each agent loads.** Codex reads hooks only

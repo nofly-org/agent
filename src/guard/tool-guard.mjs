@@ -197,14 +197,16 @@ async function recordMemoryWrite({ url, apiKey, tool, input, normalized }) {
   const writes = memoryWritesFor(tool, input, { cwd: normalized.cwd }).filter((w) => w.path && isMemoryPath(w.path));
   for (const w of writes) {
     await reportOutOfBand(url, apiKey, w.path, w.before, normalized);
-    await reportMemoryWrite(url, apiKey, {
+    const outcome = await reportMemoryWrite(url, apiKey, {
       ...memoryReportBase(w.path, normalized),
       content: w.content,
       writer: 'AGENT',
       source: os.hostname(),
       contentBasis: w.basis,
     });
-    recordLedger(w.path, [w.before != null ? sha256(w.before) : null, w.basis === 'whole' ? sha256(w.content) : null], undefined, { pending: typeof w.likely === 'string' ? [sha256(w.likely)] : [] });
+    const after = w.basis === 'whole' ? sha256(w.content) : null;
+    const delivered = outcome !== 'failed';
+    recordLedger(w.path, [w.before != null ? sha256(w.before) : null, delivered ? after : null], undefined, { pending: [typeof w.likely === 'string' ? sha256(w.likely) : null, delivered ? null : after].filter(Boolean) });
   }
 }
 
