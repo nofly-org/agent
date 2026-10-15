@@ -198,6 +198,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   accepts arguments after `--`, and will not rewrite a commented config.
 
 ### CI gates
+- **`shomra redteam` fails when the server's gate fails.** The run's own gate
+  (an org threshold set on the server, attempts that could not be graded, a
+  guard that also blocked ordinary requests) decides the exit code, and
+  `--min` / `--fail-on-regression` travel to it. A run stopped before it
+  finished prints no score and never passes, a mistyped `--min` (`8O`, `80%`)
+  is refused with exit 3 instead of switching the gate off, `campaign --turns`
+  is held to the server's 2-12, and "All scenarios defended" needs every
+  attempt graded.
+- **`shomra run` passes only a run that reports COMPLETED.** A run still
+  running, or one with no status, used to print "Completed" and exit 0.
 - **Gates fail on what they could not analyze.** Skill folders named build or
   dist, namespaced commands, oversized, unreadable or symlinked artifacts, an
   HTML page from a wrong `SHOMRA_URL`, and a mistyped target all passed before.

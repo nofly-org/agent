@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { loadConfig, resolveSettings, storedAgentCredential } from '../core/config.mjs';
-import { exitNotConfigured } from '../core/exit-codes.mjs';
+import { EXIT_USAGE, exitNotConfigured } from '../core/exit-codes.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { VERSION } from '../core/version.mjs';
 import { resolveAgentIdentityHandle } from './agent-identity.mjs';
@@ -212,9 +212,13 @@ function printStartupBanner({ port, url, project, actor }) {
 export async function cmdLlmProxy(flags) {
   const config = loadConfig();
   const { apiKey, url } = resolveSettings(config);
-  if (!apiKey) exitNotConfigured();
+  if (!apiKey || !url) exitNotConfigured();
 
-  const port = parseInt(flags.port, 10) || DEFAULT_PORT;
+  const port = flags.port === undefined || flags.port === true ? DEFAULT_PORT : Number(flags.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error(red(`✗ --port must be a whole number from 1 to 65535 (got ${flags.port}).`));
+    process.exit(EXIT_USAGE);
+  }
   const project = flags.project ? String(flags.project) : null;
   const actor = `${os.hostname()}/${currentUsername()}`;
 
@@ -240,7 +244,9 @@ export async function cmdLlmProxy(flags) {
   server.on('error', (error) => {
     const why = error?.code === 'EADDRINUSE'
       ? `port ${port} is already in use - another llm-proxy may be running, or pass --port <n>`
-      : error?.message ?? String(error);
+      : error?.code === 'EACCES'
+        ? `port ${port} needs elevated rights on this machine - pass a port above 1023`
+        : error?.message ?? String(error);
     console.error(red(`✗ Shomra LLM proxy could not listen: ${why}`));
     process.exit(1);
   });

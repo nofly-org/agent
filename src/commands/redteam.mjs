@@ -1,8 +1,49 @@
 import os from 'node:os';
 import { api, currentUsername } from '../core/api-client.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
-import { exitNotConfigured } from '../core/exit-codes.mjs';
+import { EXIT_USAGE, exitNotConfigured } from '../core/exit-codes.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
+
+function numberFlag(flags, name, { min, max, integer = false }) {
+  if (flags[name] === undefined) return null;
+  const value = Number(String(flags[name]).trim());
+  if (String(flags[name]).trim() === '' || !Number.isFinite(value) || value < min || value > max || (integer && !Number.isInteger(value))) {
+    console.error(red(`✗ --${name} must be ${integer ? 'a whole number' : 'a number'} from ${min} to ${max} (got ${flags[name]}).`));
+    process.exit(EXIT_USAGE);
+  }
+  return value;
+}
+
+const unscored = (run) => typeof run?.status === 'string' && run.status !== 'COMPLETED';
+
+function settleGate(run, { min, failOnRegression }) {
+  if (unscored(run)) {
+    console.error(red(`  ✗ The run was ${run.status.toLowerCase()} before it finished, so it has no resilience score${run.error ? ` (${run.error})` : ''}.`));
+    process.exitCode = 1;
+    return;
+  }
+  if (run?.gate && typeof run.gate === 'object') {
+    if (run.gate.passed === false) {
+      for (const reason of Array.isArray(run.gate.reasons) && run.gate.reasons.length ? run.gate.reasons : ['the server gate failed']) console.error(red(`  ✗ ${reason}`));
+      process.exitCode = 1;
+    }
+    return;
+  }
+  const belowFloor = min !== null && !(typeof run.resilience === 'number' && run.resilience >= min);
+  const regressed = failOnRegression && run.regressedCount > 0;
+  if (belowFloor) console.error(red(`  ✗ Resilience ${typeof run.resilience === 'number' ? run.resilience : 'was not reported, so it'} is below the required ${min}.`));
+  if (regressed) console.error(red(`  ✗ ${run.regressedCount} scenario(s) regressed since the last run.`));
+  if (belowFloor || regressed) process.exitCode = 1;
+}
+
+function verdictLine(run, { held, word, breachedNote }) {
+  const ungraded = Number(run.gate?.ungradedCount ?? 0);
+  if (unscored(run)) return yellow(`⚠ Stopped before it finished - nothing here is a resilience score.`);
+  if (run.breachedCount > 0) return yellow(breachedNote);
+  if (ungraded > 0) return yellow(`⚠ ${ungraded} attempt(s) could not be graded - an attack nobody answered is not a defended one.`);
+  if (!held) return yellow(`⚠ No ${word} was graded.`);
+  return green(`✓ All ${word}s defended.`);
+}
 
 export async function cmdRedteam(flags) {
   const cfg = loadConfig();
@@ -10,6 +51,8 @@ export async function cmdRedteam(flags) {
   if (!apiKey) {
     exitNotConfigured();
   }
+  const min = numberFlag(flags, 'min', { min: 0, max: 100 });
+  const failOnRegression = !!flags['fail-on-regression'];
   const targetKind = flags.target === 'model' ? 'model' : 'llm-guard';
   const scenarioKeys = typeof flags.scenarios === 'string' ? flags.scenarios.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
 
@@ -21,6 +64,8 @@ export async function cmdRedteam(flags) {
       ...(scenarioKeys ? { scenarioKeys } : {}),
       ...(flags.project ? { projectId: String(flags.project) } : {}),
       ...(flags.evolve ? { evolutionary: true } : flags.adaptive ? { adaptive: true } : {}),
+      ...(min !== null ? { minResilience: min } : {}),
+      failOnRegression,
       actor: `${os.hostname()}/${currentUsername()}`,
     });
   } catch (e) {
@@ -33,9 +78,10 @@ export async function cmdRedteam(flags) {
   if (flags.json) {
     console.log(JSON.stringify(run, null, 2));
   } else {
-    const rc = run.resilience >= 80 ? green : run.resilience >= 60 ? yellow : red;
+    const rc = unscored(run) ? yellow : run.resilience >= 80 ? green : run.resilience >= 60 ? yellow : red;
+    const score = unscored(run) ? '—' : `${run.resilience}/100`;
     console.log(`\n  ${bold(run.label)} ${dim(`· ${run.targetKind} · ${run.scenarioCount} scenarios · ${run.attemptCount} attempts`)}`);
-    console.log(`  ${rc('●')} Resilience ${rc(bold(run.resilience + '/100'))} ${dim(`· ${run.breachedCount} breached · ${run.blockedCount} blocked${run.regressedCount ? ' · ' : ''}`)}${run.regressedCount ? red(run.regressedCount + ' regressed') : ''}`);
+    console.log(`  ${rc('●')} Resilience ${rc(bold(score))} ${dim(`· ${run.breachedCount} breached · ${run.blockedCount} blocked${run.regressedCount ? ' · ' : ''}`)}${run.regressedCount ? red(run.regressedCount + ' regressed') : ''}`);
     for (const r of (run.results || []).filter((x) => x.breached)) {
       console.log(`     ${red('✗')} ${bold(r.title)} ${dim(r.technique)} ${r.regressed ? red('· REGRESSED') : ''}`);
     }
@@ -43,19 +89,12 @@ export async function cmdRedteam(flags) {
     if (held) console.log(`     ${green('✓')} ${dim(`${held} scenario(s) held`)}`);
     console.log(
       '\n  ' +
-        (run.breachedCount === 0
-          ? green('✓ All scenarios defended.')
-          : yellow(`⚠ ${run.breachedCount} scenario(s) breached your defenses.`)) +
+        verdictLine(run, { held, word: 'scenario', breachedNote: `⚠ ${run.breachedCount} scenario(s) breached your defenses.` }) +
         dim(' Full report in the Shomra dashboard → Red Team.\n'),
     );
   }
 
-  const min = flags.min != null ? parseInt(flags.min, 10) : null;
-  const belowFloor = Number.isFinite(min) && run.resilience < min;
-  const regressed = flags['fail-on-regression'] && run.regressedCount > 0;
-  if (belowFloor) console.error(red(`  ✗ Resilience ${run.resilience} is below the required ${min}.`));
-  if (regressed) console.error(red(`  ✗ ${run.regressedCount} scenario(s) regressed since the last run.`));
-  if (belowFloor || regressed) process.exitCode = 1;
+  settleGate(run, { min, failOnRegression });
 }
 
 export async function cmdCampaign(flags) {
@@ -65,7 +104,8 @@ export async function cmdCampaign(flags) {
     exitNotConfigured();
   }
   const objectiveKeys = typeof flags.objectives === 'string' ? flags.objectives.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
-  const turns = flags.turns != null ? parseInt(flags.turns, 10) : undefined;
+  const turns = numberFlag(flags, 'turns', { min: 2, max: 12, integer: true }) ?? undefined;
+  const min = numberFlag(flags, 'min', { min: 0, max: 100 });
 
   if (!flags.json) process.stdout.write(dim('\n  Running an autonomous adversary campaign against your assistant… '));
   let run;
@@ -86,9 +126,10 @@ export async function cmdCampaign(flags) {
   if (flags.json) {
     console.log(JSON.stringify(run, null, 2));
   } else {
-    const rc = run.resilience >= 80 ? green : run.resilience >= 60 ? yellow : red;
+    const rc = unscored(run) ? yellow : run.resilience >= 80 ? green : run.resilience >= 60 ? yellow : red;
+    const score = unscored(run) ? '—' : `${run.resilience}/100`;
     console.log(`\n  ${bold(run.label)} ${dim(`· ${run.scenarioCount} objective(s) · ${run.attemptCount} turns fired`)}`);
-    console.log(`  ${rc('●')} Resilience ${rc(bold(run.resilience + '/100'))} ${dim(`· ${run.breachedCount} objective(s) achieved · ${run.blockedCount} turn(s) blocked by the guard`)}`);
+    console.log(`  ${rc('●')} Resilience ${rc(bold(score))} ${dim(`· ${run.breachedCount} objective(s) achieved · ${run.blockedCount} turn(s) blocked by the guard`)}`);
     for (const r of (run.results || []).filter((x) => x.breached)) {
       const bt = (r.evidenceJson?.outcomes || []).filter((o) => o.breached).map((o) => o.index + 1);
       const inTurns = bt.length ? Math.min(...bt) : r.attempts;
@@ -98,18 +139,12 @@ export async function cmdCampaign(flags) {
     if (held) console.log(`     ${green('✓')} ${dim(`${held} objective(s) defended`)}`);
     console.log(
       '\n  ' +
-        (run.breachedCount === 0
-          ? green('✓ Every objective was defended.')
-          : yellow(`⚠ ${run.breachedCount} objective(s) achieved by the autonomous attacker.`)) +
+        verdictLine(run, { held, word: 'objective', breachedNote: `⚠ ${run.breachedCount} objective(s) achieved by the autonomous attacker.` }) +
         dim(' Full transcript in the Shomra dashboard → Red Team. Harden the guard against the winning turns.\n'),
     );
   }
 
-  const min = flags.min != null ? parseInt(flags.min, 10) : null;
-  if (Number.isFinite(min) && run.resilience < min) {
-    console.error(red(`  ✗ Resilience ${run.resilience} is below the required ${min}.`));
-    process.exitCode = 1;
-  }
+  settleGate(run, { min, failOnRegression: false });
 }
 
 export async function cmdHarden(flags) {
