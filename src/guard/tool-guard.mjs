@@ -14,10 +14,10 @@ import { gateMachine } from '../core/api-client.mjs';
 import { VERSION } from '../core/version.mjs';
 import { loadConfig, resolveSettings, storedAgentCredential } from '../core/config.mjs';
 import { clearCachedCredential, workloadCredential } from '../core/workload-identity.mjs';
-import { boundedLocalScan, classifyConsequence, downrankCodeContext, grade, localScan } from '../detect/guard-signals.mjs';
+import { boundedLocalScan, classifyConsequence, downrankCodeContext, grade, isPersistenceTarget, localScan } from '../detect/guard-signals.mjs';
 import { SEV_RANK } from '../detect/signals/severity.mjs';
-import { SHELL_TOOLS_RE, WRITE_TOOLS, callSubjectTypes, guardNeedsServer, guardTargetPath, guardText } from './classify.mjs';
-import { shellCommandOf } from './command-text.mjs';
+import { SHELL_TOOLS_RE, WRITE_TOOLS, callSubjectTypes, guardNeedsServer, guardTargetPath, guardText, guardTouchedPaths } from './classify.mjs';
+import { patchTextOf, shellCommandOf } from './command-text.mjs';
 import { runTargets } from './run-targets.mjs';
 import { redactLocally } from '../detect/local-redact.mjs';
 import { confirmationNote, emitGuardAsk, emitGuardDeny, emitGuardNotice, stoppedNote } from './emit.mjs';
@@ -43,11 +43,18 @@ function failOpenOnSevere() {
 
 function unscreenedSevere(normalized, tool, input) {
   if (failOpenOnSevere()) return false;
+  if (WRITE_TOOLS.has(tool)) return writeIsSevere(tool, input);
   return classifyConsequence({
     tool,
     args: guardText(tool, input),
-    isShell: !WRITE_TOOLS.has(tool) && typeof input?.command === 'string',
+    isShell: typeof input?.command === 'string',
   }) === 'severe';
+}
+
+function writeIsSevere(tool, input) {
+  if (guardTouchedPaths(tool, input).some(isPersistenceTarget)) return true;
+  const patch = patchTextOf(tool, input);
+  return !!patch && /^(?:\*\*\* Delete File:|\+\+\+ \/dev\/null|deleted file mode)/m.test(patch);
 }
 
 

@@ -31,6 +31,10 @@ const PRIVILEGED_TARGET =
 const PERSISTENCE_TARGET =
   /(^|\/)\.(ssh|aws|kube)\/|authorized_keys|\.bashrc|\.zshrc|\.profile|crontab|\/etc\/(sudoers|passwd|shadow)|systemd|(^|\/)\.env(\.|$)/i;
 
+export function isPersistenceTarget(target) {
+  return PERSISTENCE_TARGET.test(String(target ?? ''));
+}
+
 const PRODUCTION = /\b(prod|production|live|main|master|release)\b/i;
 
 /* ⚠ `force[-_]?push` never matched the way anybody writes it, so `git push

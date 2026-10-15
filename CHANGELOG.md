@@ -42,6 +42,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rewritten to 127.0.0.1, so TLS names keep matching.
 
 ### Runtime firewall
+- **An unscreened file write is graded by the file it writes.** With no key,
+  or while the server cannot be reached, a write to a shell profile, an SSH or
+  cloud credential folder, a crontab, a systemd unit or a `.env` file now asks
+  first, and a patch that deletes a file counts as a delete. Writing code or
+  notes that merely mention "delete" or "drop" no longer asks; the on-machine
+  rules still read every write's content as before.
 - **Every hook starts faster.** On Node 22.8 and later the CLI keeps Node's
   compiled code in `~/.shomra/compile-cache`, so a tool call spends about a
   fifth less time in the hook (`NODE_DISABLE_COMPILE_CACHE=1` turns it off).

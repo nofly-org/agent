@@ -327,3 +327,18 @@ test('SHOMRA_GUARD_TIER=fast asks the server for its fast screen, and nothing el
     await s.close();
   }
 });
+
+test('an unscreened write is graded by the file it writes, not by the words inside it', async () => {
+  const env = { SHOMRA_API_KEY: KEY, SHOMRA_URL: 'http://127.0.0.1:9', SHOMRA_GUARD_TIMEOUT_MS: '300' };
+  const write = (file, content) => guard({ tool_name: 'Write', tool_input: { file_path: file, content }, cwd: home }, env);
+  for (const file of [path.join(home, '.bashrc'), path.join(home, '.ssh', 'authorized_keys'), path.join(home, 'repo', '.env')]) {
+    const out = await write(file, 'export PATH=/opt/tools/bin:$PATH\n');
+    assert.equal(out.decision, 'ask', `${file} is a file that survives the session`);
+  }
+  const code = await write(path.join(home, 'repo', 'src', 'users.ts'), 'export async function deleteUser(id) {\n  return db.users.delete({ where: { id } });\n}\n');
+  assert.equal(code.decision, null, 'code that mentions delete is not a delete');
+  const notes = await write(path.join(home, 'repo', 'NOTES.md'), 'We should drop support for Node 16.\n');
+  assert.equal(notes.decision, null);
+  const removal = await guard({ tool_name: 'apply_patch', tool_input: { patch: '*** Begin Patch\n*** Delete File: src/old.ts\n*** End Patch\n' }, cwd: home }, env);
+  assert.equal(removal.decision, 'ask', 'a patch that deletes a file is a delete');
+});
