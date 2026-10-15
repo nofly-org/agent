@@ -63,6 +63,12 @@ export function git(args, { cwd, timeout = 5000, maxBuffer = 16 * 1024 * 1024 } 
   }
 }
 
+export function gitHooksPath(root) {
+  const dir = git(['rev-parse', '--git-path', 'hooks'], { cwd: root, timeout: 3000 })?.trim();
+  if (!dir) return null;
+  return path.isAbsolute(dir) ? dir : path.join(root, dir);
+}
+
 export function gitBuffer(args, { cwd, input, timeout = 5000, maxBuffer = 16 * 1024 * 1024 } = {}) {
   const bin = gitPath();
   if (!bin) return null;

@@ -96,6 +96,64 @@ test('--help shows help and never runs the command', () => {
   }
 });
 
+test('help for one command shows that command, for admin verbs, aliases and sub-commands too', () => {
+  const s = sandbox();
+  try {
+    const zip = s.run(['scan-zip', '--help']);
+    assert.equal(zip.status, 0);
+    assert.match(zip.stdout, /scan-zip\s+Static-scan a workspace ZIP/);
+    assert.doesNotMatch(zip.stdout, /USAGE/);
+    assert.match(s.run(['agent-id', '--help']).stdout, /agent-identity\s+Register a non-human agent identity/);
+    assert.match(s.run(['ledger', '--help']).stdout, /ledger\s+What each control/);
+    const redteam = s.run(['admin', 'redteam', '--help']).stdout;
+    assert.match(redteam, /REDTEAM/);
+    assert.doesNotMatch(redteam, /scan-zip/);
+    const mcp = s.run(['mcp', '--help']).stdout;
+    for (const sub of ['install', 'add', 'list', 'guard', 'serve']) assert.match(mcp, new RegExp(`mcp ${sub}\\s`));
+    assert.doesNotMatch(s.run(['mcp', 'guard', '--help']).stdout, /mcp add/);
+    const typo = s.run(['help', 'gaet']);
+    assert.equal(typo.status, 3);
+    assert.match(typo.stderr, /did you mean gate/);
+    const restore = s.run(['admin', 'memory-restore', '--help']);
+    assert.equal(restore.status, 0);
+    assert.match(restore.stdout, /memory-restore\s+Write back/);
+  } finally {
+    s.done();
+  }
+});
+
+test('every command a person runs has its own help', async () => {
+  const { COMMANDS } = await import('../src/cli/registry.mjs');
+  const { cmdHelp } = await import('../src/cli/help.mjs');
+  const internal = new Set(['tool-guard', 'result-guard', 'prompt-guard', 'plan-guard', 'session-guard']);
+  const log = console.log;
+  try {
+    for (const name of Object.keys(COMMANDS)) {
+      if (internal.has(name)) continue;
+      let out = '';
+      console.log = (text) => { out += text; };
+      cmdHelp(name);
+      console.log = log;
+      assert.doesNotMatch(out, /USAGE/, `${name} falls back to the full help`);
+    }
+  } finally {
+    console.log = log;
+  }
+});
+
+test('the ledger finds the pre-commit hook wherever git keeps hooks', () => {
+  const s = sandbox();
+  try {
+    spawnSync('git', ['init', '-q', s.dir]);
+    spawnSync('git', ['config', 'core.hooksPath', '.githooks'], { cwd: s.dir });
+    assert.equal(s.run(['install-precommit']).status, 0);
+    const ledger = JSON.parse(s.run(['ledger', '--json']).stdout);
+    assert.equal(ledger.controls.find((c) => c.id === 'install-gate').mode, 'ENFORCE');
+  } finally {
+    s.done();
+  }
+});
+
 test('backend URLs are parsed, not pattern-replaced', () => {
   assert.deepEqual(parseBackendUrl('https://localhost.corp.example:8443/'), { url: 'https://localhost.corp.example:8443', cleartext: false });
   assert.deepEqual(parseBackendUrl('http://localhost-api.internal'), { url: 'http://localhost-api.internal', cleartext: true });

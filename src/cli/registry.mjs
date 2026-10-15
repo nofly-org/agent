@@ -52,7 +52,7 @@ export const COMMANDS = {
 };
 
 export const ADMIN_VERBS = new Set([
-  'scan-zip', 'model-scan', 'memory-scan',
+  'scan-zip', 'model-scan', 'memory-scan', 'memory-restore',
   'redteam', 'campaign', 'harden',
   'agent-identity', 'agent-id', 'llm-proxy',
   'mdm-script',

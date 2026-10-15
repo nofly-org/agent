@@ -287,6 +287,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   budget, large cache folders under your home are skipped, and a walk that
   ran out of budget is listed as skipped instead of ending silently.
 - **A `headersHelper` command keeps its shape but never its credential.**
+- **`<command> --help` shows that command for every command.** Admin verbs
+  (`scan-zip`, `redteam`, `mdm-script` and the rest), `agent-id`, `mcp-guard`
+  and `ledger` printed the whole manual; they now print their own lines plus
+  the longer section when there is one. `shomra mcp --help` lists every `mcp`
+  sub-command, `shomra help <typo>` suggests the closest command and exits 3,
+  and `shomra admin memory-restore` runs as the admin help says it does.
+- **`ledger` finds the pre-commit hook where git keeps it**, including
+  `core.hooksPath` and worktrees, and never stalls on a config that is not a
+  regular file.
 
 
 ### Agent identity registration

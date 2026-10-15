@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
-import { git } from '../core/git-exec.mjs';
+import { git, gitHooksPath } from '../core/git-exec.mjs';
 import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
 
 export async function cmdInstallPrecommit(flags, positional) {
@@ -181,10 +181,9 @@ function keepHookBackup(hookPath, text) {
 }
 
 function gitHooksDir(root) {
+  const abs = gitHooksPath(root);
+  if (!abs) return null;
   try {
-    const dir = git(['rev-parse', '--git-path', 'hooks'], { cwd: root, timeout: 3000 })?.trim();
-    if (!dir) return null;
-    const abs = path.isAbsolute(dir) ? dir : path.join(root, dir);
     fs.mkdirSync(abs, { recursive: true });
     return abs;
   } catch {
