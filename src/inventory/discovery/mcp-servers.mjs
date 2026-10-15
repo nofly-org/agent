@@ -48,12 +48,12 @@ function managedClaudeMcp() {
 
 
 function globalMcpCandidates(home) {
-  const { HOME, APPDATA, LOCALAPPDATA, vscodeUserDir } = userDirs(home);
+  const { HOME, APPDATA, LOCALAPPDATA, vscodeUserDir, own } = userDirs(home);
   const c = [];
   c.push({ vendor: 'claude', file: appSupport(home, 'Claude', 'claude_desktop_config.json') });
   for (const file of claudeMsixConfigs(home)) c.push({ vendor: 'claude', file });
   c.push({ vendor: 'claude-code', file: path.join(HOME, '.claude.json') }); // user + per-project (projects.*.mcpServers)
-  c.push({ vendor: 'claude-code', file: managedClaudeMcp() });
+  if (own) c.push({ vendor: 'claude-code', file: managedClaudeMcp() });
   c.push({ vendor: 'cursor', file: path.join(HOME, '.cursor', 'mcp.json') });
   c.push({ vendor: 'windsurf', file: path.join(HOME, '.codeium', 'windsurf', 'mcp_config.json') });
   c.push({ vendor: 'continue', file: path.join(HOME, '.continue', 'config.json') });

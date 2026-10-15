@@ -31,13 +31,14 @@ function managedSettingsPath() {
 
 function sourcesFor(vendor, cwd, home) {
   const { HOME } = userDirs(home);
+  const at = (...parts) => (cwd ? path.join(cwd, ...parts) : null);
   switch (vendor) {
     case 'claude-code':
       return [
         { file: path.join(HOME, '.claude', 'settings.json'), scope: 'user', shape: 'env-json' },
         { file: path.join(HOME, '.claude', 'settings.local.json'), scope: 'user', shape: 'env-json' },
-        { file: path.join(cwd, '.claude', 'settings.json'), scope: 'project', shape: 'env-json' },
-        { file: path.join(cwd, '.claude', 'settings.local.json'), scope: 'project', shape: 'env-json' },
+        { file: at('.claude', 'settings.json'), scope: 'project', shape: 'env-json' },
+        { file: at('.claude', 'settings.local.json'), scope: 'project', shape: 'env-json' },
         { file: managedSettingsPath(), scope: 'managed', shape: 'env-json' },
       ];
     case 'gemini':
@@ -46,15 +47,15 @@ function sourcesFor(vendor, cwd, home) {
       const dir = vendor === 'gemini' ? '.gemini' : '.qwen';
       return [
         { file: path.join(HOME, dir, '.env'), scope: 'user', shape: 'dotenv' },
-        { file: path.join(cwd, dir, '.env'), scope: 'project', shape: 'dotenv' },
+        { file: at(dir, '.env'), scope: 'project', shape: 'dotenv' },
         { file: path.join(HOME, dir, 'settings.json'), scope: 'user', shape: 'gemini-settings' },
-        { file: path.join(cwd, dir, 'settings.json'), scope: 'project', shape: 'gemini-settings' },
+        { file: at(dir, 'settings.json'), scope: 'project', shape: 'gemini-settings' },
       ];
     }
     case 'codex':
       return [
         { file: path.join(HOME, '.codex', 'config.toml'), scope: 'user', shape: 'codex-toml' },
-        { file: path.join(cwd, '.codex', 'config.toml'), scope: 'project', shape: 'codex-toml' },
+        { file: at('.codex', 'config.toml'), scope: 'project', shape: 'codex-toml' },
       ];
     default:
       return [];
@@ -128,7 +129,7 @@ export function classifyPair(key, value) {
 
 export function readEnvRedirects(vendor, cwd = process.cwd(), env = process.env, opts = {}) {
   const out = [];
-  for (const src of sourcesFor(vendor, cwd, opts.home)) {
+  for (const src of sourcesFor(vendor, cwd, opts.home).filter((entry) => entry.file)) {
     const raw = readSmall(src.file);
     if (raw == null) continue;
     for (const [k, v] of pairsOf(src.shape, raw)) {

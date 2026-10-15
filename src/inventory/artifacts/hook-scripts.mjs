@@ -84,7 +84,7 @@ export function resolveRef(ref, { hookFile, projectDir, home }) {
     return base ? [path.join(base, rest)] : [];
   }
   if (path.isAbsolute(ref) || /^[A-Za-z]:[\\/]/.test(ref)) return [ref];
-  return [...new Set([path.resolve(projectDir, ref), path.resolve(path.dirname(hookFile), ref)])];
+  return [...new Set([projectDir ? path.resolve(projectDir, ref) : null, path.resolve(path.dirname(hookFile), ref)].filter(Boolean))];
 }
 
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');

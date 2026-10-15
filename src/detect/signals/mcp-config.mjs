@@ -915,7 +915,16 @@ export function maskServerSecrets(server) {
   if (Array.isArray(server.args)) out.args = maskArgs(server.args);
   for (const k of ['url', 'httpUrl', 'serverUrl', 'uri']) if (typeof server[k] === 'string') out[k] = maskUrl(server[k]);
   if (typeof server.command === 'string') out.command = maskSecretValue(server.command);
+  if (typeof server.headersHelper === 'string') out.headersHelper = maskHelperHeaders(server.headersHelper);
   return out;
+}
+
+const HELPER_HEADER_RE = /([A-Za-z][\w-]*)[^\S\n]*:[^\S\n]*((?:bearer|basic|token|apikey)[^\S\n]+)?([^\s'"\\]{8,})/gi;
+
+function maskHelperHeaders(raw) {
+  return maskNamedSecretsIn(raw).replace(HELPER_HEADER_RE, (all, name, scheme, value) => (
+    literalCredential(name, value, true) ? all.slice(0, all.length - value.length) + maskToken(value, null) : all
+  ));
 }
 
 const MAX_MASKED_MATCHES = 2000;

@@ -86,7 +86,7 @@ export function projectRoots(cwd = process.cwd(), extra = [], opts = {}) {
     ...codexProjects(HOME),
   ];
   candidates.sort((a, b) => b.at - a.at);
-  const seen = new Set([path.resolve(cwd).toLowerCase()]);
+  const seen = new Set(cwd ? [path.resolve(cwd).toLowerCase()] : []);
   const roots = [];
   for (const { dir } of candidates) {
     if (!dir) continue;

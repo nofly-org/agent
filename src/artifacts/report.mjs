@@ -55,6 +55,7 @@ export function printArtifacts(artifacts, capped = [], available = []) {
 const CAP_LABELS = {
   'artifact-cap': 'Artifact Limit Reached',
   'walk-budget': 'Folder Limit Reached',
+  'source-cap': 'Source File Limit Reached',
   'byte-budget': 'Size Budget Reached',
   'bundle-cap': 'Bundled File Limit Reached',
   'link-outside': 'Links Leaving Your Home Or Project, Not Followed',

@@ -272,7 +272,7 @@ export function discoverAgentArtifacts(cwd = process.cwd(), roots = null, opts =
   bundleRuleImports(state, home);
   for (const { artifact, absolutePath, site } of state.hooks ?? []) {
     bundleHookScripts(artifact, absolutePath, {
-      projectDir: site.scope === 'project' ? path.dirname(site.dir) : cwd,
+      projectDir: site.scope === 'project' ? path.dirname(site.dir) : userDirs(home).own ? cwd : null,
       relPath: (abs) => {
         const rel = relativeToSite(site, abs);
         return rel.startsWith('..') || path.isAbsolute(rel) ? null : rel;

@@ -324,11 +324,11 @@ export function readVendorPosture(vendor, cwd = process.cwd(), roots = null, opt
   const switches = [];
   const mcpServers = [];
   const grant = emptyGrant();
-  const extraRoots = (roots ?? []).filter((r) => r && path.resolve(r) !== path.resolve(cwd));
+  const extraRoots = (roots ?? []).filter((r) => r && (!cwd || path.resolve(r) !== path.resolve(cwd)));
   const projectsRead = new Set();
 
   for (const src of def.sources) {
-    const bases = src.base === 'cwd' ? [cwd, ...extraRoots] : [cwd];
+    const bases = src.base !== 'cwd' ? [cwd] : cwd ? [cwd, ...extraRoots] : extraRoots;
     for (const base of bases) {
       for (const { path: file, res, docs } of readSource(src, base, opts.home)) {
         const primary = base === cwd;
@@ -368,7 +368,7 @@ export function readVendorPosture(vendor, cwd = process.cwd(), roots = null, opt
     autoApprovedMcp: mcpServers.filter((s) => s.autoApprove.length > 0 && !s.disabled).map((s) => s.name),
 
     truncated: grant.truncated === true,
-    projectsScanned: 1 + extraRoots.length,
+    projectsScanned: (cwd ? 1 : 0) + extraRoots.length,
     projectsWithSettings: projectsRead.size,
     claim: def.tier === 'declared' && read.length > 0 && holes.length === 0 && !grant.truncated ? 'complete' : 'floor',
   };

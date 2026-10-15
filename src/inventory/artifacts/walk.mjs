@@ -37,8 +37,8 @@ export function walkRoot(dir, budget, { within = [], refused = null } = {}) {
   const roots = [dir, ...within].map(realOf).filter(Boolean);
   if (!roots.length) return out;
   const queue = [{ d: dir, depth: 0 }];
-  while (queue.length && budget.dirs > 0) {
-    const { d, depth } = queue.shift();
+  for (let next = 0; next < queue.length && budget.dirs > 0; next++) {
+    const { d, depth } = queue[next];
     const real = realOf(d);
     if (!real || seen.has(real)) continue;
     seen.add(real);

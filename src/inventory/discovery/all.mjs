@@ -31,7 +31,8 @@ export function discoverAll(roots = [process.cwd()], opts = {}) {
   const { autoExpand = true, home } = opts;
   const own = userDirs(home).own;
   const scanRoots = resolveRoots(roots, autoExpand, home);
-  const files = walkWorkspace(scanRoots);
+  const files = walkWorkspace(scanRoots, { explicit: roots, home: userDirs(home).HOME });
+  for (const cap of files.capped) failures.push(cap);
   const all = [
     ...fromSource('mcp-servers', () => discoverMcpServers(scanRoots, files, { home })),
     ...fromSource('rules-files', () => discoverRulesFiles(scanRoots, files)),

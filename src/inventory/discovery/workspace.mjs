@@ -71,12 +71,25 @@ const isVectorIndex = (base) =>
   VECTOR_INDEX_EXTS.has((base.slice(base.lastIndexOf('.') + 1) || '').toLowerCase());
 
 const MAX_SOURCE_FILES = 600;
+const EXPLICIT_DIRS = 20_000;
+const SHARED_DIRS = 40_000;
+const MAX_DEPTH = 6;
 
-export function walkWorkspace(roots) {
-  const found = { mcp: [], rules: [], manifests: [], env: [], vector: [], source: [] };
+const HOME_SKIP = new Set([
+  'Library', 'AppData', 'Applications', 'Music', 'Movies', 'Pictures', 'Videos', 'snap', 'go',
+  '.npm', '.cargo', '.rustup', '.m2', '.nvm', '.pyenv', '.rbenv', '.conda', 'anaconda3', 'miniconda3',
+  '.android', '.dotnet', '.nuget', '.Trash', '.local', '.vscode', '.vscode-server', '.cursor-server', '.docker',
+]);
+
+const keyOf = (dir) => path.resolve(dir);
+
+export function walkWorkspace(roots, opts = {}) {
+  const found = { mcp: [], rules: [], manifests: [], env: [], vector: [], source: [], capped: [] };
   const seenDir = new Set();
-  let budget = 40_000;
-  const maxDepth = 6;
+  const explicit = new Set((opts.explicit ?? []).filter(Boolean).map(keyOf));
+  const home = opts.home ? keyOf(opts.home) : null;
+  const shared = { dirs: opts.sharedDirs ?? SHARED_DIRS };
+  let sourceCapped = false;
 
   const consider = (base, full, parentBase) => {
     if (base === '.mcp.json' || base === 'mcp.json') found.mcp.push({ file: full, parentBase });
@@ -88,14 +101,18 @@ export function walkWorkspace(roots) {
     } else if (MANIFEST_NAMES.has(base)) found.manifests.push({ file: full, parentBase });
     else if (isEnvFile(base)) found.env.push({ file: full, parentBase });
     else if (isVectorIndex(base)) found.vector.push({ file: full, parentBase });
-
-    else if (found.source.length < MAX_SOURCE_FILES && isAiUsageScannable(base)) found.source.push({ file: full, parentBase });
+    else if (isAiUsageScannable(base)) {
+      if (found.source.length < MAX_SOURCE_FILES) found.source.push({ file: full, parentBase });
+      else sourceCapped = true;
+    }
   };
 
-  for (const root of roots) {
+  const walkRoot = (root, budget) => {
+    const atHome = home !== null && keyOf(root) === home;
     const queue = [{ dir: root, depth: 0 }];
-    while (queue.length && budget > 0) {
-      const { dir, depth } = queue.shift();
+    for (let next = 0; next < queue.length; next++) {
+      if (budget.dirs <= 0) return false;
+      const { dir, depth } = queue[next];
       let real;
       try {
         real = fs.realpathSync(dir);
@@ -104,7 +121,7 @@ export function walkWorkspace(roots) {
       }
       if (seenDir.has(real)) continue;
       seenDir.add(real);
-      budget--;
+      budget.dirs--;
       let entries;
       try {
         entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -114,12 +131,27 @@ export function walkWorkspace(roots) {
       for (const e of entries) {
         const full = path.join(dir, e.name);
         if (e.isDirectory()) {
-          if (depth < maxDepth && !IGNORE_DIRS.has(e.name)) queue.push({ dir: full, depth: depth + 1 });
+          if (depth < MAX_DEPTH && !IGNORE_DIRS.has(e.name) && !(atHome && depth === 0 && HOME_SKIP.has(e.name))) queue.push({ dir: full, depth: depth + 1 });
         } else if (e.isFile()) {
           consider(e.name, full, path.basename(dir));
         }
       }
     }
+    return true;
+  };
+
+  const first = roots.filter((r) => explicit.has(keyOf(r)));
+  const rest = roots.filter((r) => !explicit.has(keyOf(r)) && keyOf(r) !== home);
+  const last = roots.filter((r) => !explicit.has(keyOf(r)) && keyOf(r) === home);
+  for (const root of first) {
+    if (!walkRoot(root, { dirs: opts.explicitDirs ?? EXPLICIT_DIRS })) found.capped.push({ reason: 'walk-budget', path: root });
   }
+  const shareds = [...rest, ...last];
+  for (let i = 0; i < shareds.length; i++) {
+    if (walkRoot(shareds[i], shared)) continue;
+    found.capped.push({ reason: 'walk-budget', path: shareds[i], ...(shareds.length - i > 1 ? { count: shareds.length - i } : {}) });
+    break;
+  }
+  if (sourceCapped) found.capped.push({ reason: 'source-cap', path: null });
   return found;
 }

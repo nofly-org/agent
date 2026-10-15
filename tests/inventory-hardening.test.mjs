@@ -7,10 +7,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { discoverAgentArtifacts } from '../src/inventory/agent-artifacts.mjs';
+import { discoverCodingAgents } from '../src/inventory/discovery.mjs';
+import { walkWorkspace } from '../src/inventory/discovery/workspace.mjs';
 import { bundleHookScripts } from '../src/inventory/artifacts/hook-scripts.mjs';
 import { walkRoot } from '../src/inventory/artifacts/walk.mjs';
 import { maskDeep } from '../src/detect/secret-mask.mjs';
 import { boundedJson, TOO_DEEP } from '../src/core/wire-limits.mjs';
+import { maskServerSecrets } from '../src/detect/signals/mcp-config.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(HERE, '..', 'shomra.mjs');
@@ -211,4 +214,65 @@ test('scan --report sends masked assets and artifacts', { skip: WINDOWS }, async
     await new Promise((d) => server.close(d));
     t.done();
   }
+});
+
+test('another user is not credited with the project the scan was started from', { skip: WINDOWS }, () => {
+  const t = tree();
+  const prev = process.cwd();
+  try {
+    const proj = path.join(t.dir, 'proj');
+    t.write('proj/.claude/settings.json', JSON.stringify({ permissions: { allow: ['Bash(rm:*)'] }, hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'shomra guard' }] }] } }));
+    t.write('proj/.claude/hooks/run.sh', 'echo project script\n');
+    t.write('bob/.claude.json', '{}');
+    t.write('bob/.claude/settings.json', JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'bash $CLAUDE_PROJECT_DIR/.claude/hooks/run.sh' }] }] } }));
+    const bob = path.join(t.dir, 'bob');
+    process.chdir(proj);
+    const agent = discoverCodingAgents([], { home: bob }).find((a) => a.vendor === 'claude-code');
+    assert.ok(agent, 'bob has Claude Code');
+    assert.equal(agent.metadata.guarded, false, "the invoking user's project guard is not bob's");
+    assert.ok(!JSON.stringify(agent).includes('Bash(rm:*)'), "the invoking user's project grants are not bob's");
+    const hook = discoverAgentArtifacts(proj, null, { home: bob }).artifacts.find((a) => a.kind === 'hook');
+    assert.ok(hook, "bob's hook is found");
+    assert.ok(!JSON.stringify(hook).includes('project script'), "bob's hook does not bundle a script from the invoking user's project");
+  } finally {
+    process.chdir(prev);
+    t.done();
+  }
+});
+
+test('the folder being scanned is walked first with its own budget, heavy home trees are skipped, and a cut-short walk says so', () => {
+  const t = tree();
+  try {
+    const home = path.join(t.dir, 'home');
+    for (let i = 0; i < 40; i++) fs.mkdirSync(path.join(home, `junk${String(i).padStart(2, '0')}`, 'deeper'), { recursive: true });
+    t.write('home/Library/Caches/tool/.mcp.json', '{}');
+    t.write('home/zz-work/app/.mcp.json', '{}');
+    const proj = path.join(t.dir, 'proj');
+    t.write('proj/.mcp.json', '{}');
+    t.write('proj/sub/CLAUDE.md', '# Rules\n');
+
+    const found = walkWorkspace([home, proj], { explicit: [proj], home, sharedDirs: 20, explicitDirs: 20 });
+    const files = found.mcp.map((m) => path.relative(t.dir, m.file).split(path.sep).join('/'));
+    assert.ok(files.includes('proj/.mcp.json'), 'the folder being scanned is never starved by the home walk');
+    assert.ok(found.rules.some((r) => r.file.endsWith(path.join('proj', 'sub', 'CLAUDE.md'))));
+    assert.ok(!files.some((f) => f.includes('Library')), 'a cache tree under home is not walked');
+    assert.deepEqual(found.capped.map((c) => [c.reason, c.path]), [['walk-budget', home]], 'a walk cut short is listed');
+
+    const full = walkWorkspace([home, proj], { explicit: [proj], home });
+    assert.ok(full.mcp.some((m) => m.file.endsWith(path.join('zz-work', 'app', '.mcp.json'))));
+    assert.deepEqual(full.capped, []);
+  } finally {
+    t.done();
+  }
+});
+
+test('a headers helper command keeps its shape but never its credential', () => {
+  const key = 'Zq3Lm9Xv2Bn7Kp4Rt8Wy1Hs6Jd5';
+  const masked = maskServerSecrets({ type: 'http', url: 'https://mcp.example.com/mcp', headersHelper: `echo 'X-Api-Key: ${key}'` }).headersHelper;
+  assert.ok(!masked.includes(key));
+  assert.match(masked, /^echo 'X-Api-Key: [A-Za-z0-9]{27}'$/);
+  const reference = 'echo "Authorization: Bearer $TOKEN"';
+  assert.equal(maskServerSecrets({ headersHelper: reference }).headersHelper, reference);
+  const plain = 'echo "X-Request-Source: claude-desktop-v1"';
+  assert.equal(maskServerSecrets({ headersHelper: plain }).headersHelper, plain);
 });

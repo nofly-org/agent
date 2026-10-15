@@ -223,6 +223,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **A hook script in a folder whose name looks sensitive is still checked.**
   Only the part of the path inside the project or home is judged, and a script
   that resolves into a key folder is reported as withheld, not missing.
+- **`--all-users` reports each user's own setup.** Other users are no longer
+  credited with the guard, permissions or hook scripts of the project the scan
+  was started from, and machine-wide MCP servers are listed once.
+- **The folder you scan is always covered.** It is walked first with its own
+  budget, large cache folders under your home are skipped, and a walk that
+  ran out of budget is listed as skipped instead of ending silently.
+- **A `headersHelper` command keeps its shape but never its credential.**
 
 
 ### Agent identity registration
