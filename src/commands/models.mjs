@@ -1,5 +1,7 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
+import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { clampInt } from '../core/numbers.mjs';
 import { SEV_COLOR, bold, cyan, dim, gray, green, red, yellow } from '../core/terminal.mjs';
 import { printAlternatives } from '../models/lookup.mjs';
@@ -17,13 +19,18 @@ function lookupUrl(url, reference) {
   return `${url}/models/lookup?${query}`;
 }
 
-function printNothingFound(flags, root) {
+function cappedNote(entries) {
+  return entries.capped ? `  ${yellow('⚠')} ${dim(`The walk stopped after ${entries.length} files - the rest of the tree was not read.`)}\n` : '';
+}
+
+function printNothingFound(flags, root, entries) {
   if (flags.json) {
-    console.log(JSON.stringify({ detected: 0, models: [] }, null, 2));
+    console.log(JSON.stringify({ detected: 0, models: [], ...(entries.capped ? { capped: true, filesRead: entries.length } : {}) }, null, 2));
     return;
   }
   const where = path.relative(process.cwd(), root).split(path.sep).join('/') || '.';
-  console.log(`${green('\n  ✓ No AI model references found in the code.')}${dim(` (looked under ${where})`)}\n`);
+  const headline = entries.capped ? yellow('\n  ○ No AI model references found in the part of the code that was read.') : green('\n  ✓ No AI model references found in the code.');
+  console.log(`${headline}${dim(` (looked under ${where})`)}\n${cappedNote(entries)}`);
 }
 
 function printDryRun(flags, references, url) {
@@ -115,13 +122,18 @@ export async function cmdModels(flags, positional) {
   const { url } = resolveSettings(loadConfig());
   const target = path.resolve(positional[0] || flags.path || '.');
 
+  if (!fs.existsSync(target)) {
+    console.error(`${red('✗')} Not found: ${positional[0] || flags.path}`);
+    process.exit(EXIT_USAGE);
+  }
   const { root, entries } = resolveScanScope(target, walkFiles);
   const references = collectModelReferences(root, entries);
 
   if (!references.length) {
-    printNothingFound(flags, root);
+    printNothingFound(flags, root, entries);
     return;
   }
+  if (entries.capped && !flags.json) process.stdout.write(cappedNote(entries));
   if (flags['dry-run']) {
     printDryRun(flags, references, url);
     return;

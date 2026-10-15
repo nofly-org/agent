@@ -1,4 +1,6 @@
+import fs from 'node:fs';
 import path from 'node:path';
+import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { api, gateMachine } from '../core/api-client.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
@@ -15,6 +17,14 @@ const ORG_POLICY_TIMEOUT_MS = 5000;
 const MAX_ORG_DIRECTIVES = 20;
 
 const plural = (count, word) => `${word}${count === 1 ? '' : 's'}`;
+
+function isDirectory(dir) {
+  try {
+    return fs.statSync(dir).isDirectory();
+  } catch {
+    return false;
+  }
+}
 
 async function fetchOrgDirectives(root, flags) {
   const { apiKey, url } = resolveSettings(loadConfig());
@@ -172,6 +182,10 @@ function printPreview({ root, context, sections, apiKey, orgError, body, gate, p
 
 export async function cmdRules(flags, positional) {
   const root = path.resolve(positional[0] || flags.path || '.');
+  if (!isDirectory(root)) {
+    console.error(`${red('✗')} No such directory: ${positional[0] || flags.path}`);
+    process.exit(EXIT_USAGE);
+  }
   const context = rulesContext(root);
   const { apiKey, orgLines, orgError } = await fetchOrgDirectives(root, flags);
 

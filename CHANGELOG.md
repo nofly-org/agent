@@ -349,6 +349,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `add skill` or `mcp … --config` is now named and skipped; before, every hook
   and command could hang on it, and a repo linking `.shomraignore` to
   `/dev/zero` held `shomra check` until the CI job timed out.
+- **A path that is not there is refused, not reported clean.** `models nope/`
+  printed "No AI model references found" and exited 0, and `rules nope
+  --write` created the folder; both now exit 3. `models` also says when its
+  walk stopped at the file cap instead of reporting the unread rest as clean.
 - **Nothing claims a result it did not measure.** A `selftest` that could not
   send a canary no longer ends with "every canary ... reached the server", and
   one that could not report no longer says the fleet coverage includes this

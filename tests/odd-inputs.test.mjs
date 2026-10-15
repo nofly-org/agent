@@ -147,3 +147,16 @@ test('rules never overwrites an instructions file it could not read', { skip: WI
     s.done();
   }
 });
+
+test('rules and models refuse a folder that is not there instead of reporting it clean', () => {
+  const s = sandbox();
+  try {
+    for (const args of [['rules', 'nope'], ['rules', 'nope', '--write'], ['models', 'nope']]) {
+      const r = s.run(args);
+      assert.equal(r.status, 3, args.join(' '));
+      assert.equal(fs.existsSync(path.join(s.dir, 'nope')), false, 'nothing was created');
+    }
+  } finally {
+    s.done();
+  }
+});
