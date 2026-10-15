@@ -42,6 +42,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rewritten to 127.0.0.1, so TLS names keep matching.
 
 ### Runtime firewall
+- **Every hook starts faster.** On Node 22.8 and later the CLI keeps Node's
+  compiled code in `~/.shomra/compile-cache`, so a tool call spends about a
+  fifth less time in the hook (`NODE_DISABLE_COMPILE_CACHE=1` turns it off).
+  `~/.shomra` is created private (0700) before anything is written there.
 - **A flagged call never runs silently when no server answers.** On a machine
   with no key, during an outage, or when the credential is refused, a call the
   on-machine tier flags now asks the person and names what matched

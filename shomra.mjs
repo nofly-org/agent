@@ -1,6 +1,20 @@
 #!/usr/bin/env node
-import { dim, red } from './src/core/terminal.mjs';
-import { main } from './src/cli/main.mjs';
+import fs from 'node:fs';
+import module from 'node:module';
+import os from 'node:os';
+import path from 'node:path';
+
+if (typeof module.enableCompileCache === 'function') {
+  try {
+    const own = path.join(os.homedir(), '.shomra');
+    fs.mkdirSync(own, { recursive: true, mode: 0o700 });
+    module.enableCompileCache(path.join(own, 'compile-cache'));
+  } catch {
+  }
+}
+
+const { dim, red } = await import('./src/core/terminal.mjs');
+const { main } = await import('./src/cli/main.mjs');
 
 function reportFatal(cause) {
   const error = cause instanceof Error ? cause : new Error(String(cause));
