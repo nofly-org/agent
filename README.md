@@ -723,5 +723,9 @@ add an exception in the platform instead:
 | `SHOMRA_PLAN_GUARD_OFF` | `1` = disable the plan channel only |
 | `SHOMRA_MODEL_CACHE` | `0` = disable the on-machine model-index verdict cache |
 | `SHOMRA_MODEL_CACHE_TTL_MS` | Model-cache freshness window (default 7 days) |
+| `SHOMRA_ALLOW_USER_NODE` | `1` = let a machine-wide schedule or `install-hook --managed` run a Node or Shomra install a normal user can change (same as `--allow-user-writable`) |
+| `NODE_USE_ENV_PROXY` | `1` = send the CLI's requests through `HTTPS_PROXY` / `HTTP_PROXY`, honouring `NO_PROXY` (Node releases whose `node --help` lists `--use-env-proxy`). Without it Node ignores those variables, and a failed request says so |
+| `NODE_EXTRA_CA_CERTS` | Path to a company CA bundle, for a proxy that inspects HTTPS |
+| `NODE_DISABLE_COMPILE_CACHE` | `1` = do not keep compiled code in `~/.shomra/compile-cache` (on by default on Node 22.8+, it makes every hook start faster) |
 
-Run `shomra help` for the full command reference.
+Run `shomra help` for the full command reference, or `shomra <command> --help` for one command.
