@@ -2,12 +2,14 @@ import { gateMachine } from '../core/api-client.mjs';
 import { breakerOpen, breakerReset, breakerTrip, guardTimeoutMs } from '../core/circuit-breaker.mjs';
 import { detectEnv } from '../gate/environment.mjs';
 import { resolveCommand } from './command-resolve.mjs';
+import { redactLocally } from '../detect/local-redact.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
 import { drainReports, queueReport } from './report-outbox.mjs';
 
 export function buildGuardBody(norm, agent, clientDecision, clientReason) {
   const command = norm.tool_input?.command ?? norm.tool_input?.cmd ?? norm.tool_input?.script;
-  const resolved = typeof command === 'string' ? resolveCommand(command) : null;
+  const found = typeof command === 'string' ? resolveCommand(command) : null;
+  const resolved = found?.command ? { ...found, command: redactLocally(found.command, { categories: ['secret'] }).text } : found;
   return {
     tool_name: norm.tool_name,
     tool_input: norm.tool_input,

@@ -1,7 +1,7 @@
 import { gateMachine } from '../core/api-client.mjs';
 import { breakerOpen, breakerReset, breakerTrip, guardTimeoutMs } from '../core/circuit-breaker.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
-import { downrankCodeContext, localScan } from '../detect/guard-signals.mjs';
+import { boundedLocalScan, downrankCodeContext } from '../detect/guard-signals.mjs';
 import { redactLocally } from '../detect/local-redact.mjs';
 import { detectEnv } from '../gate/environment.mjs';
 import { parentSessionFrom } from './normalize.mjs';
@@ -70,7 +70,7 @@ function localTierDisabled() {
 }
 
 function screenPrompt(prompt) {
-  const scan = localScan(prompt);
+  const scan = boundedLocalScan(prompt);
   const findings = downrankCodeContext(scan.findings || []);
   return {
     secrets: findings.filter((f) => f.category === 'secret' && f.severity === 'CRITICAL' && !f.codeContext),

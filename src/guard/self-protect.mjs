@@ -5,6 +5,7 @@ import { CONFIG_DIR } from '../core/config.mjs';
 import { SHELL_TOOLS_RE, WRITE_TOOLS, guardTouchedPaths, patchTextOf, shellCommandOf, shellWritePaths } from './classify.mjs';
 import { SHOMRA_ANY_HOOK_RE } from '../agents/hook-command.mjs';
 import { postEditContents } from './memory-write.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 const HOME_PREFIX = /^(?:~|\$HOME|\$\{HOME\}|%USERPROFILE%|\$env:USERPROFILE)(?=[\\/]|$)/i;
 const MUTATE_VERB = /(?:^|[\s;&|(])(?:rm|rmdir|unlink|shred|truncate|mv|cp|install|dd|chmod|chown|chattr|ln|tee|sed|perl|remove-item|del|erase|rd|set-content|add-content|clear-content|out-file|new-item|copy-item|move-item|rename-item)(?=\s)|>/i;
@@ -124,7 +125,7 @@ function proposedText(tool, input, target, cwd, read) {
   return hit ? hit.content : null;
 }
 
-export function guardHookTamper(tool, input = {}, { cwd = process.cwd(), home = os.homedir(), read = (p) => fs.readFileSync(p, 'utf8') } = {}) {
+export function guardHookTamper(tool, input = {}, { cwd = process.cwd(), home = os.homedir(), read = (p) => readRegularText(p) } = {}) {
   const abs = (p) => path.resolve(cwd || process.cwd(), String(p).trim().replace(/^["']|["']$/g, '').replace(HOME_PREFIX, home));
   const command = SHELL_TOOLS_RE.test(tool || '') || typeof input?.command === 'string' || Array.isArray(input?.argv) ? shellCommandOf(input) : '';
   const direct = mutatesPaths(tool) || patchTextOf(tool, input) ? guardTouchedPaths(tool, input) : [];

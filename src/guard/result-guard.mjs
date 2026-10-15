@@ -1,7 +1,7 @@
 import { gateMachine } from '../core/api-client.mjs';
 import { breakerOpen, breakerReset, breakerTrip, guardTimeoutMs } from '../core/circuit-breaker.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
-import { downrankCodeContext, grade, localScan } from '../detect/guard-signals.mjs';
+import { boundedLocalScan, downrankCodeContext, grade } from '../detect/guard-signals.mjs';
 import { detectEnv } from '../gate/environment.mjs';
 import { WRITE_TOOLS, guardTargetPath } from './classify.mjs';
 import { emitResultBlock, emitResultContext } from './emit.mjs';
@@ -29,7 +29,7 @@ function localTierDisabled() {
 
 function screenResponse(normalized, response) {
   const allowlisted = guardPathAllowlisted(normalized.cwd, guardTargetPath(normalized), { repo: false });
-  const scan = localScan(resultText(response));
+  const scan = boundedLocalScan(resultText(response));
   const findings = allowlisted ? [] : downrankCodeContext(scan.findings);
 
   const hasUnmaskedCritical = scan.findings.some((f) => f.severity === 'CRITICAL' && !f.codeContext);

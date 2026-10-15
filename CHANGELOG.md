@@ -78,6 +78,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Codex and Gemini CLI get the prompt guard**, so a pasted live credential is
   refused before it reaches the model, as in Claude Code and Cursor.
 - **The tool hook loads only what it needs**, about 55 ms faster per call.
+- **A call too large to screen asks you instead of running unscreened.** A
+  request over the server's limit used to open the outage window, so that call
+  and the next ones ran with no server check. Reconstructed files are dropped
+  first; a call still too large is put to you (`SHOMRA_GUARD_LOCAL_FLAG`
+  decides), and the outage window stays closed.
+- **The on-machine screen cannot be crashed by a large write.** It reads the
+  first and last 512 KB of very large text and flags what it did not read, and
+  a screen that cannot finish flags the call instead of exiting with an error
+  the agent ignores.
+- **A named pipe or device can no longer hang the hook.** Every file the guard
+  reads for an edit is opened without blocking and read only if it is a regular
+  file.
+- **Variable-expanded commands now reach the server's screen.** The expansion
+  was being dropped on arrival; it is now graded and can only add findings. It
+  is bounded at 16 KB, never expands a credential-named or very long variable,
+  and is masked before it is sent.
+- **Search and replace edits are read line by line**, so a large edit no longer
+  takes minutes to read, a block that deletes text is applied correctly, and a
+  Roo Code `:start_line:` hint is understood.
 
 ### Agent installs
 - **Hooks are written in the format each agent loads.** Codex reads hooks only

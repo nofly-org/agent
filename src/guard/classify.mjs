@@ -53,6 +53,7 @@ export const SHELL_TOOLS_RE = new RegExp(`^(?:${SHELL_TOOL_NAMES.map((n) => n.re
 export { argvCommand, heredocPatch, patchTextOf, shellCommandOf } from './command-text.mjs';
 import { patchTextOf, shellCommandOf } from './command-text.mjs';
 import { agentCliSpawn, isSubAgentSpawnTool } from './spawn-signals.mjs';
+import { readRegularHead } from '../core/safe-read.mjs';
 
 /** An MCP tool whose NAME says it runs a process - the server's `mcpExecCommand` reads the same leaves. */
 const MCP_EXEC_LEAF = /(?:^|_)(?:exec|execute|run|command|process|shell|terminal|bash|spawn|powershell|cmd)(?:_|$)/i;
@@ -264,15 +265,7 @@ const HEAD_BYTES = 64 * 1024;
 /** ⚠ The head of the file an edit changes - so a fragment of a k8s manifest is still sniffed as one. Never throws. */
 function diskHead(p, cwd) {
   try {
-    const abs = path.isAbsolute(p) ? p : path.resolve(cwd || process.cwd(), p);
-    const fd = fs.openSync(abs, 'r');
-    try {
-      const buf = Buffer.alloc(HEAD_BYTES);
-      const n = fs.readSync(fd, buf, 0, HEAD_BYTES, 0);
-      return buf.subarray(0, n).toString('utf8');
-    } finally {
-      fs.closeSync(fd);
-    }
+    return readRegularHead(path.isAbsolute(p) ? p : path.resolve(cwd || process.cwd(), p), HEAD_BYTES);
   } catch {
     return '';
   }

@@ -36,6 +36,26 @@ function injectionHits(t, mask) {
   return out;
 }
 
+export const MAX_SCREEN_CHARS = 1024 * 1024;
+export const UNREAD_LABEL = 'Too large or unusual to screen whole on this machine';
+
+const unreadFinding = () => ({ label: UNREAD_LABEL, severity: 'HIGH', category: 'coverage' });
+
+export function boundedLocalScan(text, opts = {}) {
+  const t = String(text ?? '');
+  const cut = t.length > MAX_SCREEN_CHARS;
+  const half = MAX_SCREEN_CHARS / 2;
+  let scan;
+  try {
+    scan = localScan(cut ? `${t.slice(0, half)}\n${t.slice(-half)}` : t, opts);
+  } catch {
+    return { verdict: 'FLAG', top: unreadFinding(), findings: [unreadFinding()], unread: 'failed' };
+  }
+  if (!cut) return scan;
+  const findings = [...scan.findings, unreadFinding()];
+  return { ...scan, verdict: scan.verdict === 'BLOCK' ? 'BLOCK' : 'FLAG', top: scan.verdict === 'BLOCK' ? scan.top : unreadFinding(), findings, unread: 'cut' };
+}
+
 export function localScan(text, opts = {}) {
   const findings = [];
   const t = text || '';

@@ -14,7 +14,7 @@ import { gateMachine } from '../core/api-client.mjs';
 import { VERSION } from '../core/version.mjs';
 import { loadConfig, resolveSettings, storedAgentCredential } from '../core/config.mjs';
 import { clearCachedCredential, workloadCredential } from '../core/workload-identity.mjs';
-import { classifyConsequence, downrankCodeContext, grade, localScan } from '../detect/guard-signals.mjs';
+import { boundedLocalScan, classifyConsequence, downrankCodeContext, grade, localScan } from '../detect/guard-signals.mjs';
 import { SEV_RANK } from '../detect/signals/severity.mjs';
 import { SHELL_TOOLS_RE, WRITE_TOOLS, callSubjectTypes, guardNeedsServer, guardTargetPath, guardText } from './classify.mjs';
 import { shellCommandOf } from './command-text.mjs';
@@ -32,6 +32,7 @@ import { recordSelftest, selftestField } from './selftest-marker.mjs';
 import { buildGuardBody, flushQueuedReports, reportGuardDecision } from './report.mjs';
 import { guardHookTamper, guardStateTamper, hookTamperReason, refuseOrAsk, tamperReason } from './self-protect.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 const ALLOW_VERDICT = { verdict: 'ALLOW', top: null, findings: [] };
 
@@ -123,7 +124,7 @@ function localTierDisabled() {
 }
 
 function screenLocally(normalized, tool, input) {
-  const scan = localScan(guardText(tool, input));
+  const scan = boundedLocalScan(guardText(tool, input));
   const isWrite = WRITE_TOOLS.has(tool);
   const allowlisted = isWrite && guardPathAllowlisted(normalized.cwd, guardTargetPath(normalized));
 
@@ -139,6 +140,18 @@ function localFlagMode() {
   const mode = String(process.env.SHOMRA_GUARD_LOCAL_FLAG ?? '').trim().toLowerCase();
   if (mode === 'allow' || mode === 'deny' || mode === 'ask') return mode;
   return failOpenOnSevere() ? 'allow' : 'ask';
+}
+
+function settleTooLarge(agent, flagged) {
+  const mode = localFlagMode();
+  if (mode === 'allow') return;
+  const matched = flagged ? ` The on-machine rules also matched: ${flagged}.` : '';
+  if (mode === 'deny') emitGuardDeny(agent, `Blocked on-machine by Shomra: ${TOO_LARGE_TO_SCREEN}, and SHOMRA_GUARD_LOCAL_FLAG=deny refuses what nothing judged.${matched}`);
+  emitGuardAsk(
+    agent,
+    `Shomra could not screen this call: ${TOO_LARGE_TO_SCREEN}, so nothing has judged it - approve it only if you meant it.${matched} `
+    + 'Set SHOMRA_GUARD_LOCAL_FLAG=allow to let such calls through.',
+  );
 }
 
 const RUN_TARGET_NOUN = { 'npm-script': 'the npm script', make: 'the make target', script: 'the script' };
@@ -173,7 +186,7 @@ async function recordMemoryWrite({ url, apiKey, tool, input, normalized }) {
     const abs = path.resolve(normalized.cwd || process.cwd(), String(target));
     let current = null;
     try {
-      current = fs.readFileSync(abs, 'utf8');
+      current = readRegularText(abs);
     } catch {
       return;
     }
@@ -222,7 +235,31 @@ function reportUnauthenticated(agent, status, strict, detail = {}) {
   }
 }
 
+const MAX_BODY_BYTES = 5 * 1024 * 1024 - 64 * 1024;
+const DROPPABLE_PARTS = ['post_content', 'active_artifacts'];
+export const TOO_LARGE_TO_SCREEN = 'the call is too large for the server to screen';
+
+export function fitGuardBody(body) {
+  let raw = JSON.stringify(body);
+  if (Buffer.byteLength(raw) <= MAX_BODY_BYTES) return raw;
+  const trimmed = { ...body };
+  for (const part of DROPPABLE_PARTS) {
+    if (!(part in trimmed)) continue;
+    delete trimmed[part];
+    raw = JSON.stringify(trimmed);
+    if (Buffer.byteLength(raw) <= MAX_BODY_BYTES) return raw;
+  }
+  return null;
+}
+
+function refuseTooLarge(agent, strict, onUnreachable) {
+  if (strict) emitGuardDeny(agent, `Shomra guard could not screen this call: ${TOO_LARGE_TO_SCREEN}; blocked by fail-closed policy.`);
+  return onUnreachable(TOO_LARGE_TO_SCREEN, { breaker: false, tooLarge: true });
+}
+
 async function requestServerDecision({ url, apiKey, agentId, body, agent, strict, retried, onUnreachable, onRejected }) {
+  const raw = typeof body === 'string' ? body : fitGuardBody(body);
+  if (raw === null) return refuseTooLarge(agent, strict, onUnreachable);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), guardTimeoutMs());
   try {
@@ -234,11 +271,16 @@ async function requestServerDecision({ url, apiKey, agentId, body, agent, strict
         ...(agentId ? { 'X-Shomra-Agent': agentId } : {}),
         Connection: 'close',
       },
-      body: JSON.stringify(body),
+      body: raw,
       signal: controller.signal,
     });
 
     if (!response.ok) {
+      if (response.status === 413) {
+        clearTimeout(timer);
+        response.body?.cancel?.().catch(() => {});
+        return refuseTooLarge(agent, strict, onUnreachable);
+      }
       if (response.status === 401 || response.status === 403) {
         onRejected?.();
         const agentCredential = String(apiKey ?? '').startsWith('shm_agt_') || String(agentId ?? '').startsWith('shm_agt_');
@@ -250,7 +292,7 @@ async function requestServerDecision({ url, apiKey, agentId, body, agent, strict
         if (wait !== null && !retried) {
           clearTimeout(timer);
           await sleep(wait);
-          return requestServerDecision({ url, apiKey, agentId, body, agent, strict, retried: true, onUnreachable, onRejected });
+          return requestServerDecision({ url, apiKey, agentId, body: raw, agent, strict, retried: true, onUnreachable, onRejected });
         }
         clearTimeout(timer);
         return onUnreachable('rate limited', { breaker: false });
@@ -300,8 +342,7 @@ function enforceServerDecision(agent, decision) {
 
 /** ⚠ Bounded BEFORE the read: a 2 GB file named by an Edit must not be pulled into memory to be refused. */
 function boundedRead(p) {
-  if (fs.statSync(p).size > MAX_POST_CONTENT) throw new Error('too large to send');
-  return fs.readFileSync(p, 'utf8');
+  return readRegularText(p, MAX_POST_CONTENT);
 }
 
 /**
@@ -425,9 +466,10 @@ export async function cmdToolGuard(flags) {
    * was NOT evaluated, distinct from an ordinary unscreened call, so a breaker
    * window of unchecked installs is visible on the server once it answers.
    */
-  const onUnreachable = (why) => {
+  const onUnreachable = (why, { tooLarge = false } = {}) => {
     recordSelftest({ stage: 'unreachable', tool, reason: why });
     countUnscreened(subjectCall ? `${why} - org subject rules NOT evaluated` : supplyCall ? `${why} - package and image checks NOT run` : why);
+    if (tooLarge) settleTooLarge(agent, flaggedBy);
     if (severe) askUnscreened(agent, why, flaggedBy);
     settleFlagged(agent, flaggedBy, `No Shomra verdict arrived (${why})`);
     if (failOpenNoticeDue()) emitGuardNotice(agent, `Shomra could not reach its server (${why}), so tool calls are screened on this machine only and org policy is not applied until it answers again. Set SHOMRA_GUARD_STRICT=1 to refuse calls instead.`);

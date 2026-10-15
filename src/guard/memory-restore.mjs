@@ -6,6 +6,7 @@ import { gateMachine } from '../core/api-client.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
 import { guardTimeoutMs } from '../core/circuit-breaker.mjs';
 import { writeFileAtomic } from '../core/json-file.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 const realOf = (p) => {
   try {
@@ -20,7 +21,7 @@ export const MAX_RESTORES = 20;
 
 const readOrNull = (p) => {
   try {
-    return fs.readFileSync(p, 'utf8');
+    return readRegularText(p);
   } catch {
     return null;
   }
@@ -44,7 +45,7 @@ export function restoreVerdict(item, { read = readOrNull, ledger = readLedger } 
 
 export function writeRestored(p, content) {
   writeFileAtomic(realOf(p), content);
-  return sha256(fs.readFileSync(p, 'utf8'));
+  return sha256(readRegularText(p));
 }
 
 async function call(url, apiKey, route, init = {}) {

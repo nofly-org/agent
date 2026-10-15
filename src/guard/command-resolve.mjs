@@ -2,8 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const MAX_LEN = 16 * 1024;
+export const MAX_RESOLVED = 16 * 1024;
+const MAX_ENV_VALUE = 4 * 1024;
 const MAX_UNRESOLVED = 8;
 const MAX_PATH_ENTRIES = 64;
+const TOO_LARGE = 'expansion-too-large';
+const CREDENTIAL_NAME = /PASS(?:WORD|WD|PHRASE)?|TOKEN|SECRET|CREDENTIAL|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY|AUTH|SESSION|COOKIE|SIGNATURE|(?:^|_)KEY$/i;
 
 const ASSIGN_PREFIX = /^\s*([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S*)\s+/;
 const VAR_RE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g;
@@ -39,14 +43,32 @@ function inlineAssignments(command) {
  * and gets screened as the second one. Absence is reported, never substituted.
  */
 function substitute(text, vars, env, unresolved) {
-  return text.replace(VAR_RE, (whole, braced, bare) => {
+  let room = MAX_RESOLVED - text.length;
+  let cut = false;
+  const out = text.replace(VAR_RE, (whole, braced, bare) => {
     const name = braced || bare;
-    if (vars.has(name)) return vars.get(name);
-    const fromEnv = env?.[name];
-    if (typeof fromEnv === 'string' && fromEnv.length) return fromEnv;
-    if (unresolved.length < MAX_UNRESOLVED && !unresolved.includes(whole)) unresolved.push(whole);
-    return whole;
+    let value = null;
+    if (vars.has(name)) value = vars.get(name);
+    else {
+      const fromEnv = env?.[name];
+      if (typeof fromEnv === 'string' && fromEnv.length) {
+        if (CREDENTIAL_NAME.test(name) || fromEnv.length > MAX_ENV_VALUE) return whole;
+        value = fromEnv;
+      }
+    }
+    if (value === null) {
+      if (unresolved.length < MAX_UNRESOLVED && !unresolved.includes(whole)) unresolved.push(whole);
+      return whole;
+    }
+    if (cut || value.length - whole.length > room) {
+      cut = true;
+      return whole;
+    }
+    room -= value.length - whole.length;
+    return value;
   });
+  if (cut && !unresolved.includes(TOO_LARGE)) unresolved.push(TOO_LARGE);
+  return out;
 }
 
 function isExecutable(file, statSync) {

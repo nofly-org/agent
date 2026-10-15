@@ -4,6 +4,7 @@ import path from 'node:path';
 import { isMemoryPath, reportMemoryWrite } from '../commands/memory-scan.mjs';
 import { outOfBandChange, pendingWrite, readLedger, recordLedger, sha256 } from './memory-write.mjs';
 import { gateMachine } from '../core/api-client.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 export const OUT_OF_BAND = 'changed outside any agent write the Shomra hook observed';
 export const FIRST_SIGHT = 'first observation of this store - baseline only, no write attributed';
@@ -105,7 +106,7 @@ export async function baselineSessionContext({ url, apiKey, cwd, sessionId, home
   for (const f of files) {
     let current = null;
     try {
-      current = fs.readFileSync(f, 'utf8');
+      current = readRegularText(f);
     } catch {
       continue;
     }

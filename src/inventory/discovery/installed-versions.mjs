@@ -57,11 +57,11 @@ function defaultIo() {
       return fs.readFileSync(file, 'utf8');
     },
     readTail: (file, max) => {
-      const st = fs.statSync(file);
-      if (!st.isFile()) return null;
-      const len = Math.min(st.size, max);
-      const fd = fs.openSync(file, 'r');
+      const fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0));
       try {
+        const st = fs.fstatSync(fd);
+        if (!st.isFile()) return null;
+        const len = Math.min(st.size, max);
         const buf = Buffer.alloc(len);
         fs.readSync(fd, buf, 0, len, st.size - len);
         return buf.toString('utf8');

@@ -12,6 +12,7 @@ import { emitGuardDeny } from './emit.mjs';
 import { sha256 } from './memory-write.mjs';
 import { buildGuardBody, reportGuardDecision } from './report.mjs';
 import { recordSelftest } from './selftest-marker.mjs';
+import { readRegularHead, readRegularText } from '../core/safe-read.mjs';
 
 export const SKILL_VERDICTS_FILE = path.join(CONFIG_DIR, 'skill-verdicts.json');
 export const SKILL_VERDICT_TTL_MS = 10 * 60_000;
@@ -61,14 +62,7 @@ function realOr(p) {
 
 function headOf(file) {
   try {
-    const fd = fs.openSync(file, 'r');
-    try {
-      const buf = Buffer.alloc(HEAD_BYTES);
-      const n = fs.readSync(fd, buf, 0, HEAD_BYTES, 0);
-      return buf.subarray(0, n).toString('utf8');
-    } finally {
-      fs.closeSync(fd);
-    }
+    return readRegularHead(file, HEAD_BYTES);
   } catch {
     return '';
   }
@@ -97,7 +91,7 @@ function pluginSkillDirs(home, plugin) {
     const root = pluginRootOf(manifest);
     let text = '';
     try {
-      text = fs.readFileSync(manifest, 'utf8');
+      text = readRegularText(manifest);
     } catch {
       continue;
     }
@@ -140,9 +134,7 @@ export function resolveSkill(wanted, { projectDir, cwd, home = os.homedir() }) {
 
 function readSkill(file) {
   try {
-    const st = fs.statSync(file);
-    if (!st.isFile() || st.size > MAX_ARTIFACT_BYTES) return null;
-    return fs.readFileSync(file, 'utf8');
+    return readRegularText(file, MAX_ARTIFACT_BYTES);
   } catch {
     return null;
   }

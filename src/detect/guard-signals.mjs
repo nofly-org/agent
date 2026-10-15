@@ -10,7 +10,7 @@ export { INJECTION_PHRASES, INJECTION_REGEXES, INVISIBLE_CHARS_RE } from './sign
 export { localMemory } from './signals/memory.mjs';
 export { AGENT_ROOT_RE, isAgentAdjacentPath, localPropagation } from './signals/propagation.mjs';
 export { citationGoverns, describesAt, isDocumentationLine, prohibitsAt } from './signals/prose-context.mjs';
-export { downrankCodeContext, localScan } from './signals/scan.mjs';
+export { boundedLocalScan, downrankCodeContext, localScan } from './signals/scan.mjs';
 export { PII_PATTERNS, SECRET_PATTERNS } from './signals/secrets.mjs';
 export { NETWORK_VERBS, SENSITIVE_READ } from './signals/sensitive.mjs';
 export { grade } from './signals/severity.mjs';
