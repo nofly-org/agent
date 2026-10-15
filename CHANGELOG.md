@@ -169,6 +169,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Copilot CLI's policy.d. It warns when the Node or Shomra install those hooks
   run could be changed by a non-root user. `shomra admin mdm-script --guard`
   adds it to the Jamf, Intune or Kandji bootstrap.
+- **The macOS and Linux bootstrap only runs a root-owned Node.** It used the
+  first `node` on PATH - on most Macs Homebrew's, which the user owns - ran npm
+  with it as root, and then stopped at the schedule step, which refuses such a
+  Node. It now picks the first Node whose file and folders root owns (links
+  followed), says so before running anything when there is none
+  (`SHOMRA_ALLOW_USER_NODE=1` accepts the risk), checks npm is there, runs every
+  step, and exits non-zero when the schedule or the managed firewall could not
+  be installed so the MDM console shows it.
+- **The root-owned check follows links.** A launcher reached through a link was
+  judged by the link's folders only, so a link into a folder a user owns
+  passed; the real file's folders are now checked too.
 
 ### MCP
 - **The shim's reply-id bypass is closed.** A server could get a poisoned

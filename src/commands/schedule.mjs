@@ -60,13 +60,29 @@ export function acceptsUserWritable(flags = {}, env = process.env) {
   return !!flags['allow-user-writable'] || env.SHOMRA_ALLOW_USER_NODE === '1';
 }
 
-export function userWritablePaths(files, { platform = process.platform, env = process.env, stat = fs.statSync } = {}) {
+export function userWritablePaths(files, { platform = process.platform, env = process.env, stat = fs.statSync, realpath = stat === fs.statSync ? fs.realpathSync : (p) => p } = {}) {
   if (platform === 'win32') {
     const users = homesRoot(platform, env).toLowerCase() + '\\';
-    return files.filter((f) => String(f).toLowerCase().startsWith(users));
+    return files.filter((f) => {
+      let real = f;
+      try {
+        real = realpath(f);
+      } catch {
+      }
+      return [f, real].some((p) => String(p).toLowerCase().startsWith(users));
+    });
   }
   const out = [];
   for (const f of files) {
+    let real = f;
+    try {
+      real = realpath(f);
+    } catch {
+    }
+    if (real !== f && userWritablePaths([real], { platform, env, stat, realpath: (p) => p }).length) {
+      out.push(f);
+      continue;
+    }
     for (let p = f; ; p = path.posix.dirname(p)) {
       let st;
       try {

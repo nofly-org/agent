@@ -155,3 +155,28 @@ test('privileged schedules flag a node or entry a non-admin could swap', () => {
   stats['/opt/s'].mode = 0o755;
   assert.deepEqual(userWritablePaths(['/opt/s/shomra.mjs'], { platform: 'linux', stat }), []);
 });
+
+test('a launcher reached through a link is judged by the folder it really lives in', { skip: process.platform === 'win32' || process.getuid?.() !== 0 }, async () => {
+  const { userWritableLauncher } = await import('../src/agents/managed.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-launcher-link-'));
+  try {
+    fs.chmodSync(dir, 0o755);
+    fs.mkdirSync(path.join(dir, 'userdir'));
+    fs.chownSync(path.join(dir, 'userdir'), 1000, 1000);
+    fs.writeFileSync(path.join(dir, 'userdir', 'node'), '');
+    fs.symlinkSync(path.join(dir, 'userdir', 'node'), path.join(dir, 'node'));
+    assert.deepEqual(userWritablePaths([path.join(dir, 'node')], { platform: 'linux' }), [path.join(dir, 'node')]);
+    assert.ok(userWritableLauncher([path.join(dir, 'node')], 'linux'), 'the managed install sees it too');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the bash bootstrap only runs a root-owned Node unless told otherwise, and reports a failed step', () => {
+  const linux = mdmScript({ os: 'linux', url: 'https://x', guard: true });
+  assert.match(linux, /root_owned "\$candidate"/);
+  assert.match(linux, /SHOMRA_ALLOW_USER_NODE/);
+  assert.match(linux, /status=1/);
+  assert.match(linux, /exit "\$status"/);
+  assert.ok(linux.indexOf('root_owned "$candidate"') < linux.indexOf('"$NPM" install'), 'Node is checked before anything runs as root');
+});

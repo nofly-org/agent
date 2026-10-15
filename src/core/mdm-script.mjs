@@ -26,9 +26,58 @@ if [ "$(id -u)" -ne 0 ]; then echo "run this as root" >&2; exit 1; fi
 export SHOMRA_API_KEY SHOMRA_URL
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:\${PATH:-}"
-NODE="$(command -v node || true)"
-if [ -z "$NODE" ]; then echo "Node.js 18+ is required - deploy it first" >&2; exit 1; fi
+
+resolve() {
+  local f="$1" d n=0
+  while [ -L "$f" ] && [ "$n" -lt 40 ]; do
+    d="$(cd "$(dirname "$f")" && pwd -P)" || return 1
+    f="$(readlink "$f")"
+    case "$f" in /*) ;; *) f="$d/$f" ;; esac
+    n=$((n + 1))
+  done
+  d="$(cd "$(dirname "$f")" && pwd -P)" || return 1
+  printf '%s/%s\n' "$d" "$(basename "$f")"
+}
+
+root_chain() {
+  local p="$1" uid mode
+  while :; do
+    if [ "$(uname -s)" = Darwin ]; then uid="$(stat -f %u "$p")" && mode="$(stat -f %Lp "$p")" || return 1
+    else uid="$(stat -c %u "$p")" && mode="$(stat -c %a "$p")" || return 1; fi
+    [ "$uid" = 0 ] || return 1
+    if [ ! -L "$p" ] && (( 8#$mode & 8#022 )) && ! { [ -d "$p" ] && (( 8#$mode & 8#1000 )); }; then return 1; fi
+    [ "$p" = / ] && return 0
+    p="$(dirname "$p")"
+  done
+}
+
+root_owned() {
+  local real
+  real="$(resolve "$1")" || return 1
+  root_chain "$1" && root_chain "$real"
+}
+
+NODE=""
+FIRST=""
+for candidate in /usr/local/bin/node /usr/bin/node /opt/homebrew/bin/node "$(command -v node || true)"; do
+  [ -n "$candidate" ] && [ -x "$candidate" ] || continue
+  [ -n "$FIRST" ] || FIRST="$candidate"
+  if root_owned "$candidate"; then NODE="$candidate"; break; fi
+done
+if [ -z "$FIRST" ]; then echo "Node.js 18+ is required - deploy it first" >&2; exit 1; fi
+if [ -z "$NODE" ]; then
+  if [ "\${SHOMRA_ALLOW_USER_NODE:-}" = 1 ]; then
+    NODE="$FIRST"
+    echo "using $NODE, which a normal user can change - accepted with SHOMRA_ALLOW_USER_NODE=1" >&2
+  else
+    echo "No root-owned Node.js was found (first found: $FIRST). The schedule${guard ? ' and the managed firewall run' : ' runs'} as root, so a Node a normal user can change would run that user's code as root." >&2
+    echo "Install Node with the official installer or your OS packages, or set SHOMRA_ALLOW_USER_NODE=1 to accept the risk." >&2
+    exit 1
+  fi
+fi
+export SHOMRA_ALLOW_USER_NODE="\${SHOMRA_ALLOW_USER_NODE:-}"
 NPM="$(dirname "$NODE")/npm"
+if [ ! -x "$NPM" ]; then echo "npm was not found next to $NODE - install npm for that Node first" >&2; exit 1; fi
 PREFIX=/usr/local/shomra
 ENTRY="$PREFIX/lib/node_modules/${PACKAGE_NAME}/shomra.mjs"
 
@@ -38,9 +87,10 @@ if [ ! -f "$ENTRY" ]; then
 fi
 
 "$NODE" "$ENTRY" init --machine --url "$SHOMRA_URL"
-"$NODE" "$ENTRY" schedule install --all-users --every ${hours}h
-${guard ? '"$NODE" "$ENTRY" install-hook --managed || echo "the managed runtime firewall could not be installed for every agent - see the output above"\n' : ''}"$NODE" "$ENTRY" report --all-users || echo "first report finished with findings or errors - see the Shomra dashboard"
-exit 0
+status=0
+"$NODE" "$ENTRY" schedule install --all-users --every ${hours}h || { echo "the report schedule could not be installed - see the output above" >&2; status=1; }
+${guard ? '"$NODE" "$ENTRY" install-hook --managed || { echo "the managed runtime firewall could not be installed for every agent - see the output above" >&2; status=1; }\n' : ''}"$NODE" "$ENTRY" report --all-users || echo "first report finished with findings or errors - see the Shomra dashboard"
+exit "$status"
 `;
 }
 

@@ -71,7 +71,17 @@ export function userWritableLauncher(targets = [process.execPath, SELF_PATH], pl
 }
 
 function userWritablePath(target) {
-  let cur = path.resolve(target);
+  const given = path.resolve(target);
+  let real = given;
+  try {
+    real = fs.realpathSync(given);
+  } catch {
+  }
+  return userWritableChain(given) ?? (real === given ? null : userWritableChain(real));
+}
+
+function userWritableChain(start) {
+  let cur = start;
   for (let i = 0; i < 64; i++) {
     let st;
     try {
