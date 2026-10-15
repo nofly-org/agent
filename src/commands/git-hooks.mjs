@@ -54,11 +54,13 @@ export async function cmdInstallPrecommit(flags, positional) {
     console.log('    ' + bold(marker) + '\n');
     return;
   }
-  if (existing && flags.force) {
-    try {
-      fs.writeFileSync(hookPath + '.bak', existing);
-      console.log(dim('  Backed up existing hook → ' + path.basename(hookPath) + '.bak'));
-    } catch {}
+  if (existing && flags.force && !existing.includes(marker)) {
+    const kept = keepHookBackup(hookPath, existing);
+    if (!kept) {
+      console.error(red('✗') + ` Could not back up the existing hook at ${hookPath} - nothing was changed.`);
+      process.exit(1);
+    }
+    console.log(dim('  Backed up existing hook → ' + path.basename(kept)));
   }
   fs.writeFileSync(hookPath, managed, 'utf8');
   try {
@@ -71,8 +73,7 @@ export async function cmdInstallPrecommit(flags, positional) {
 function installPreReceive(flags, positional) {
   const root = path.resolve(positional[0] || flags.path || '.');
 
-  const bareHooks = path.join(root, 'hooks');
-  const dir = fs.existsSync(bareHooks) && fs.statSync(bareHooks).isDirectory() ? bareHooks : gitHooksDir(root);
+  const dir = gitHooksDir(root);
   if (!dir) {
     console.error(red('✗') + ` No git hooks directory under ${root}. Point this at a BARE repository (the one the server hosts), not a working checkout.`);
     process.exit(EXIT_USAGE);
@@ -141,8 +142,16 @@ function installPreReceive(flags, positional) {
     console.log('  Chain Shomra into it, or re-run with ' + bold('--force') + ' to replace it (a backup is kept).\n');
     return;
   }
-  if (existing !== null) {
-    try { fs.writeFileSync(hookPath + '.bak', existing); console.log(dim('  Backed up existing hook → pre-receive.bak')); } catch {  }
+  if (existing !== null && !ours) {
+    const kept = keepHookBackup(hookPath, existing);
+    if (!kept) {
+      console.error(red('✗') + ` Could not back up the existing hook at ${hookPath} - nothing was changed.`);
+      process.exit(1);
+    }
+    console.log(dim('  Backed up existing hook → ' + path.basename(kept)));
+  }
+  if (git(['rev-parse', '--is-bare-repository'], { cwd: root, timeout: 3000 })?.trim() === 'false') {
+    console.log(dim('  Note: this is a working checkout, so the hook runs only for pushes into it. Install it in the bare repository your git server hosts.'));
   }
   fs.writeFileSync(hookPath, managed, 'utf8');
   try { fs.chmodSync(hookPath, 0o755); } catch {  }
@@ -156,6 +165,19 @@ function installPreReceive(flags, positional) {
   console.log(dim('  Every push is now gated server-side - no --no-verify, and no per-developer install.'));
   console.log(dim('  This hook FAILS CLOSED: if shomra is missing on the server, pushes are refused.'));
   console.log(dim('  GitHub.com has no server-side hooks - there, use the Action as a required status check.\n'));
+}
+
+function keepHookBackup(hookPath, text) {
+  for (let n = 0; n < 50; n++) {
+    const name = n ? `${hookPath}.bak.${n}` : `${hookPath}.bak`;
+    try {
+      fs.writeFileSync(name, text, { flag: 'wx', mode: 0o755 });
+      return name;
+    } catch (error) {
+      if (error.code !== 'EEXIST') return null;
+    }
+  }
+  return null;
 }
 
 function gitHooksDir(root) {

@@ -4,7 +4,7 @@ export const MDM_OSES = ['macos', 'linux', 'windows'];
 export const PACKAGE_NAME = '@shomra/agent';
 
 const shQuote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
-const psQuote = (s) => `'${String(s).replace(/'/g, "''")}'`;
+const psQuote = (s) => `'${String(s).replace(/['\u2018\u2019\u201A\u201B]/g, (q) => q + q)}'`;
 
 function bashScript({ os, key, url, hours, guard }) {
   const jamf = os === 'macos';

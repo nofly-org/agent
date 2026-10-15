@@ -108,6 +108,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **On-machine masking covers every match**, not the first 5,000 of each kind.
 
 ### Agent installs
+- **Nothing writes through a link out of the project.** A project install,
+  `rules --write`, `new`, `pr --init`, `baseline`, `mcp add` and `fix --apply`
+  refuse a target whose link leads outside the project (a cloned repo can no
+  longer aim them at your own settings), and still follow links inside it.
+- **Machine-wide installs refuse a launcher a normal user can change.**
+  `schedule install --all-users` and `install-hook --managed` stop when Node or
+  the agent can be modified by a non-root user, since they run it as root or for
+  everyone; accept the risk with `--allow-user-writable`
+  (`SHOMRA_ALLOW_USER_NODE=1`).
+- **Backups are never overwritten.** Git hook installs keep the first backup
+  (`.bak`, then `.bak.1` …), never back up their own hook over yours, and the
+  MCP guard backup is never written through a planted link.
+- **The pre-receive hook goes in git's hooks folder,** never a `hooks/` folder
+  of your source tree.
+- **`fix --apply` refuses a fix that would empty the file or make it worse.**
+- **`rules --write` leaves a damaged Shomra block alone** and says so, instead of
+  deleting the text after it on the next run.
+- **`init` keeps your key.** A user-level `init` no longer overwrites the
+  machine-wide config or drops the key it was given.
+- **Smaller fixes:** `protect --project` works, the Cline install writes all its
+  hooks or none, the crontab keeps your blank lines and similar-looking jobs,
+  JSON settings keep their tabs and Windows line endings, `mcp add` refuses
+  `__proto__`, and the Windows MDM script escapes curly quotes.
 - **Hooks are written in the format each agent loads.** Codex reads hooks only
   under `"hooks"` in hooks.json (and asks you to trust them at its next start);
   Copilot CLI needs `{ version: 1, hooks: { preToolUse, postToolUse } }`; Cline

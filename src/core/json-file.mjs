@@ -66,7 +66,47 @@ function makeDirs(dir, owner) {
   }
 }
 
+function isLink(p) {
+  try {
+    return fs.lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+function realOrNearest(p) {
+  const tail = [];
+  let cur = path.resolve(p);
+  for (let i = 0; i < 256; i++) {
+    try {
+      return path.join(fs.realpathSync(cur), ...tail.reverse());
+    } catch {
+      const parent = path.dirname(cur);
+      if (parent === cur) return path.resolve(p);
+      tail.push(path.basename(cur));
+      cur = parent;
+    }
+  }
+  return path.resolve(p);
+}
+
+const insideDir = (root, p) => {
+  const rel = path.relative(root, p);
+  return rel === '' || (!rel.startsWith(`..${path.sep}`) && rel !== '..' && !path.isAbsolute(rel));
+};
+
+export function outsideProject(file, project = process.cwd()) {
+  const lexical = path.resolve(file);
+  const root = path.resolve(project);
+  if (!insideDir(root, lexical)) return null;
+  const realRoot = realOrNearest(root);
+  const real = realOrNearest(lexical);
+  return insideDir(realRoot, real) ? null : real;
+}
+
 export function writeFileAtomic(file, text) {
+  const escaped = outsideProject(file);
+  if (escaped) throw new SettingsFileError(`${file} leads through a symlink to ${escaped}, outside this project - nothing was changed. Remove the link, or run the command from the folder it points into.`);
   const target = realTarget(file);
   const dir = path.dirname(target);
   const found = typeof process.getuid === 'function' && process.getuid() === 0 ? ownerOf(target) : null;
@@ -83,6 +123,7 @@ export function writeFileAtomic(file, text) {
     fs.writeFileSync(tmp, text, mode === undefined ? undefined : { mode });
   } catch (error) {
     if (error.code !== 'EACCES' && error.code !== 'EPERM' && error.code !== 'EROFS') throw error;
+    if (isLink(target)) throw error;
     fs.writeFileSync(target, text);
     handOver(target, owner);
     return;
@@ -97,6 +138,20 @@ export function writeFileAtomic(file, text) {
   }
 }
 
+function jsonStyle(file) {
+  let raw;
+  try {
+    raw = fs.readFileSync(file, 'utf8');
+  } catch {
+    return { indent: 2, eol: '\n' };
+  }
+  const nested = /\n([ \t]+)\S/.exec(raw);
+  const indent = !nested ? 2 : nested[1].startsWith('\t') ? '\t' : Math.min(nested[1].length, 8);
+  return { indent, eol: raw.includes('\r\n') ? '\r\n' : '\n' };
+}
+
 export function writeJsonFile(file, value) {
-  writeFileAtomic(file, `${JSON.stringify(value, null, 2)}\n`);
+  const { indent, eol } = jsonStyle(file);
+  const text = `${JSON.stringify(value, null, indent)}\n`;
+  writeFileAtomic(file, eol === '\n' ? text : text.replace(/\n/g, eol));
 }

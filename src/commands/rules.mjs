@@ -7,8 +7,9 @@ import { localGate } from '../detect/guard-signals.mjs';
 import { detectEnv } from '../gate/environment.mjs';
 import { DEC_RANK } from '../gate/sast.mjs';
 import { rulesContext } from '../rules/context.mjs';
-import { generateRules, mergeRulesBlock, resolveRulesTargets, rulesBlock } from '../rules/generate.mjs';
+import { generateRules, mergeRulesBlock, resolveRulesTargets, rulesBlock, rulesBlockDamage } from '../rules/generate.mjs';
 import { RULES_BEGIN, RULES_TARGETS } from '../rules/sections.mjs';
+import { writeFileAtomic } from '../core/json-file.mjs';
 
 const ORG_POLICY_TIMEOUT_MS = 5000;
 const MAX_ORG_DIRECTIVES = 20;
@@ -54,6 +55,8 @@ function planTarget(root, key, block) {
     existing = '';
   }
 
+  const damage = rulesBlockDamage(existing);
+  if (damage) return { key, label: target.label, file: target.file, abs: absolutePath, next: null, worsens: false, state: 'damaged', damage };
   const next = mergeRulesBlock(existing, block, target);
   const hadBlock = existing.includes(RULES_BEGIN);
   const worsens = next !== null && gateRank(next, target.file) > (existing ? gateRank(existing, target.file) : 0);
@@ -81,8 +84,8 @@ function buildJsonReport({ root, sections, orgLines, orgError, gate, context, wr
     modelRefs: context.modelRefs,
     aiUsage: context.aiUsage,
     written,
-    targets: plan.map(({ key, label, file, state, worsens }) => ({
-      key, label, file, state, ...(worsens ? { skipped: 'would-worsen' } : {}),
+    targets: plan.map(({ key, label, file, state, worsens, damage }) => ({
+      key, label, file, state, ...(worsens ? { skipped: 'would-worsen' } : {}), ...(damage ? { damage } : {}),
     })),
     ...(flags.write ? {} : { block: body }),
   };
@@ -95,13 +98,17 @@ function printDriftReport(plan, drifted) {
   }
   console.log(`\n  ${red(`✗ Shomra rules out of date in ${drifted.length} ${plural(drifted.length, 'file')}:`)}`);
   for (const target of drifted) {
-    const state = target.state === 'absent' ? red('absent') : yellow('stale ');
+    const state = target.state === 'absent' ? red('absent') : target.state === 'damaged' ? red('damaged') : yellow('stale ');
     console.log(`    ${state} ${bold(target.file)} ${dim(`· ${target.label}`)}`);
   }
   console.log(dim('\n  Run ') + bold('shomra rules --write') + dim(' and commit the result.\n'));
 }
 
 function writeTarget(target, flags) {
+  if (target.state === 'damaged') {
+    if (!flags.json) console.log(`  ${red('✗')} ${target.file} ${dim(`- its Shomra block is damaged (${target.damage}). Fix or remove the block by hand; nothing was changed.`)}`);
+    return { wrote: false, failed: true };
+  }
   if (target.state === 'current') {
     if (!flags.json) console.log(`  ${yellow('•')} ${target.label} ${dim(`already current (${target.file})`)}`);
     return { wrote: false, failed: false };
@@ -113,8 +120,7 @@ function writeTarget(target, flags) {
     return { wrote: false, failed: true };
   }
   try {
-    fs.mkdirSync(path.dirname(target.abs), { recursive: true });
-    fs.writeFileSync(target.abs, target.next);
+    writeFileAtomic(target.abs, target.next);
     if (!flags.json) {
       console.log(`  ${green('✓')} ${target.state === 'stale' ? 'Updated' : 'Wrote'} ${bold(target.file)} ${dim(`· ${target.label}`)}`);
     }
@@ -125,10 +131,12 @@ function writeTarget(target, flags) {
   }
 }
 
-function printWriteSummary(wrote, sections, orgLines) {
-  const headline = wrote
-    ? green(`✓ ${wrote} rules ${plural(wrote, 'file')} updated`)
-    : green('✓ Already current');
+function printWriteSummary(wrote, sections, orgLines, failed = 0) {
+  const headline = failed
+    ? red(`✗ ${failed} rules ${plural(failed, 'file')} not written`) + (wrote ? dim(` · ${wrote} updated`) : '')
+    : wrote
+      ? green(`✓ ${wrote} rules ${plural(wrote, 'file')} updated`)
+      : green('✓ Already current');
   const orgNote = orgLines.length ? ` · ${orgLines.length} org ${plural(orgLines.length, 'directive')}` : '';
   console.log(`\n  ${headline}${dim(` · ${sections.length} ${plural(sections.length, 'section')}${orgNote}`)}`);
   console.log(dim('  Commit these - the agent reads them before it writes, so the blocked pattern is never generated.'));
@@ -201,16 +209,20 @@ export async function cmdRules(flags, positional) {
 
   if (flags.write) {
     let wrote = 0;
+    let failed = 0;
     for (const target of plan) {
       const result = writeTarget(target, flags);
       if (result.wrote) {
         wrote += 1;
         written.push(target.file);
       }
-      if (result.failed) process.exitCode = 1;
+      if (result.failed) {
+        failed += 1;
+        process.exitCode = 1;
+      }
     }
     emitJson();
-    if (!flags.json) printWriteSummary(wrote, sections, orgLines);
+    if (!flags.json) printWriteSummary(wrote, sections, orgLines, failed);
     return;
   }
 

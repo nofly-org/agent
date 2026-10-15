@@ -12,6 +12,7 @@ import { findingPath, locationBase, relativeToBase } from '../gate/locations.mjs
 import { toSarif } from '../gate/sarif.mjs';
 import { touchedArtifacts } from '../gate/scope.mjs';
 import { trustedConfig } from '../gate/trusted.mjs';
+import { writeFileAtomic } from '../core/json-file.mjs';
 
 const PR_WORKFLOW = `name: Shomra AI Security
 on: pull_request
@@ -75,8 +76,7 @@ function writeWorkflow(flags) {
     console.error(`${red('✗')} ${path.relative(process.cwd(), workflow)} exists. Use ${bold('--force')}.`);
     process.exit(EXIT_USAGE);
   }
-  fs.mkdirSync(path.dirname(workflow), { recursive: true });
-  fs.writeFileSync(workflow, PR_WORKFLOW);
+  writeFileAtomic(workflow, PR_WORKFLOW);
   console.log(`\n  ${green('✓ Wrote')} ${bold('.github/workflows/shomra.yml')} ${dim('- commit it; PRs will get an inline Shomra review.')}`);
   console.log(`${dim('  Optional: add ') + bold('SHOMRA_API_KEY') + dim(' as a repo secret to also apply org policy.')}\n`);
 }

@@ -279,7 +279,7 @@ export const AGENT_INSTALLERS = {
   cline(global) {
     const portable = !global;
     const dir = clineHookDirs(global)[0];
-    let changed = dropLegacyClineHooks(global);
+    const planned = [];
     for (const [event, verb] of Object.entries(CLINE_EVENTS)) {
       const file = path.join(dir, event);
       const body = clineScript(verb, portable);
@@ -293,6 +293,10 @@ export const AGENT_INSTALLERS = {
       if (current != null && !CLINE_MARK_RE.test(current)) {
         throw new SettingsFileError(`${file} already holds a ${event} hook that is not Shomra's - Cline runs one script per event, so merge it by hand; nothing was changed.`);
       }
+      planned.push({ file, body });
+    }
+    let changed = dropLegacyClineHooks(global);
+    for (const { file, body } of planned) {
       writeFileAtomic(file, body);
       fs.chmodSync(file, 0o755);
       changed = true;

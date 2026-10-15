@@ -35,6 +35,15 @@ export function loadMachineConfig(file = MACHINE_CONFIG_FILE) {
   }
 }
 
+export function loadUserConfig(file = CONFIG_FILE) {
+  try {
+    const user = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return user && typeof user === 'object' && !Array.isArray(user) ? user : {};
+  } catch {
+    return {};
+  }
+}
+
 let warnedUnreadable = false;
 
 function warnUnreadable(reason) {

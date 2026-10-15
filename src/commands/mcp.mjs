@@ -74,6 +74,14 @@ function cmdMcpInstall(flags) {
   console.log('');
 }
 
+function keepBackup(bak, text, mode) {
+  try {
+    fs.writeFileSync(bak, text, { mode, flag: 'wx' });
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+  }
+}
+
 export async function cmdMcpGuard(flags, positional) {
   const { runMcpShim } = await import('../mcp/shim.mjs');
   return runMcpShim(flags, positional);
@@ -113,8 +121,7 @@ async function cmdMcpGuardInstall(flags) {
     if (changed) {
       try {
 
-        const bak = file + '.shomra-backup';
-        if (!undo && !fs.existsSync(bak)) fs.writeFileSync(bak, before, { mode: fileMode(file) });
+        if (!undo) keepBackup(file + '.shomra-backup', before, fileMode(file));
         writeJsonFile(file, cfg);
       } catch (e) {
         console.log(`  ${red('✗')} ${label} ${dim('- ' + e.message)}`);

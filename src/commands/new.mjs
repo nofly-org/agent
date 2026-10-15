@@ -5,6 +5,7 @@ import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
 import { localGate } from '../detect/guard-signals.mjs';
 import { AGENT_FRAMEWORKS, agentProjectFiles } from '../scaffold/agent-project.mjs';
 import { NEW_TEMPLATES } from '../scaffold/artifact-templates.mjs';
+import { writeFileAtomic } from '../core/json-file.mjs';
 
 function cmdNewAgent(flags, positional) {
   const framework = String(flags.framework || AGENT_FRAMEWORKS[0]).toLowerCase();
@@ -22,8 +23,7 @@ function cmdNewAgent(flags, positional) {
   const files = agentProjectFiles(name);
   for (const [rel, content] of Object.entries(files)) {
     const abs = path.join(dir, rel);
-    fs.mkdirSync(path.dirname(abs), { recursive: true });
-    fs.writeFileSync(abs, content);
+    writeFileAtomic(abs, content);
   }
 
   if (flags.json) {
@@ -55,8 +55,7 @@ export function cmdNew(flags, positional) {
     console.error(red('✗') + ` ${file} already exists. Use ${bold('--force')} to overwrite.`);
     process.exit(EXIT_USAGE);
   }
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(target, content);
+  writeFileAtomic(target, content);
   const g = localGate(content, { kind: kind === 'agent-card' ? 'agent-card' : kind === 'mcp' ? 'mcp' : kind === 'rules' ? 'rules' : kind, path: file });
   if (flags.json) { console.log(JSON.stringify({ created: file, kind, verdict: g.verdict }, null, 2)); return; }
   console.log(`\n  ${green('✓ Created')} ${bold(file)} ${dim(`(${kind})`)}`);

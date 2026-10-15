@@ -5,6 +5,7 @@ const BOOLEAN_FLAGS = new Set([
   'fail-on-regression', 'fail-on-blocked', 'write', 'yes', 'stdin', 'quiet', 'help',
   'check', 'checklist', 'pre-receive', 'uninstall', 'save', 'list', 'machine',
   'all-users', 'no-owner', 'static', 'no-save', 'print-credential', 'managed', 'guard',
+  'allow-user-writable',
 ]);
 
 const VALUE_FLAGS = new Set([
@@ -43,7 +44,8 @@ function setFlag(flags, name, value) {
   flags[name] = prev === undefined ? value : [].concat(prev, value);
 }
 
-export function parseFlags(argv) {
+export function parseFlags(argv, { switches = [] } = {}) {
+  const asSwitch = new Set(switches);
   const flags = {};
   const positional = [];
   const unknown = [];
@@ -82,7 +84,7 @@ export function parseFlags(argv) {
       flags[body] = true;
       continue;
     }
-    if (BOOLEAN_FLAGS.has(body)) {
+    if (BOOLEAN_FLAGS.has(body) || asSwitch.has(body)) {
       flags[body] = true;
       continue;
     }

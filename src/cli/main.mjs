@@ -8,12 +8,14 @@ import { didYouMean } from './suggestions.mjs';
 const GUARD_COMMANDS = new Set(['tool-guard', 'result-guard', 'prompt-guard', 'plan-guard', 'session-guard']);
 const PASSTHROUGH_COMMANDS = new Set(['mcp-guard']);
 
+const COMMAND_SWITCHES = { protect: ['project'] };
+
 export async function main() {
   const [, , command, ...rest] = process.argv;
 
   const sep = rest.indexOf('--');
   const ours = sep === -1 ? rest : rest.slice(0, sep);
-  const { flags, positional: before, unknown, invalid } = parseFlags(ours);
+  const { flags, positional: before, unknown, invalid } = parseFlags(ours, { switches: COMMAND_SWITCHES[command] });
   const positional = sep === -1 || PASSTHROUGH_COMMANDS.has(command) ? before : [...before, ...rest.slice(sep + 1)];
 
   if (command === 'help' || command === undefined || command === '--help' || command === '-h') {

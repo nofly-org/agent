@@ -132,6 +132,7 @@ function outcomeNote(verdict) {
 export async function cmdMcpAdd(flags, positional, configFile) {
   const name = positional[1];
   if (!name) usageExit(`Usage: ${bold('shomra mcp add <name> <command…>')}`);
+  if (['__proto__', 'constructor', 'prototype'].includes(name)) usageExit(`"${name}" cannot be used as a server name - pick another name.`);
 
   const { server, tokens } = buildServerEntry(flags, positional);
   if (!server.url && !server.command) usageExit('Provide a launch command or --url.');
