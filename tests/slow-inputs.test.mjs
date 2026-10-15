@@ -43,3 +43,14 @@ test('the tool guard answers a write of a huge blank YAML file without hanging',
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+test('grading the consequence of a very long command stays fast and keeps its answer', async () => {
+  const { classifyConsequence } = await import('../src/detect/signals/consequence.mjs');
+  const long = 'git push '.repeat(200000);
+  const started = Date.now();
+  assert.equal(classifyConsequence({ tool: 'Bash', args: long, isShell: true }), 'material');
+  assert.ok(Date.now() - started < 1000, `took ${Date.now() - started}ms`);
+  assert.equal(classifyConsequence({ tool: 'Bash', args: 'git push --force origin main', isShell: true }), 'severe');
+  assert.equal(classifyConsequence({ tool: 'Bash', args: 'git push origin main\n--force', isShell: true }), 'severe');
+  assert.equal(classifyConsequence({ tool: 'Bash', args: 'git push origin main; echo --force', isShell: true }), 'material');
+});

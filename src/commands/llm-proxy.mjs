@@ -14,8 +14,11 @@ const EMBEDDINGS_ONLY = ['voyage', 'jina'];
 const DEFAULT_PORT = 4141;
 const MAX_BODY_BYTES = 64 * 1024 * 1024;
 const BODYLESS_METHODS = ['GET', 'HEAD'];
-const HOP_BY_HOP_REQUEST_HEADERS = ['host', 'connection', 'content-length', 'accept-encoding', 'expect'];
-const HOP_BY_HOP_RESPONSE_HEADERS = ['content-length', 'transfer-encoding', 'content-encoding', 'connection'];
+const HOP_BY_HOP = ['connection', 'keep-alive', 'proxy-connection', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade'];
+const HOP_BY_HOP_REQUEST_HEADERS = [...HOP_BY_HOP, 'host', 'content-length', 'accept-encoding', 'expect'];
+const HOP_BY_HOP_RESPONSE_HEADERS = [...HOP_BY_HOP, 'content-length', 'content-encoding'];
+
+const namedByConnection = (value) => String(value ?? '').split(',').map((name) => name.trim().toLowerCase()).filter(Boolean);
 const AGENT_CREDENTIAL_PREFIX = 'shm_agt_';
 
 function newSessionId() {
@@ -44,7 +47,7 @@ export function localClientOnly(headers = {}) {
 
 export function forwardHeaders(incoming, { apiKey, actor, machineId, sessionId, project, agentId }) {
   const headers = { ...incoming };
-  for (const name of HOP_BY_HOP_REQUEST_HEADERS) delete headers[name];
+  for (const name of [...HOP_BY_HOP_REQUEST_HEADERS, ...namedByConnection(incoming.connection)]) delete headers[name];
 
   headers['x-shomra-key'] = apiKey;
   headers['x-shomra-actor'] = actor;
@@ -102,8 +105,9 @@ async function streamUpstreamBody(upstream, response) {
 
 async function relayResponse(upstream, response) {
   const headers = {};
+  const dropped = new Set([...HOP_BY_HOP_RESPONSE_HEADERS, ...namedByConnection(upstream.headers.get('connection'))]);
   for (const [name, value] of upstream.headers) {
-    if (!HOP_BY_HOP_RESPONSE_HEADERS.includes(name)) headers[name] = value;
+    if (!dropped.has(name)) headers[name] = value;
   }
   response.once('close', () => {
     if (!response.writableFinished) upstream.body?.cancel?.().catch(() => {});

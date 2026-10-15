@@ -121,3 +121,43 @@ test('a request body over the limit is refused instead of buffered without bound
   const small = await readBody(Readable.from([Buffer.from('hello')]), 1000);
   assert.equal(small.toString(), 'hello');
 });
+
+test('a request body sent in chunks is forwarded, and headers meant for one hop stop at the proxy', async () => {
+  const seen = [];
+  const backend = http.createServer((req, res) => {
+    let size = 0;
+    req.on('data', (d) => { size += d.length; });
+    req.on('end', () => {
+      seen.push({ size, headers: req.headers });
+      res.writeHead(200, { 'content-type': 'application/json', connection: 'close, x-backend-hop', 'x-backend-hop': 'internal' });
+      res.end('{"ok":true}');
+    });
+  });
+  await new Promise((d) => backend.listen(0, '127.0.0.1', d));
+  const port = await freePort();
+  const proxy = await startProxy(`http://127.0.0.1:${backend.address().port}`, port);
+  try {
+    const body = JSON.stringify({ model: 'x', messages: [{ role: 'user', content: 'hi' }] });
+    const answer = await new Promise((done, fail) => {
+      const req = http.request({
+        host: '127.0.0.1', port, method: 'POST', path: '/openai/v1/chat/completions',
+        headers: { 'content-type': 'application/json', connection: 'keep-alive, x-client-hop', 'x-client-hop': 'private' },
+      }, (res) => {
+        let text = '';
+        res.on('data', (d) => { text += d; });
+        res.on('end', () => done({ status: res.statusCode, headers: res.headers, text }));
+      });
+      req.on('error', fail);
+      req.write(body.slice(0, 10));
+      req.end(body.slice(10));
+    });
+    assert.equal(answer.status, 200, answer.text);
+    assert.equal(seen[0].size, Buffer.byteLength(body));
+    assert.equal(seen[0].headers['transfer-encoding'], undefined);
+    assert.equal(seen[0].headers['x-client-hop'], undefined, 'a header the client named in Connection is not forwarded');
+    assert.equal(answer.headers['x-backend-hop'], undefined, 'a header the backend named in Connection is not relayed');
+  } finally {
+    proxy.child.kill();
+    await new Promise((d) => backend.close(d));
+  }
+});

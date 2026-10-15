@@ -106,6 +106,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Outage counts are never lost to a damaged ledger.** A window whose start
   time is unreadable is still reported, with its length marked as not measured.
 - **On-machine masking covers every match**, not the first 5,000 of each kind.
+- **A very long command is graded in linear time.** Deciding whether a command
+  is high-consequence took seconds on a long one; it now takes milliseconds and
+  gives the same answers.
+- **`llm-proxy` forwards request bodies sent in chunks.** Clients that stream
+  their request body got a 502; headers meant for a single hop now stop at the
+  proxy in both directions.
 
 ### Agent installs
 - **Nothing writes through a link out of the project.** A project install,
