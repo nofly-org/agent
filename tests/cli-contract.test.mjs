@@ -179,6 +179,34 @@ test('doctor never grades an empty machine, and an unguarded agent caps the grad
   }
 });
 
+test('every scaffold Shomra ships gates clean under its own rules', () => {
+  for (const kind of ['skill', 'command', 'subagent', 'agent-card', 'mcp', 'rules']) {
+    const s = sandbox();
+    try {
+      const r = s.run(['new', kind, 'demo']);
+      assert.equal(r.status, 0, kind);
+      assert.match(r.stdout, /✓ gate: clean/, `${kind}: ${r.stdout}`);
+    } finally {
+      s.done();
+    }
+  }
+});
+
+test('a scaffold name can never point outside the project', () => {
+  const s = sandbox();
+  try {
+    const repo = path.join(s.dir, 'repo');
+    fs.mkdirSync(repo);
+    for (const args of [['new', 'skill', '..'], ['new', 'skill', '../../escape'], ['new', 'agent', '..', '--force']]) {
+      spawnSync(process.execPath, [CLI, ...args], { cwd: repo, env: { PATH: process.env.PATH, HOME: s.dir, USERPROFILE: s.dir, NO_COLOR: '1' }, encoding: 'utf8' });
+    }
+    assert.deepEqual(fs.readdirSync(s.dir).filter((f) => f !== '.shomra').sort(), ['repo']);
+    assert.ok(fs.existsSync(path.join(repo, 'escape', 'SKILL.md')));
+  } finally {
+    s.done();
+  }
+});
+
 test('backend URLs are parsed, not pattern-replaced', () => {
   assert.deepEqual(parseBackendUrl('https://localhost.corp.example:8443/'), { url: 'https://localhost.corp.example:8443', cleartext: false });
   assert.deepEqual(parseBackendUrl('http://localhost-api.internal'), { url: 'http://localhost-api.internal', cleartext: true });

@@ -7,13 +7,18 @@ import { AGENT_FRAMEWORKS, agentProjectFiles } from '../scaffold/agent-project.m
 import { NEW_TEMPLATES } from '../scaffold/artifact-templates.mjs';
 import { writeFileAtomic } from '../core/json-file.mjs';
 
+function slugName(words, fallback) {
+  const slug = words.join('-').replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-{2,}/g, '-').replace(/^[.-]+|[.-]+$/g, '').slice(0, 64);
+  return slug || fallback;
+}
+
 function cmdNewAgent(flags, positional) {
   const framework = String(flags.framework || AGENT_FRAMEWORKS[0]).toLowerCase();
   if (!AGENT_FRAMEWORKS.includes(framework)) {
     console.error(red('✗') + ` Unknown --framework: ${framework}. Supported: ${AGENT_FRAMEWORKS.join(', ')}.`);
     process.exit(EXIT_USAGE);
   }
-  const name = (positional[0] || 'my-agent').replace(/[^a-zA-Z0-9._-]/g, '-');
+  const name = slugName(positional, 'my-agent');
   const dir = path.resolve(name);
   if (fs.existsSync(dir) && fs.readdirSync(dir).length && !flags.force) {
     console.error(red('✗') + ` ${name}/ already exists and is not empty. Use ${bold('--force')} to write into it anyway.`);
@@ -48,7 +53,7 @@ export function cmdNew(flags, positional) {
     console.error(red('✗') + ` Usage: ${bold('shomra new ' + Object.keys(NEW_TEMPLATES).join('|') + '|agent [name]')}`);
     process.exit(EXIT_USAGE);
   }
-  const name = (positional[1] || (kind === 'rules' ? 'rules' : `my-${kind}`)).replace(/[^a-zA-Z0-9._-]/g, '-');
+  const name = slugName(positional.slice(1), kind === 'rules' ? 'rules' : `my-${kind}`);
   const { file, content } = tmpl(name);
   const target = path.resolve(file);
   if (fs.existsSync(target) && !flags.force) {
@@ -59,5 +64,6 @@ export function cmdNew(flags, positional) {
   const g = localGate(content, { kind: kind === 'agent-card' ? 'agent-card' : kind === 'mcp' ? 'mcp' : kind === 'rules' ? 'rules' : kind, path: file });
   if (flags.json) { console.log(JSON.stringify({ created: file, kind, verdict: g.verdict }, null, 2)); return; }
   console.log(`\n  ${green('✓ Created')} ${bold(file)} ${dim(`(${kind})`)}`);
-  console.log(`  ${g.verdict === 'ALLOW' ? green('✓ gate: clean') : yellow('gate: ' + g.verdict)} ${dim('- secure-by-default template. Edit, then')} ${bold('shomra gate ' + file)}${dim('.')}\n`);
+  if (g.verdict === 'ALLOW') console.log(`  ${green('✓ gate: clean')} ${dim('- secure-by-default template. Edit, then')} ${bold('shomra gate ' + file)}${dim('.')}\n`);
+  else console.log(`  ${yellow('gate: ' + g.verdict)} ${dim('- the template did not gate clean. See why with')} ${bold('shomra gate ' + file)}${dim('.')}\n`);
 }

@@ -30,6 +30,6 @@ export const NEW_TEMPLATES = {
   }),
   rules: () => ({
     file: 'CLAUDE.md',
-    content: `# Project rules\n\nGuidance the agent should follow in this repo. Legitimate standing directives are\nfine here - but never instruct the agent to ignore the system prompt, hide actions\nfrom the user, disable safety checks, or send data to an external host.\n\n## Conventions\n- …\n`,
+    content: `# Project rules\n\nHow work is done in this repo: conventions, commands and boundaries. Keep it to\nfacts about the project - where data may go and which checks stay on belong in\nyour org policy, not in this file.\n\n## Conventions\n- …\n\n## Commands\n- Build: …\n- Test: …\n`,
   }),
 };

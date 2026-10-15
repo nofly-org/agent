@@ -310,6 +310,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   budget, large cache folders under your home are skipped, and a walk that
   ran out of budget is listed as skipped instead of ending silently.
 - **A `headersHelper` command keeps its shape but never its credential.**
+- **`shomra new rules` writes a template that passes the gate.** The shipped
+  CLAUDE.md template listed the instructions it warned against and the gate
+  blocked it (risk 100/100); it now describes the project instead, every
+  template is tested to gate clean, and a template that did not is no longer
+  called "secure-by-default". Scaffold names stay inside the project: `..`,
+  `../../x` and `/etc/x` become plain folder names, and `new skill My Skill`
+  keeps both words.
 - **`<command> --help` shows that command for every command.** Admin verbs
   (`scan-zip`, `redteam`, `mdm-script` and the rest), `agent-id`, `mcp-guard`
   and `ledger` printed the whole manual; they now print their own lines plus
