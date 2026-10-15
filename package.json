@@ -1,10 +1,11 @@
 {
-  "name": "@shomra/agent",
+  "name": "@nofly/agent",
   "version": "0.3.40",
-  "description": "Shomra - adversarial assurance for AI agents, as a local-first CLI. Blocks dangerous tool-calls before they run, attacks your own guardrails to prove they hold, and gates AI artifacts in your editor and CI.",
+  "description": "NoFly - adversarial assurance for AI agents, as a local-first CLI. Blocks dangerous tool-calls before they run, attacks your own guardrails to prove they hold, and gates AI artifacts in your editor and CI.",
   "type": "module",
   "bin": {
-    "shomra": "./shomra.mjs"
+    "nofly": "./nofly.mjs",
+    "shomra": "./nofly.mjs"
   },
   "engines": {
     "node": ">=18"
@@ -13,7 +14,7 @@
     "test": "node --test"
   },
   "files": [
-    "shomra.mjs",
+    "nofly.mjs",
     "src",
     "README.md",
     "LICENSE",
@@ -40,7 +41,7 @@
   "bugs": {
     "url": "https://github.com/shomra-org/agent/issues"
   },
-  "author": "Shomra",
+  "author": "NoFly",
   "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"

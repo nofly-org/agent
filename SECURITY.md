@@ -1,7 +1,7 @@
 # Security Policy
 
-Shomra is a security tool, so we hold ourselves to the standard we ask of others.
-If you find a security issue in the `@shomra/agent` CLI, please tell us privately
+NoFly is a security tool, so we hold ourselves to the standard we ask of others.
+If you find a security issue in the `@nofly/agent` CLI, please tell us privately
 first so we can fix it before it is public.
 
 ## Reporting a vulnerability
@@ -16,7 +16,7 @@ Instead, use one of:
 
 Please include:
 
-- the version (`shomra --version` or the `package.json` version),
+- the version (`nofly --version` or the `package.json` version),
 - your OS and Node version,
 - a minimal repro (a sample artifact / command / input),
 - what you expected vs. what happened, and the impact you see.
@@ -39,11 +39,11 @@ for example, a malicious input that causes the scanner to execute code, leak
 data, crash in a way that breaks a CI gate, or silently pass content it should
 have flagged (a detection bypass).
 
-Out of scope: the hosted Shomra platform and backend APIs (report those through
+Out of scope: the hosted NoFly platform and backend APIs (report those through
 your account / the platform's own channel), and issues that require a
 already-compromised machine or a modified copy of the CLI.
 
 ## Supported versions
 
 Security fixes land on the latest released minor version. Please upgrade to the
-latest `@shomra/agent` before reporting.
+latest `@nofly/agent` before reporting.

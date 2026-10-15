@@ -7,15 +7,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
+const CLI = path.join(HERE, '..', 'nofly.mjs');
 const WINDOWS = process.platform === 'win32';
 
 function sandbox() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-odd-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-odd-'));
   const run = (args) => spawnSync(process.execPath, [CLI, ...args], {
     cwd: dir,
     input: '',
-    env: { PATH: process.env.PATH, HOME: dir, USERPROFILE: dir, NO_COLOR: '1', SHOMRA_URL: 'http://127.0.0.1:1', SHOMRA_OFFLINE: '1' },
+    env: { PATH: process.env.PATH, HOME: dir, USERPROFILE: dir, NO_COLOR: '1', NOFLY_URL: 'http://127.0.0.1:1', NOFLY_OFFLINE: '1' },
     encoding: 'utf8',
     timeout: 20000,
   });
@@ -40,7 +40,7 @@ test('a command given a named pipe says so instead of waiting on it', { skip: WI
       assert.match(r.stdout + r.stderr, /not a regular file/, args.join(' '));
       assert.notEqual(r.status, 0, args.join(' '));
     }
-    assert.doesNotMatch(s.run(['mcp', 'guard', '--config', 'fifo.md']).stdout, /now starts through Shomra/, 'nothing was guarded, so nothing is claimed');
+    assert.doesNotMatch(s.run(['mcp', 'guard', '--config', 'fifo.md']).stdout, /now starts through NoFly/, 'nothing was guarded, so nothing is claimed');
   } finally {
     s.done();
   }
@@ -79,10 +79,10 @@ test('mcp list reads comments and skips entries that are not servers', () => {
   }
 });
 
-test('a Shomra config that is a pipe, a folder or holds non-text keys never stops a command or a hook', { skip: WINDOWS }, () => {
+test('a NoFly config that is a pipe, a folder or holds non-text keys never stops a command or a hook', { skip: WINDOWS }, () => {
   const s = sandbox();
   try {
-    const cfg = path.join(s.dir, '.shomra', 'config.json');
+    const cfg = path.join(s.dir, '.nofly', 'config.json');
     fs.mkdirSync(path.dirname(cfg), { recursive: true });
     spawnSync('mkfifo', [cfg]);
     const hook = spawnSync(process.execPath, [CLI, 'tool-guard', '--agent', 'claude'], {
@@ -119,9 +119,9 @@ test('repo files linked to an endless device are skipped, not read forever', { s
   const s = sandbox();
   try {
     spawnSync('git', ['init', '-q', s.dir]);
-    fs.symlinkSync('/dev/zero', path.join(s.dir, '.shomraignore'));
-    fs.mkdirSync(path.join(s.dir, '.shomra'));
-    fs.symlinkSync('/dev/zero', path.join(s.dir, '.shomra', 'policy.yml'));
+    fs.symlinkSync('/dev/zero', path.join(s.dir, '.noflyignore'));
+    fs.mkdirSync(path.join(s.dir, '.nofly'));
+    fs.symlinkSync('/dev/zero', path.join(s.dir, '.nofly', 'policy.yml'));
     fs.mkdirSync(path.join(s.dir, '.claude'));
     fs.symlinkSync('/dev/zero', path.join(s.dir, '.claude', 'settings.json'));
     fs.writeFileSync(path.join(s.dir, 'AGENTS.md'), '# Rules\nUse pnpm.\n');

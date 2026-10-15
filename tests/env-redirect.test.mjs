@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { classifyPair, readEnvRedirects } from '../src/inventory/env-redirect.mjs';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-redirect-'));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-redirect-'));
 const put = (rel, body) => {
   const full = path.join(tmp, rel);
   fs.mkdirSync(path.dirname(full), { recursive: true });

@@ -12,7 +12,7 @@ import { readRegularText } from '../core/safe-read.mjs';
  * of them is egress, an MCP call or an agent artifact, so none reached the
  * server. Every org rule about packages, images, containers, actions, models,
  * extensions or IaC was dead at runtime unless the machine ran with
- * `SHOMRA_GUARD_ALWAYS_ESCALATE=1` or an agent identity.
+ * `NOFLY_GUARD_ALWAYS_ESCALATE=1` or an agent identity.
  *
  * This is a PRE-classifier. It never decides what a subject IS - the server's
  * extractors do - only which subject TYPES a call could carry, so the hook can
@@ -257,8 +257,8 @@ export const SUBJECT_TYPES_FILE = path.join(CONFIG_DIR, 'guard-subject-types.jso
  * that long.
  */
 export function subjectTypesTtlMs(types = null) {
-  const n = Number(process.env.SHOMRA_GUARD_SUBJECT_TTL_MS);
-  if (process.env.SHOMRA_GUARD_SUBJECT_TTL_MS && Number.isFinite(n) && n >= 0 && n <= 86_400_000) return n;
+  const n = Number(process.env.NOFLY_GUARD_SUBJECT_TTL_MS);
+  if (process.env.NOFLY_GUARD_SUBJECT_TTL_MS && Number.isFinite(n) && n >= 0 && n <= 86_400_000) return n;
   return Array.isArray(types) && types.length === 0 ? 60_000 : 10 * 60_000;
 }
 

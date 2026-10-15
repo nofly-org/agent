@@ -18,7 +18,7 @@ export async function cmdAgentIdentity(flags, positional) {
     exitNotConfigured();
   }
   if (sub !== 'register') {
-    console.error(`\n  ${red('✗')} Unknown subcommand "${sub}". Use: ${bold('shomra agent-identity register --name "…" --type coding-agent')}`);
+    console.error(`\n  ${red('✗')} Unknown subcommand "${sub}". Use: ${bold('nofly agent-identity register --name "…" --type coding-agent')}`);
     console.error(dim('  (List / govern / revoke identities in the dashboard → Agent Identities.)\n'));
     process.exit(EXIT_USAGE);
   }
@@ -30,7 +30,7 @@ export async function cmdAgentIdentity(flags, positional) {
   if (!source && inCi() && !flags.static) {
     console.error(`\n  ${red('✗')} ${bold('Registering from CI with a stored credential mints a new agent and a new secret on every run')}, and prints that secret into the build log.`);
     console.error(dim('    Let the job prove who it is instead. GitHub Actions: give the job `permissions: id-token: write`.'));
-    console.error(dim('    GitLab CI: add `id_tokens: SHOMRA_ID_TOKEN` with your org’s audience. Then run this again - it registers with no secret,'));
+    console.error(dim('    GitLab CI: add `id_tokens: NOFLY_ID_TOKEN` with your org’s audience. Then run this again - it registers with no secret,'));
     console.error(dim('    and running it on every build returns the same agent.'));
     console.error(dim('    To register with a stored credential anyway, pass --static.\n'));
     process.exit(EXIT_USAGE);
@@ -48,7 +48,7 @@ export function registrationWorkload(flags, env = process.env) {
   const named = workloadSource(env);
   if (named) return named;
   if (env.GITHUB_ACTIONS === 'true' && env.ACTIONS_ID_TOKEN_REQUEST_URL && env.ACTIONS_ID_TOKEN_REQUEST_TOKEN) return 'github';
-  if (env.GITLAB_CI && String(env.SHOMRA_ID_TOKEN ?? '').trim()) return 'gitlab';
+  if (env.GITLAB_CI && String(env.NOFLY_ID_TOKEN ?? '').trim()) return 'gitlab';
   return null;
 }
 
@@ -81,9 +81,9 @@ async function callRegister(url, apiKey, body) {
     return await api(url, apiKey, '/agents/register', body);
   } catch (e) {
     console.error(`\n  ${red('✗')} ${e.message}`);
-    if (e.status === 400 && /named owner/i.test(e.message)) console.error(dim('    Pass --owner <email>: an active member of your Shomra org who answers for this agent.'));
+    if (e.status === 400 && /named owner/i.test(e.message)) console.error(dim('    Pass --owner <email>: an active member of your NoFly org who answers for this agent.'));
     if (e.status === 409) console.error(dim('    Nothing was created. Run it again, or choose another --name.'));
-    if (e.status === 403 && /cannot register another agent/i.test(e.message)) console.error(dim('    Register with the org key `shomra init` stored, a CI key, or from the dashboard.'));
+    if (e.status === 403 && /cannot register another agent/i.test(e.message)) console.error(dim('    Register with the org key `nofly init` stored, a CI key, or from the dashboard.'));
     console.error('');
     process.exit(1);
   }
@@ -113,7 +113,7 @@ async function registerWithCredential(flags, { url, apiKey }) {
     } else {
       console.log(`\n  ${bold('Credential')} ${dim('(shown once - store it securely):')}`);
       printSecret(res.credential);
-      console.log(dim('    Present it as SHOMRA_AGENT="<the credential above>" where the agent runs.'));
+      console.log(dim('    Present it as NOFLY_AGENT="<the credential above>" where the agent runs.'));
     }
     if (res.credentialLifetime?.statement) console.log(dim(`    ${res.credentialLifetime.statement}`));
   }
@@ -121,10 +121,10 @@ async function registerWithCredential(flags, { url, apiKey }) {
 }
 
 async function registerKeyless(flags, { url, apiKey, source }) {
-  let audience = String(flags.audience ?? process.env.SHOMRA_AUDIENCE ?? '').trim();
+  let audience = String(flags.audience ?? process.env.NOFLY_AUDIENCE ?? '').trim();
   if (!audience) {
     if (!ORG_AUDIENCE_SOURCES.has(source)) {
-      console.error(`\n  ${red('✗')} --audience is required for ${PROVIDER_LABEL[source] ?? source}: the audience of the app you registered for Shomra.\n`);
+      console.error(`\n  ${red('✗')} --audience is required for ${PROVIDER_LABEL[source] ?? source}: the audience of the app you registered for NoFly.\n`);
       process.exit(EXIT_USAGE);
     }
     try {
@@ -160,7 +160,7 @@ async function registerKeyless(flags, { url, apiKey, source }) {
   );
   if (reg.binding?.subject) console.log(`  ${dim('Signs in as')} ${reg.binding.subject} ${dim(`(${PROVIDER_LABEL[source] ?? source})`)}`);
   if (res.credential) console.log(dim(`    Session valid ${reg.sessionMinutes ?? 60} minutes, renewed from the job’s own identity token - there is no agent credential to store or rotate.`));
-  console.log(`  ${dim('Later steps')} SHOMRA_WORKLOAD=${source} SHOMRA_AUDIENCE=${audience}${exported ? dim('  (written to $GITHUB_ENV)') : ''}`);
+  console.log(`  ${dim('Later steps')} NOFLY_WORKLOAD=${source} NOFLY_AUDIENCE=${audience}${exported ? dim('  (written to $GITHUB_ENV)') : ''}`);
   for (const w of reg.warnings ?? []) console.log(`  ${yellow('!')} ${w}`);
   if (reg.refused) console.log(`  ${red('!')} ${reg.refused}`);
   afterRegistration(res);
@@ -174,7 +174,7 @@ function afterRegistration(res) {
     console.log(`  ${dim('Owner:')} ${res.owner.email ?? res.owner.name}`);
   } else {
     console.log(`\n  ${red('!')} ${bold('No owner recorded.')} ${dim('Nobody is accountable for this identity.')}`);
-    console.log(dim('    Re-run with --owner <email> (an active Shomra seat), or assign one in the dashboard.'));
+    console.log(dim('    Re-run with --owner <email> (an active NoFly seat), or assign one in the dashboard.'));
   }
   if (!res.description) {
     console.log(`  ${yellow('!')} ${bold('No purpose recorded.')} ${dim('Add --purpose "what it does" so its calls can be held to it.')}`);
@@ -198,7 +198,7 @@ export function exportSignIn(source, audience, env = process.env) {
   const file = String(env.GITHUB_ENV ?? '').trim();
   if (!file || env.GITHUB_ACTIONS !== 'true') return false;
   try {
-    fs.appendFileSync(file, `SHOMRA_WORKLOAD=${source}\nSHOMRA_AUDIENCE=${audience}\n`);
+    fs.appendFileSync(file, `NOFLY_WORKLOAD=${source}\nNOFLY_AUDIENCE=${audience}\n`);
     return true;
   } catch {
     return false;
@@ -217,19 +217,19 @@ export function ownerEmail(flags) {
 }
 
 export function resolveAgentIdentityHandle(flags) {
-  const v = (flags && flags['agent-id'] && String(flags['agent-id'])) || process.env.SHOMRA_AGENT || '';
+  const v = (flags && flags['agent-id'] && String(flags['agent-id'])) || process.env.NOFLY_AGENT || '';
   return v && String(v).trim() ? String(v).trim() : null;
 }
 
 export function identityStatus(cfg, url, env = process.env) {
-  const explicit = String(env.SHOMRA_AGENT ?? '').trim();
+  const explicit = String(env.NOFLY_AGENT ?? '').trim();
   if (explicit) {
     return explicit.startsWith('shm_agt_')
-      ? `credential ${explicit.slice(0, 14)}… from SHOMRA_AGENT`
-      : `handle "${explicit.slice(0, 40)}" from SHOMRA_AGENT - a name anyone can type; register it to get a credential`;
+      ? `credential ${explicit.slice(0, 14)}… from NOFLY_AGENT`
+      : `handle "${explicit.slice(0, 40)}" from NOFLY_AGENT - a name anyone can type; register it to get a credential`;
   }
   const source = workloadSource(env);
-  if (source) return `keyless via ${PROVIDER_LABEL[source] ?? source} (SHOMRA_WORKLOAD) - no stored agent credential`;
+  if (source) return `keyless via ${PROVIDER_LABEL[source] ?? source} (NOFLY_WORKLOAD) - no stored agent credential`;
   const all = cfg?.agentCredentials && typeof cfg.agentCredentials === 'object' ? cfg.agentCredentials : {};
   const saved = Object.entries(all).filter(([, e]) => typeof e?.credential === 'string' && e.credential.startsWith('shm_agt_') && (!url || !e.url || e.url === url));
   if (saved.length) return `saved credential for ${saved.map(([k, e]) => `${k} (${e.slug ?? e.credential.slice(0, 14)})`).join(', ')}`;

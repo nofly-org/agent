@@ -65,7 +65,7 @@ export async function cmdProvenance(flags, positional) {
     console.log(`  ${noTel ? yellow('⚠ ' + res.summary) : res.summary}`);
     if (noTel) {
       console.log(dim('    No firewall telemetry for this range - this is NOT a claim that a human wrote them.'));
-      console.log(dim('    Install the runtime hook with ') + bold('shomra protect') + dim(' to attribute future work.'));
+      console.log(dim('    Install the runtime hook with ') + bold('nofly protect') + dim(' to attribute future work.'));
     }
     console.log('');
     for (const f of res.files.slice(0, 40)) {

@@ -118,7 +118,7 @@ export async function reportMemoryWrite(url, apiKey, body) {
   try {
     const res = await keyedFetch(`${url}/memory/ingest`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Shomra-Key': apiKey, Connection: 'close' },
+      headers: { 'Content-Type': 'application/json', 'X-NoFly-Key': apiKey, Connection: 'close' },
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });
@@ -195,11 +195,11 @@ function summaryLine(worst) {
 }
 
 function writerFor(file, content, flags) {
-  if (flags.writer) return { writer: String(flags.writer).toUpperCase(), source: 'shomra memory-scan' };
+  if (flags.writer) return { writer: String(flags.writer).toUpperCase(), source: 'nofly memory-scan' };
   if (outOfBandChange(file.full, content)) {
-    return { writer: 'UNKNOWN', source: 'changed outside any agent write the Shomra hook observed' };
+    return { writer: 'UNKNOWN', source: 'changed outside any agent write the NoFly hook observed' };
   }
-  return { writer: 'SCAN', source: 'shomra memory-scan' };
+  return { writer: 'SCAN', source: 'nofly memory-scan' };
 }
 
 export async function cmdMemoryScan(flags, positional) {
@@ -224,7 +224,7 @@ export async function cmdMemoryScan(flags, positional) {
   };
 
   if (!flags.json) {
-    console.log(bold(cyan('\n  Shomra Memory Integrity')) + dim(` - scanning ${files.length} store${files.length > 1 ? 's' : ''} (${target})`));
+    console.log(bold(cyan('\n  NoFly Memory Integrity')) + dim(` - scanning ${files.length} store${files.length > 1 ? 's' : ''} (${target})`));
   }
 
   let worst = 'PASS';
@@ -269,7 +269,7 @@ export async function cmdMemoryScan(flags, positional) {
     if (unread) console.log(`\n  ${yellow('⚠')} ${unread} store${unread > 1 ? 's were' : ' was'} found but not read - reported as not looked inside, never as clean.`);
     if (failed) console.log(`\n  ${red('✗')} ${failed} of ${files.length} store${files.length > 1 ? 's' : ''} could not be sent for checking - ${failed === files.length ? 'nothing was checked' : 'the result below covers only the rest'}.`);
     console.log(dim(`\n  Not scannable from this machine: ${SERVER_SIDE_MEMORY.map((s) => s.vendor).join(', ')} keep memory server-side.`));
-    if (stores.length) console.log(`\n  ${summaryLine(worst)}${dim(' Full timeline + rollback in the Shomra dashboard → Memory.\n')}`);
+    if (stores.length) console.log(`\n  ${summaryLine(worst)}${dim(' Full timeline + rollback in the NoFly dashboard → Memory.\n')}`);
     else console.log('');
   }
 

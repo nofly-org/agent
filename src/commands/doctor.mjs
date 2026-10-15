@@ -137,11 +137,11 @@ function printRiskyIssues(issues) {
 function topFixes({ unguarded, issues, risky, dotenvKeys }) {
   const fixes = [];
   if (unguarded.length) {
-    fixes.push(`${red('!')} ${unguarded.length} coding agent${unguarded.length > 1 ? 's have' : ' has'} no runtime firewall → ${bold('shomra protect')}`);
+    fixes.push(`${red('!')} ${unguarded.length} coding agent${unguarded.length > 1 ? 's have' : ' has'} no runtime firewall → ${bold('nofly protect')}`);
   }
   if (issues.length) {
     const spread = risky.length > issues.length ? dim(` across ${risky.length} files`) : '';
-    fixes.push(`${yellow('!')} ${issues.length} risky MCP/rules issue${issues.length > 1 ? 's' : ''}${spread} → ${bold('shomra check')} ${dim('or')} ${bold('shomra gate <file>')}`);
+    fixes.push(`${yellow('!')} ${issues.length} risky MCP/rules issue${issues.length > 1 ? 's' : ''}${spread} → ${bold('nofly check')} ${dim('or')} ${bold('nofly gate <file>')}`);
   }
   if (dotenvKeys.length) {
     fixes.push(`${yellow('!')} ${dotenvKeys.length} model key${dotenvKeys.length > 1 ? 's' : ''} in .env file${dotenvKeys.length > 1 ? 's' : ''} → rotate + ensure .gitignore covers them`);
@@ -161,8 +161,8 @@ function printFixes(fixes) {
 function printEnrollmentHint() {
   const enrolled = !!loadConfig().apiKey;
   const message = enrolled
-    ? `Enrolled - run ${bold('shomra report')}${dim(' to sync this to your Shomra org.')}`
-    : `Run ${bold('shomra init')}${dim(' to apply org policy and sync posture.')}`;
+    ? `Enrolled - run ${bold('nofly report')}${dim(' to sync this to your NoFly org.')}`
+    : `Run ${bold('nofly init')}${dim(' to apply org policy and sync posture.')}`;
   console.log(`${dim(`\n  ${message}`)}\n`);
 }
 
@@ -209,7 +209,7 @@ export function cmdDoctor(flags) {
   }
 
   const colour = scoreColour(score);
-  console.log(bold(cyan('\n  Shomra Doctor')) + dim(` - ${os.hostname()}`));
+  console.log(bold(cyan('\n  NoFly Doctor')) + dim(` - ${os.hostname()}`));
   if (foundNothing(inventory)) {
     console.log(`\n  ${bold('Posture')}  ${yellow(bold('Not Graded'))} ${dim('- no AI tooling was found on this machine, so there is nothing to grade.')}`);
     console.log(dim('  That is not a clean result: an agent this scan does not recognise is not counted.\n'));

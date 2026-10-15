@@ -1,7 +1,7 @@
-# Contributing to Shomra Agent
+# Contributing to NoFly Agent
 
 Thanks for helping make AI tooling safer. This package is the **local-first**
-engine behind Shomra: the CLI, the editor extension, the CI gate, and the
+engine behind NoFly: the CLI, the editor extension, the CI gate, and the
 runtime firewall all run these same analyzers on-machine.
 
 ## Ground rules
@@ -11,7 +11,7 @@ runtime firewall all run these same analyzers on-machine.
   package, we almost certainly want a small vendored helper instead - open an
   issue first.
 - **Node 18+**, ES modules (`.mjs`).
-- **Local-first.** Detection must work fully offline. Network calls (to a Shomra
+- **Local-first.** Detection must work fully offline. Network calls (to a NoFly
   backend) are strictly optional enrichment and must degrade gracefully when the
   backend is absent, slow, or down - never hang or fail closed by default.
 - **Low false positives.** A noisy scanner gets turned off. New rules must be
@@ -19,7 +19,7 @@ runtime firewall all run these same analyzers on-machine.
 
 ## Project layout
 
-`shomra.mjs` at the repo root is only the executable entrypoint. Everything else
+`nofly.mjs` at the repo root is only the executable entrypoint. Everything else
 lives under `src/`, grouped by what it is responsible for:
 
 | Directory | What it holds |
@@ -32,10 +32,10 @@ lives under `src/`, grouped by what it is responsible for:
 | `src/guard/` | The runtime firewall hook handlers (`tool-guard`, `result-guard`, …) |
 | `src/agents/` | Per-agent hook installation (Claude Code, Cursor, Gemini, …) |
 | `src/inventory/` | Discovering AI tooling, artifacts and keys on a machine |
-| `src/mcp/` | The MCP server Shomra exposes, and the stdio shim that guards others |
+| `src/mcp/` | The MCP server NoFly exposes, and the stdio shim that guards others |
 | `src/models/` | Model reference collection and Model Index lookup |
 | `src/rules/` | Generating the agent rules block written into `CLAUDE.md` etc. |
-| `src/corpus/`, `src/artifacts/`, `src/scaffold/` | RAG screening, artifact walking, `shomra new` templates |
+| `src/corpus/`, `src/artifacts/`, `src/scaffold/` | RAG screening, artifact walking, `nofly new` templates |
 | `tests/` | `node --test` suites (zero-dep) |
 
 Two conventions worth knowing before you move code:
@@ -51,8 +51,8 @@ Two conventions worth knowing before you move code:
 
 ```bash
 node --test                # run the test suite
-node shomra.mjs help       # run the CLI from source
-node --check shomra.mjs    # syntax check
+node nofly.mjs help       # run the CLI from source
+node --check nofly.mjs    # syntax check
 ```
 
 ## Adding or changing a detection rule

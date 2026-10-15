@@ -63,7 +63,7 @@ export async function cmdScan(flags) {
     return;
   }
   if (!flags.json) {
-    console.log(bold(cyan('\n  Shomra')) + dim(` agent v${VERSION} - local scan`));
+    console.log(bold(cyan('\n  NoFly')) + dim(` agent v${VERSION} - local scan`));
     if (homes) console.log(dim(`  ${homes.length} user home(s): ${homes.map((h) => h.user).join(', ')}`));
     printAssets(assets);
     for (const s of unreadStores) {
@@ -76,7 +76,7 @@ export async function cmdScan(flags) {
     await sendReport(cfg, assets, flags, { artifacts, capped, available });
   } else {
     console.log(
-      dim('\n  Run ') + bold('shomra report') + dim(' to analyze these on the platform and see findings.\n'),
+      dim('\n  Run ') + bold('nofly report') + dim(' to analyze these on the platform and see findings.\n'),
     );
   }
 }
@@ -127,7 +127,7 @@ async function sendReport(cfg, assets, flags, extra = {}) {
   if (!flags.json) process.stdout.write(dim('\n  Reporting to platform… '));
   try {
     const res = await api(url, apiKey, '/agent/report', fitted.body, {
-      timeoutMs: clampInt(process.env.SHOMRA_API_TIMEOUT_MS, 180000, 1000, 600000),
+      timeoutMs: clampInt(process.env.NOFLY_API_TIMEOUT_MS, 180000, 1000, 600000),
     });
     if (flags.json) {
       console.log(JSON.stringify(res, null, 2));
@@ -155,7 +155,7 @@ async function sendReport(cfg, assets, flags, extra = {}) {
     console.log(
       '\n  ' +
         (crit + high > 0
-          ? `${red(crit + ' critical')} · ${yellow(high + ' high')} ${dim('- view & remediate at the Shomra dashboard')}`
+          ? `${red(crit + ' critical')} · ${yellow(high + ' high')} ${dim('- view & remediate at the NoFly dashboard')}`
           : green('No high-severity findings. ') + dim('Nice and clean.')),
     );
     console.log(dim(`  Endpoint: ${res.endpointId}\n`));

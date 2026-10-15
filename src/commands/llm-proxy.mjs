@@ -5,6 +5,7 @@ import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { VERSION } from '../core/version.mjs';
 import { resolveAgentIdentityHandle } from './agent-identity.mjs';
 import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
+import { adoptLegacyHeaders } from '../core/legacy.mjs';
 import { currentUsername } from '../core/api-client.mjs';
 
 export const LLM_PROVIDERS = ['openai', 'anthropic', 'gemini', 'groq', 'mistral', 'xai', 'deepseek', 'openrouter', 'together', 'cohere', 'voyage', 'jina'];
@@ -46,19 +47,19 @@ export function localClientOnly(headers = {}) {
 }
 
 export function forwardHeaders(incoming, { apiKey, actor, machineId, sessionId, project, agentId }) {
-  const headers = { ...incoming };
+  const headers = adoptLegacyHeaders({ ...incoming });
   for (const name of [...HOP_BY_HOP_REQUEST_HEADERS, ...namedByConnection(incoming.connection)]) delete headers[name];
 
-  headers['x-shomra-key'] = apiKey;
-  headers['x-shomra-actor'] = actor;
-  if (machineId) headers['x-shomra-machine'] = machineId;
-  headers['x-shomra-source'] = 'shomra llm-proxy';
-  if (!headers['x-shomra-session']) headers['x-shomra-session'] = sessionId;
-  if (project) headers['x-shomra-project'] = project;
-  const presented = typeof headers['x-shomra-agent'] === 'string' ? headers['x-shomra-agent'].trim() : '';
-  delete headers['x-shomra-agent'];
+  headers['x-nofly-key'] = apiKey;
+  headers['x-nofly-actor'] = actor;
+  if (machineId) headers['x-nofly-machine'] = machineId;
+  headers['x-nofly-source'] = 'nofly llm-proxy';
+  if (!headers['x-nofly-session']) headers['x-nofly-session'] = sessionId;
+  if (project) headers['x-nofly-project'] = project;
+  const presented = typeof headers['x-nofly-agent'] === 'string' ? headers['x-nofly-agent'].trim() : '';
+  delete headers['x-nofly-agent'];
   const agent = agentId || (presented.startsWith(AGENT_CREDENTIAL_PREFIX) ? presented : null);
-  if (agent) headers['x-shomra-agent'] = agent;
+  if (agent) headers['x-nofly-agent'] = agent;
   return headers;
 }
 
@@ -130,7 +131,7 @@ export function containRequestErrors(handler) {
         return;
       }
       if (response.headersSent) response.destroy();
-      else sendJson(response, 502, { error: { message: `Shomra LLM proxy error: ${error?.message ?? error}` } });
+      else sendJson(response, 502, { error: { message: `NoFly LLM proxy error: ${error?.message ?? error}` } });
     }
   };
 }
@@ -149,7 +150,7 @@ function createProxyHandler({ url, headerContext, providerPattern }) {
   return async (request, response) => {
     if (!localClientOnly(request.headers)) {
       sendJson(response, 403, {
-        error: { message: 'Refused: the Shomra LLM proxy only serves clients on this machine. The Host and any Origin must be loopback, which stops a web page from reaching it through DNS rebinding.' },
+        error: { message: 'Refused: the NoFly LLM proxy only serves clients on this machine. The Host and any Origin must be loopback, which stops a web page from reaching it through DNS rebinding.' },
       });
       return;
     }
@@ -176,7 +177,7 @@ function createProxyHandler({ url, headerContext, providerPattern }) {
       });
     } catch (error) {
       const why = describeFetchError(error, url);
-      sendJson(response, 502, { error: { message: `Shomra backend unreachable: ${why}` } });
+      sendJson(response, 502, { error: { message: `NoFly backend unreachable: ${why}` } });
       console.log(`  ${red('✗')} ${request.method} ${request.url} ${red('backend unreachable')} ${dim(why)}`);
       return;
     }
@@ -187,7 +188,7 @@ function createProxyHandler({ url, headerContext, providerPattern }) {
 }
 
 function printStartupBanner({ port, url, project, actor }) {
-  console.log(bold(cyan('\n  Shomra LLM Guard')) + dim(` - local proxy v${VERSION}`));
+  console.log(bold(cyan('\n  NoFly LLM Guard')) + dim(` - local proxy v${VERSION}`));
   console.log(`  ${green('●')} Listening on ${bold(`http://127.0.0.1:${port}`)} ${dim(`→ ${url} → provider`)}`);
   if (project) console.log(`  ${dim('Project  ')} ${project}`);
   console.log(`  ${dim('Actor    ')} ${actor}\n`);
@@ -247,7 +248,7 @@ export async function cmdLlmProxy(flags) {
       : error?.code === 'EACCES'
         ? `port ${port} needs elevated rights on this machine - pass a port above 1023`
         : error?.message ?? String(error);
-    console.error(red(`✗ Shomra LLM proxy could not listen: ${why}`));
+    console.error(red(`✗ NoFly LLM proxy could not listen: ${why}`));
     process.exit(1);
   });
   server.listen(port, '127.0.0.1', () => printStartupBanner({ port, url, project, actor }));

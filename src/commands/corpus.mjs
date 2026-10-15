@@ -11,7 +11,7 @@ const MAX_CHUNK = 100000;
 const plural = (count, word) => `${word}${count === 1 ? '' : 's'}`;
 
 function usageExit() {
-  console.error(`${red('✗')} Usage: ${bold('shomra corpus <dir|file> [--chunk-size 1200] [--manifest <file>] [--strict]')}`);
+  console.error(`${red('✗')} Usage: ${bold('nofly corpus <dir|file> [--chunk-size 1200] [--manifest <file>] [--strict]')}`);
   console.error(dim('  Screens documents BEFORE they are embedded, so a poisoned one never enters the index.'));
   process.exit(EXIT_USAGE);
 }
@@ -93,7 +93,7 @@ function printUnreadable(unreadable) {
 }
 
 function printReport({ flags, chunkSize, results, unreadable, blocked, flagged, quarantined }) {
-  console.log(bold(cyan('\n  Shomra corpus')) + dim(` - ${results.length} ${plural(results.length, 'document')} · chunk size ${chunkSize}`));
+  console.log(bold(cyan('\n  NoFly corpus')) + dim(` - ${results.length} ${plural(results.length, 'document')} · chunk size ${chunkSize}`));
   printQuarantined(quarantined);
   console.log('');
   console.log(`  ${summaryLine({ blocked, flagged, total: results.length })}`);

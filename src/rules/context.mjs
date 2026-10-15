@@ -4,7 +4,7 @@ import { MAX_ARTIFACT_BYTES, SKIP_DIRS, walkArtifacts } from '../artifacts/match
 import { isAiUsageScannable, scanAiUsage } from '../detect/ai-usage.mjs';
 import { localGate } from '../detect/guard-signals.mjs';
 import { isModelRefScannable, scanModelRefs } from '../detect/model-refs.mjs';
-import { RULES_BEGIN, RULES_TARGETS } from './sections.mjs';
+import { RULES_TARGETS, hasRulesBlock } from './sections.mjs';
 import { readRegularText } from '../core/safe-read.mjs';
 
 const MAX_RULES_ARTIFACTS = 200;
@@ -17,7 +17,7 @@ const RULES_SEV_RANK = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1, INFO: 0 };
 
 export function rulesContext(root) {
 
-  const managed = new Set(Object.values(RULES_TARGETS).map((t) => t.file));
+  const managed = new Set(Object.values(RULES_TARGETS).flatMap((t) => [t.file, t.legacyFile].filter(Boolean)));
   const considered = [];
   for (const a of walkArtifacts(root).slice(0, MAX_RULES_ARTIFACTS)) {
     if (managed.has(a.rel)) continue;
@@ -25,7 +25,7 @@ export function rulesContext(root) {
     try {
       content = readRegularText(a.full, MAX_ARTIFACT_BYTES);
     } catch { continue; }
-    if (content.includes(RULES_BEGIN)) continue;
+    if (hasRulesBlock(content)) continue;
     considered.push({ ...a, content });
   }
   const kinds = new Set(considered.map((a) => a.kind));
@@ -57,7 +57,7 @@ export function rulesContext(root) {
   for (const rel of ['.mcp.json', '.cursor/mcp.json', '.gemini/settings.json', '.windsurf/mcp_config.json']) {
     try {
       const cfg = JSON.parse(readRegularText(path.join(root, rel), MAX_ARTIFACT_BYTES));
-      if (cfg && cfg.mcpServers && cfg.mcpServers.shomra) { mcpRegistered = true; break; }
+      if (cfg && cfg.mcpServers && (cfg.mcpServers.nofly || cfg.mcpServers.shomra)) { mcpRegistered = true; break; }
     } catch {  }
   }
 

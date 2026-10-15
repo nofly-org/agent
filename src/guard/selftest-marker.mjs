@@ -3,7 +3,7 @@ import fs from 'node:fs';
 /**
  *  HOW A SELF-TEST CANARY IS TOLD APART FROM A REAL CALL, on both sides.
  *
- * `shomra selftest` spawns the INSTALLED hook exactly as the vendor would, so
+ * `nofly selftest` spawns the INSTALLED hook exactly as the vendor would, so
  * the only thing it can hand the hook is stdin and an environment. Two env vars
  * carry the session: the nonce the server issued (sent with the call, so the
  * server can answer from its simulator instead of enforcing and recording), and
@@ -23,12 +23,12 @@ import fs from 'node:fs';
  */
 
 export function selftestSession(env = process.env) {
-  const nonce = String(env.SHOMRA_SELFTEST_NONCE ?? '').trim();
+  const nonce = String(env.NOFLY_SELFTEST_NONCE ?? '').trim();
   if (!nonce || nonce.length > 200) return null;
   return {
     nonce,
-    canary: String(env.SHOMRA_SELFTEST_CANARY ?? '').trim() || null,
-    out: String(env.SHOMRA_SELFTEST_OUT ?? '').trim() || null,
+    canary: String(env.NOFLY_SELFTEST_CANARY ?? '').trim() || null,
+    out: String(env.NOFLY_SELFTEST_OUT ?? '').trim() || null,
   };
 }
 

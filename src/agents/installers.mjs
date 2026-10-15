@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { SettingsFileError, readJsonFile, writeFileAtomic, writeJsonFile } from '../core/json-file.mjs';
-import { LLM_PROXY_BASE, PACKAGE_SPEC, SHOMRA_ANY_HOOK_RE, SELF_PATH, hookCommand, powershellCommand, refreshedHookCommand } from './hook-command.mjs';
-import { CLINE_EVENTS, clineHookDirs, copilotHookFile, hasFlatHook, hasGroupedHook } from './hook-files.mjs';
+import { LLM_PROXY_BASE, PACKAGE_SPEC, NOFLY_ANY_HOOK_RE, SELF_PATH, hookCommand, powershellCommand, refreshedHookCommand } from './hook-command.mjs';
+import { CLINE_EVENTS, LEGACY_HOOK_NAME, clineHookDirs, copilotHookFile, hasFlatHook, hasGroupedHook } from './hook-files.mjs';
 import { matcherFor } from './vendor-tools.mjs';
 import { readFailure, readRegularText } from '../core/safe-read.mjs';
 
@@ -38,7 +38,7 @@ function readSettingsText(file) {
  * the matcher does not rest on an alias.
  *
  * ⚠ DERIVED FROM `vendor-tools.mjs`, which is the ONE list of what each vendor
- * puts in front of the hook - the same list `shomra selftest` reads to say which
+ * puts in front of the hook - the same list `nofly selftest` reads to say which
  * names an installed matcher is missing. Two copies is how `PowerShell` went
  * missing in the first place.
  */
@@ -50,16 +50,16 @@ export const TOOL_GUARD_MATCHERS = {
 
 /**
  * ⚠ AN UPGRADE MUST WIDEN AN EXISTING INSTALL, not only a fresh one. The
- * installer skipped any settings file that already had a Shomra tool-guard
+ * installer skipped any settings file that already had a NoFly tool-guard
  * group, so a machine installed before a name was added kept the old matcher
- * forever. Every missing required name is appended to the Shomra group's
+ * forever. Every missing required name is appended to the NoFly group's
  * matcher; names the user added are kept, and a match-all matcher is left alone.
  */
 export function widenToolGuardMatcher(list, required) {
   if (!Array.isArray(list)) return false;
   let changed = false;
   for (const g of list) {
-    if (!Array.isArray(g?.hooks) || !g.hooks.some((h) => /\btool-guard\b/.test(String(h?.command || '')) && /shomra/i.test(String(h?.command || '')))) continue;
+    if (!Array.isArray(g?.hooks) || !g.hooks.some((h) => /\btool-guard\b/.test(String(h?.command || '')) && /nofly|shomra/i.test(String(h?.command || '')))) continue;
     const cur = typeof g.matcher === 'string' ? g.matcher : '';
     if (!cur || cur === '*' || cur === '.*') continue;
     const have = new Set(cur.split('|').map((s) => s.trim()));
@@ -74,7 +74,7 @@ export function widenToolGuardMatcher(list, required) {
 function refreshCommands(hooks) {
   let changed = false;
   for (const h of hooks) {
-    if (!h || typeof h.command !== 'string' || !SHOMRA_ANY_HOOK_RE.test(h.command)) continue;
+    if (!h || typeof h.command !== 'string' || !NOFLY_ANY_HOOK_RE.test(h.command)) continue;
     const next = refreshedHookCommand(h.command);
     if (next !== h.command) {
       h.command = next;
@@ -280,7 +280,8 @@ export const AGENT_INSTALLERS = {
     } catch {
       current = null;
     }
-    if (current && JSON.stringify(current) === JSON.stringify(desired)) return { file, changed: false };
+    const legacy = uninstallCopilotFile(copilotHookFile(global, LEGACY_HOOK_NAME)).changed;
+    if (current && JSON.stringify(current) === JSON.stringify(desired)) return { file, changed: legacy };
     writeJsonFile(file, desired);
     return { file, changed: true };
   },
@@ -301,7 +302,7 @@ export const AGENT_INSTALLERS = {
       }
       if (current === body) continue;
       if (current != null && !CLINE_MARK_RE.test(current)) {
-        throw new SettingsFileError(`${file} already holds a ${event} hook that is not Shomra's - Cline runs one script per event, so merge it by hand; nothing was changed.`);
+        throw new SettingsFileError(`${file} already holds a ${event} hook that is not NoFly's - Cline runs one script per event, so merge it by hand; nothing was changed.`);
       }
       planned.push({ file, body });
     }
@@ -318,7 +319,7 @@ export const AGENT_INSTALLERS = {
     const portable = !global;
     const file = global ? path.join(os.homedir(), '.aider.conf.yml') : path.join(process.cwd(), '.aider.conf.yml');
     let text = fs.existsSync(file) ? readSettingsText(file) : '';
-    if (/#\s*shomra llm guard/i.test(text) || text.includes(LLM_PROXY_BASE)) {
+    if (/#\s*(?:nofly|shomra) llm guard/i.test(text) || text.includes(LLM_PROXY_BASE)) {
       return { file, changed: false };
     }
     const existing = /^\s*openai-api-base\s*:\s*(\S.*)$/m.exec(text);
@@ -326,21 +327,21 @@ export const AGENT_INSTALLERS = {
       return {
         file,
         changed: false,
-        note: `${file} already sets openai-api-base (${existing[1].trim()}), so Shomra left it alone - a second key would silently replace yours. To screen Aider, point it at ${LLM_PROXY_BASE} and give shomra llm-proxy your endpoint as its upstream.`,
+        note: `${file} already sets openai-api-base (${existing[1].trim()}), so NoFly left it alone - a second key would silently replace yours. To screen Aider, point it at ${LLM_PROXY_BASE} and give nofly llm-proxy your endpoint as its upstream.`,
       };
     }
     const block =
-      `\n# --- shomra llm guard ---\n` +
-      `# Routes Aider's model traffic through the Shomra LLM Guard proxy so every\n` +
-      `# prompt/response is policy-screened. Requires: shomra llm-proxy (running).\n` +
+      `\n# --- nofly llm guard ---\n` +
+      `# Routes Aider's model traffic through the NoFly LLM Guard proxy so every\n` +
+      `# prompt/response is policy-screened. Requires: nofly llm-proxy (running).\n` +
       `openai-api-base: ${LLM_PROXY_BASE}\n` +
-      `# --- end shomra ---\n`;
+      `# --- end nofly ---\n`;
     writeFileAtomic(file, (text.endsWith('\n') || !text ? text : text + '\n') + block);
     return { file, changed: true };
   },
 };
 
-const CODEX_TRUST_NOTE = 'Codex runs a new hook only after you trust it - approve the Shomra hooks in the review Codex shows at its next start, or they will not run.';
+const CODEX_TRUST_NOTE = 'Codex runs a new hook only after you trust it - approve the NoFly hooks in the review Codex shows at its next start, or they will not run.';
 
 const COPILOT_TIMEOUT_SEC = 30;
 
@@ -359,8 +360,8 @@ export function copilotHooks(portable) {
   };
 }
 
-const CLINE_MARK = '// shomra cline hook';
-const CLINE_MARK_RE = /\/\/ shomra cline hook/;
+const CLINE_MARK = '// nofly cline hook';
+const CLINE_MARK_RE = /\/\/ (?:nofly|shomra) cline hook/;
 
 export function clineScript(verb, portable) {
   const shebang = /\s/.test(process.execPath) ? '#!/usr/bin/env node' : `#!${process.execPath}`;
@@ -393,14 +394,14 @@ function dropLegacyClineHooks(global) {
   }
 }
 
-const isShomraHook = (h) => SHOMRA_ANY_HOOK_RE.test(String(h?.command ?? h?.bash ?? h?.powershell ?? ''));
+const isNoFlyHook = (h) => NOFLY_ANY_HOOK_RE.test(String(h?.command ?? h?.bash ?? h?.powershell ?? ''));
 
 function stripGrouped(list) {
   let removed = 0;
   for (let i = list.length - 1; i >= 0; i--) {
     const group = list[i];
     if (!Array.isArray(group?.hooks)) continue;
-    const kept = group.hooks.filter((h) => !isShomraHook(h));
+    const kept = group.hooks.filter((h) => !isNoFlyHook(h));
     removed += group.hooks.length - kept.length;
     if (!kept.length) list.splice(i, 1);
     else if (kept.length !== group.hooks.length) group.hooks = kept;
@@ -411,7 +412,7 @@ function stripGrouped(list) {
 function stripFlat(list) {
   let removed = 0;
   for (let i = list.length - 1; i >= 0; i--) {
-    if (isShomraHook(list[i])) {
+    if (isNoFlyHook(list[i])) {
       list.splice(i, 1);
       removed++;
     }
@@ -451,14 +452,20 @@ function nestedStrip(strip) {
 
 const homeOrCwd = (global, ...parts) => (global ? path.join(os.homedir(), ...parts) : path.join(process.cwd(), ...parts));
 
-const AIDER_BLOCK_RE = /\n?# --- shomra llm guard ---\n[\s\S]*?# --- end shomra ---\n?/;
+const AIDER_BLOCK_RE = /\n?# --- (?:nofly|shomra) llm guard ---\n[\s\S]*?# --- end (?:nofly|shomra) ---\n?/;
 
 function uninstallCopilot(global) {
   const file = copilotHookFile(global);
+  const legacy = uninstallCopilotFile(copilotHookFile(global, LEGACY_HOOK_NAME));
+  const current = uninstallCopilotFile(file);
+  return current.changed || !legacy.changed ? current : { ...legacy, file };
+}
+
+function uninstallCopilotFile(file) {
   if (!fs.existsSync(file)) return { file, changed: false, removed: 0 };
   const cfg = readJsonFile(file);
   const text = JSON.stringify(cfg);
-  if (!SHOMRA_ANY_HOOK_RE.test(text)) return { file, changed: false, removed: 0 };
+  if (!NOFLY_ANY_HOOK_RE.test(text)) return { file, changed: false, removed: 0 };
   fs.rmSync(file, { force: true });
   return { file, changed: true, removed: 1 };
 }

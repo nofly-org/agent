@@ -148,7 +148,7 @@ test('ack tolerates an undefined payload', () => {
 });
 
 test('the store survives a corrupt file rather than throwing', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-ledger-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-ledger-'));
   const store = makeLedgerStore(dir);
   fs.writeFileSync(store.file, '{not json');
 
@@ -158,7 +158,7 @@ test('the store survives a corrupt file rather than throwing', () => {
 });
 
 test('the store round-trips a window across processes', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-ledger-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-ledger-'));
   
   const a = makeLedgerStore(dir, { version: '9.9.9' });
   a.count('local', 'timeout');
@@ -183,7 +183,7 @@ test('the store round-trips a window across processes', () => {
 });
 
 test('the store writes atomically - no torn file is left behind', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-ledger-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-ledger-'));
   const store = makeLedgerStore(dir);
   store.count('local', 'timeout');
   const strays = fs.readdirSync(dir).filter((f) => f.endsWith('.tmp'));

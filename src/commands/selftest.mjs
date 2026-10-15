@@ -150,7 +150,7 @@ export async function cmdSelftest(flags = {}) {
   const env = environmentChecks({
     url,
     apiKey,
-    strict: envFlag('SHOMRA_GUARD_STRICT'),
+    strict: envFlag('NOFLY_GUARD_STRICT'),
     breakerOpen: breakerOpen(),
     subjectTypes: readSubjectTypes({ url }),
   });
@@ -181,7 +181,7 @@ export async function cmdSelftest(flags = {}) {
   let root = null;
   const results = [];
   try {
-    if (session) root = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-selftest-'));
+    if (session) root = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-selftest-'));
     for (const s of statics) {
       const canaries = session && s.installs.length
         ? await runVendor({ vendor: s.vendor, statics: s, session: { ...session, marker: session.marker }, root, subjectTypes })
@@ -234,7 +234,7 @@ export async function cmdSelftest(flags = {}) {
     return code === 0 ? undefined : process.exit(code);
   }
 
-  console.log(bold(cyan('\n  Shomra self-test')) + dim(` · ${os.hostname()} · ${results.length} agent${results.length === 1 ? '' : 's'}`));
+  console.log(bold(cyan('\n  NoFly self-test')) + dim(` · ${os.hostname()} · ${results.length} agent${results.length === 1 ? '' : 's'}`));
   console.log(dim('  Whether this machine\'s agents actually put their tool calls in front of your policy.\n'));
 
   for (const r of env) console.log(`  ${r.ok ? green('✓') : yellow('!')} ${String(r.label).padEnd(22)} ${dim(r.detail)}`);
@@ -243,7 +243,7 @@ export async function cmdSelftest(flags = {}) {
 
   if (!results.length) {
     console.log(yellow('\n  ○ No supported coding agent is installed on this machine, so there is nothing to test.'));
-    console.log(dim('    Install one and run `shomra install-hook --agent all`.\n'));
+    console.log(dim('    Install one and run `nofly install-hook --agent all`.\n'));
     return code === 0 ? undefined : process.exit(code);
   }
 

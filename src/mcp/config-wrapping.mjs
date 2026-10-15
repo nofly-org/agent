@@ -22,7 +22,7 @@ export function serverEntries(config) {
 function guardArgs(entry) {
   const args = Array.isArray(entry.args) ? entry.args : [];
   const at = args.indexOf('mcp-guard');
-  return at > 0 && /shomra(?:\.mjs)?$/i.test(String(args[at - 1])) ? args : null;
+  return at > 0 && /(?:nofly|shomra)(?:\.mjs)?$/i.test(String(args[at - 1])) ? args : null;
 }
 
 function isShimmed(entry, selfPath) {

@@ -9,7 +9,7 @@ function guardIgnoreGlobs(root) {
   const repo = [];
   const env = [];
   try { for (const re of loadIgnoreRules(root).fileGlobs) repo.push(re); } catch {  }
-  const raw = process.env.SHOMRA_GUARD_IGNORE;
+  const raw = process.env.NOFLY_GUARD_IGNORE;
   if (raw) for (const g of String(raw).split(/[,\n]+/).map((s) => s.trim()).filter(Boolean)) { try { env.push(globToRe(g)); } catch {  } }
   const globs = { repo, env };
   _guardIgnoreCache.set(root, globs);

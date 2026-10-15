@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { REMOTE_RUNTIMES, declaredEnvironment, detectEnv, mergeEnvironment, remoteRunner } from '../src/gate/environment.mjs';
-import { PACKAGE_SPEC, SHOMRA_ANY_HOOK_RE, hookCommand, shomraHookRe } from '../src/agents/hook-command.mjs';
+import { PACKAGE_SPEC, NOFLY_ANY_HOOK_RE, hookCommand, noflyHookRe } from '../src/agents/hook-command.mjs';
 import { AGENT_INSTALLERS } from '../src/agents/installers.mjs';
 import { sessionPosture } from '../src/guard/session-guard.mjs';
 
@@ -32,15 +32,15 @@ test('an ordinary laptop is still LOCAL', () => {
   assert.equal(remoteRunner({}), null);
 });
 
-test('SHOMRA_ENVIRONMENT declares a runtime whose markers nobody has read yet', () => {
-  const e = { SHOMRA_ENVIRONMENT: 'REMOTE' };
+test('NOFLY_ENVIRONMENT declares a runtime whose markers nobody has read yet', () => {
+  const e = { NOFLY_ENVIRONMENT: 'REMOTE' };
   assert.equal(detectEnv(e).environment, 'REMOTE');
   assert.equal(detectEnv(e).runner, 'declared');
   assert.equal(declaredEnvironment(e), 'REMOTE');
 });
 
 test(' the override may only RAISE - it can never relabel a cloud container as a laptop', () => {
-  const sneaky = { CLAUDE_CODE_CONTAINER_ID: 'abc', SHOMRA_ENVIRONMENT: 'LOCAL' };
+  const sneaky = { CLAUDE_CODE_CONTAINER_ID: 'abc', NOFLY_ENVIRONMENT: 'LOCAL' };
   assert.equal(detectEnv(sneaky).environment, 'REMOTE');
   assert.equal(detectEnv(sneaky).runner, 'claude-code-cloud');
   assert.equal(mergeEnvironment('REMOTE', 'LOCAL'), 'REMOTE');
@@ -49,25 +49,25 @@ test(' the override may only RAISE - it can never relabel a cloud container as a
 });
 
 test('…and it raises over CI too, for a cloud runtime driven by a pipeline', () => {
-  assert.equal(detectEnv({ GITHUB_ACTIONS: 'true', SHOMRA_ENVIRONMENT: 'REMOTE' }).environment, 'REMOTE');
+  assert.equal(detectEnv({ GITHUB_ACTIONS: 'true', NOFLY_ENVIRONMENT: 'REMOTE' }).environment, 'REMOTE');
   assert.equal(detectEnv({ GITHUB_ACTIONS: 'true' }).environment, 'CI');
 });
 
 test('a junk or absent override changes nothing', () => {
-  assert.equal(declaredEnvironment({ SHOMRA_ENVIRONMENT: 'banana' }), null);
+  assert.equal(declaredEnvironment({ NOFLY_ENVIRONMENT: 'banana' }), null);
   assert.equal(declaredEnvironment({}), null);
-  assert.equal(detectEnv({ SHOMRA_ENVIRONMENT: 'banana' }).environment, 'LOCAL');
+  assert.equal(detectEnv({ NOFLY_ENVIRONMENT: 'banana' }).environment, 'LOCAL');
   assert.equal(mergeEnvironment('LOCAL', null), 'LOCAL');
 });
 
 test('the override is case- and whitespace-tolerant', () => {
-  assert.equal(detectEnv({ SHOMRA_ENVIRONMENT: '  remote ' }).environment, 'REMOTE');
+  assert.equal(detectEnv({ NOFLY_ENVIRONMENT: '  remote ' }).environment, 'REMOTE');
 });
 
 test('⚠ every shipped runtime marker is one somebody actually verified', () => {
   assert.ok(REMOTE_RUNTIMES.length > 0);
   for (const rt of REMOTE_RUNTIMES) {
-    assert.equal(rt.verified, true, `${rt.runner} ships an unverified marker - use SHOMRA_ENVIRONMENT instead`);
+    assert.equal(rt.verified, true, `${rt.runner} ships an unverified marker - use NOFLY_ENVIRONMENT instead`);
     assert.ok(rt.vars.length > 0 || rt.prefixed);
     assert.ok(rt.label && rt.runner);
   }
@@ -81,12 +81,12 @@ test('⚠ Codespaces and devcontainers are NOT remote - they persist and can rep
 
 test(' a project hook resolves through npm, not an absolute path', () => {
   const portable = hookCommand('tool-guard --agent claude', { portable: true });
-  assert.match(portable, /^npx -y @shomra\/agent@/);
+  assert.match(portable, /^npx -y @nofly\/agent@/);
   assert.ok(!portable.includes(process.execPath));
 });
 
 test('⚠ the committed hook pins a version and never says latest', () => {
-  assert.match(PACKAGE_SPEC, /^@shomra\/agent@\d+\.\d+\.\d+/);
+  assert.match(PACKAGE_SPEC, /^@nofly\/agent@\d+\.\d+\.\d+/);
   assert.ok(!hookCommand('tool-guard', { portable: true }).includes('@latest'));
 });
 
@@ -97,13 +97,13 @@ test('a global hook keeps the fast absolute path', () => {
 });
 
 test('⚠ the hook detector recognises BOTH forms, or protect duplicates every hook', () => {
-  assert.match(hookCommand('tool-guard --agent claude', { portable: true }), SHOMRA_ANY_HOOK_RE);
-  assert.match(hookCommand('tool-guard --agent claude'), SHOMRA_ANY_HOOK_RE);
-  assert.match(hookCommand('session-guard --agent claude', { portable: true }), shomraHookRe('session-guard'));
+  assert.match(hookCommand('tool-guard --agent claude', { portable: true }), NOFLY_ANY_HOOK_RE);
+  assert.match(hookCommand('tool-guard --agent claude'), NOFLY_ANY_HOOK_RE);
+  assert.match(hookCommand('session-guard --agent claude', { portable: true }), noflyHookRe('session-guard'));
 });
 
 function installInTemp(global) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-scope-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-scope-'));
   const cwd = process.cwd();
   process.chdir(dir);
   try {
@@ -117,7 +117,7 @@ function installInTemp(global) {
 test('a project install writes portable commands into the committed file', () => {
   const { settings } = installInTemp(false);
   const commands = JSON.stringify(settings.hooks);
-  assert.match(commands, /npx -y @shomra\/agent@/);
+  assert.match(commands, /npx -y @nofly\/agent@/);
   assert.ok(!commands.includes(process.execPath));
 });
 
@@ -128,7 +128,7 @@ test('a SessionStart hook is installed, so a fresh container says what is enforc
 });
 
 test('installing twice does not duplicate the hooks', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-twice-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-twice-'));
   const cwd = process.cwd();
   process.chdir(dir);
   try {

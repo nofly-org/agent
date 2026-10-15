@@ -4,23 +4,27 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readFailure, readRegularText } from './safe-read.mjs';
+import { preferredPath, stateDir } from './legacy.mjs';
 
 const MAX_CONFIG_BYTES = 4 * 1024 * 1024;
 const isText = (value) => typeof value === 'string' && value.trim() !== '';
 const readConfigJson = (file) => JSON.parse(readRegularText(file, MAX_CONFIG_BYTES));
 
-export const CONFIG_DIR = path.join(os.homedir(), '.shomra');
+export const CONFIG_DIR = stateDir(os.homedir());
 
 export const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 
 export function machineConfigFile(platform = process.platform, env = process.env) {
-  if (platform === 'win32') return path.win32.join(env.ProgramData || env.PROGRAMDATA || 'C:\\ProgramData', 'Shomra', 'config.json');
-  return '/etc/shomra/config.json';
+  if (platform === 'win32') {
+    const data = env.ProgramData || env.PROGRAMDATA || 'C:\\ProgramData';
+    return preferredPath(path.win32.join(data, 'NoFly', 'config.json'), path.win32.join(data, 'Shomra', 'config.json'));
+  }
+  return preferredPath('/etc/nofly/config.json', '/etc/shomra/config.json');
 }
 
 export const MACHINE_CONFIG_FILE = machineConfigFile();
 
-const MACHINE_SCOPED = Symbol('shomra.machineConfig');
+const MACHINE_SCOPED = Symbol('nofly.machineConfig');
 
 export function isMachineConfig(cfg) {
   return !!cfg?.[MACHINE_SCOPED];
@@ -55,7 +59,7 @@ function warnUnreadable(reason) {
   if (warnedUnreadable) return;
   warnedUnreadable = true;
   try {
-    process.stderr.write(`[shomra] ${CONFIG_FILE} could not be read (${reason}) - this machine is treated as not enrolled until it is fixed. Re-run shomra init.\n`);
+    process.stderr.write(`[nofly] ${CONFIG_FILE} could not be read (${reason}) - this machine is treated as not enrolled until it is fixed. Re-run nofly init.\n`);
   } catch {
   }
 }
@@ -164,7 +168,7 @@ export function parseBackendUrl(raw) {
   try {
     u = new URL(text);
   } catch {
-    return { error: `"${text}" is not a URL - include the scheme, e.g. https://shomra.example.com` };
+    return { error: `"${text}" is not a URL - include the scheme, e.g. https://nofly.example.com` };
   }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return { error: `the backend URL must start with http:// or https:// (got ${u.protocol})` };
   if (u.username || u.password) return { error: 'the backend URL must not carry a user name or password' };
@@ -180,9 +184,9 @@ export function normalizeBackendUrl(raw) {
 
 export function resolveSettings(cfg) {
   const pick = (...values) => values.find(isText)?.trim();
-  const raw = pick(process.env.SHOMRA_URL, cfg?.url);
+  const raw = pick(process.env.NOFLY_URL, cfg?.url);
   return {
-    apiKey: pick(process.env.SHOMRA_API_KEY, cfg?.apiKey),
+    apiKey: pick(process.env.NOFLY_API_KEY, cfg?.apiKey),
     url: raw ? normalizeBackendUrl(raw) : null,
   };
 }

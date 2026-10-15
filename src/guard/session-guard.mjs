@@ -14,8 +14,8 @@ export function sessionPosture(env, settings, reachable) {
       enforcing: 'local-only',
       remote,
       message: remote
-        ? 'This is an EPHEMERAL CLOUD SESSION and no Shomra key reached it. Nothing you installed on your laptop is here. Only the offline Tier-0 screen is running; no policy, no server-side flow taint, and nothing about this session will appear in Shomra.'
-        : 'Shomra is not configured on this machine. Only the offline Tier-0 screen is running.',
+        ? 'This is an EPHEMERAL CLOUD SESSION and no NoFly key reached it. Nothing you installed on your laptop is here. Only the offline Tier-0 screen is running; no policy, no server-side flow taint, and nothing about this session will appear in NoFly.'
+        : 'NoFly is not configured on this machine. Only the offline Tier-0 screen is running.',
     };
   }
   if (reachable === false) {
@@ -23,8 +23,8 @@ export function sessionPosture(env, settings, reachable) {
       enforcing: 'degraded',
       remote,
       message: remote
-        ? 'This CLOUD SESSION cannot reach the Shomra backend - its network policy is blocking egress. Tool calls run screened by the offline tier only, and ⚠ THIS CONTAINER IS EPHEMERAL: the gap ledger dies with it, so these calls may never be reported as unscreened.'
-        : 'The Shomra backend is unreachable. The offline tier still screens; server-side policy does not.',
+        ? 'This CLOUD SESSION cannot reach the NoFly backend - its network policy is blocking egress. Tool calls run screened by the offline tier only, and ⚠ THIS CONTAINER IS EPHEMERAL: the gap ledger dies with it, so these calls may never be reported as unscreened.'
+        : 'The NoFly backend is unreachable. The offline tier still screens; server-side policy does not.',
     };
   }
   return { enforcing: 'full', remote, message: null };
@@ -57,18 +57,18 @@ function hookPayload() {
 
 export async function cmdSessionGuard(flags) {
   resolveAgentFlag(flags);
-  if (envFlag('SHOMRA_SESSION_GUARD_OFF')) return process.exit(0);
+  if (envFlag('NOFLY_SESSION_GUARD_OFF')) return process.exit(0);
 
   try {
     const env = detectEnv();
     const settings = resolveSettings(loadConfig());
     const up = settings.apiKey ? await reachable(settings.url) : null;
     const posture = sessionPosture(env, settings, up);
-    if (posture.message) process.stderr.write(`[shomra] ${posture.message}\n`);
+    if (posture.message) process.stderr.write(`[nofly] ${posture.message}\n`);
 
-    if (up && !envFlag('SHOMRA_SESSION_MEMORY_OFF')) {
+    if (up && !envFlag('NOFLY_SESSION_MEMORY_OFF')) {
       const restored = await applyPendingRestores({ url: settings.url, apiKey: settings.apiKey });
-      for (const line of restoreSummary(restored)) process.stderr.write(`[shomra] ${line}\n`);
+      for (const line of restoreSummary(restored)) process.stderr.write(`[nofly] ${line}\n`);
       const payload = hookPayload();
       await baselineSessionContext({
         url: settings.url,

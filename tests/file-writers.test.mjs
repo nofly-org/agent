@@ -15,14 +15,14 @@ import { userWritableLauncher } from '../src/agents/managed.mjs';
 import { AGENT_INSTALLERS } from '../src/agents/installers.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
+const CLI = path.join(HERE, '..', 'nofly.mjs');
 const WINDOWS = process.platform === 'win32';
 
 function sandbox() {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-writers-')));
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-writers-')));
   const run = (args, cwd = dir, env = {}) => spawnSync(process.execPath, [CLI, ...args], {
     cwd,
-    env: { PATH: process.env.PATH, HOME: dir, USERPROFILE: dir, NO_COLOR: '1', SHOMRA_URL: 'http://127.0.0.1:1', ...env },
+    env: { PATH: process.env.PATH, HOME: dir, USERPROFILE: dir, NO_COLOR: '1', NOFLY_URL: 'http://127.0.0.1:1', ...env },
     encoding: 'utf8',
     timeout: 60000,
   });
@@ -72,7 +72,7 @@ test('the MCP guard backup is never written through a planted link', { skip: WIN
     fs.mkdirSync(repo);
     fs.writeFileSync(path.join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] } } }));
     const planted = path.join(s.dir, 'planted.txt');
-    fs.symlinkSync(planted, path.join(repo, '.mcp.json.shomra-backup'));
+    fs.symlinkSync(planted, path.join(repo, '.mcp.json.nofly-backup'));
     s.run(['mcp', 'guard', 'install'], repo);
     assert.match(fs.readFileSync(path.join(repo, '.mcp.json'), 'utf8'), /mcp-guard/, 'the server was guarded');
     assert.equal(fs.existsSync(planted), false, 'the backup did not create a file at the link target');
@@ -89,8 +89,8 @@ test('a fix that empties the file or makes it worse is refused', () => {
 });
 
 test('a damaged rules block is reported and left alone', () => {
-  const BEGIN = '<!-- BEGIN SHOMRA MANAGED BLOCK -->';
-  const END = '<!-- END SHOMRA MANAGED BLOCK -->';
+  const BEGIN = '<!-- BEGIN NOFLY MANAGED BLOCK -->';
+  const END = '<!-- END NOFLY MANAGED BLOCK -->';
   assert.equal(rulesBlockDamage('# Mine\n'), null);
   assert.equal(rulesBlockDamage(`${BEGIN}\nx\n${END}\n`), null);
   assert.match(rulesBlockDamage(`${BEGIN}\nx\n## Mine\n`), /end marker is missing/);
@@ -136,7 +136,7 @@ test('the Cline install writes nothing when one of its files belongs to someone 
     const repo = path.join(s.dir, 'repo');
     fs.mkdirSync(path.join(repo, '.clinerules', 'hooks'), { recursive: true });
     fs.writeFileSync(path.join(repo, '.clinerules', 'hooks', 'PostToolUse'), '#!/bin/sh\necho mine\n');
-    assert.throws(() => inDir(repo, () => AGENT_INSTALLERS.cline(false)), /not Shomra's/);
+    assert.throws(() => inDir(repo, () => AGENT_INSTALLERS.cline(false)), /not NoFly's/);
     assert.equal(fs.existsSync(path.join(repo, '.clinerules', 'hooks', 'PreToolUse')), false);
   } finally {
     s.done();
@@ -161,9 +161,9 @@ test('a launcher a normal user can change is named before a machine-wide install
 });
 
 test('small writer fixes: crontab lines, flag switches, prototype names, JSON style and PowerShell quotes', () => {
-  const mine = 'MAILTO=me\n\n0 2 * * * backup # shomra-report-archive\n';
-  const merged = mergeCrontab(mine, '17 */6 * * * node x report >/dev/null 2>&1 # shomra-report');
-  assert.equal(merged, 'MAILTO=me\n\n0 2 * * * backup # shomra-report-archive\n17 */6 * * * node x report >/dev/null 2>&1 # shomra-report\n');
+  const mine = 'MAILTO=me\n\n0 2 * * * backup # nofly-report-archive\n';
+  const merged = mergeCrontab(mine, '17 */6 * * * node x report >/dev/null 2>&1 # nofly-report');
+  assert.equal(merged, 'MAILTO=me\n\n0 2 * * * backup # nofly-report-archive\n17 */6 * * * node x report >/dev/null 2>&1 # nofly-report\n');
   assert.equal(mergeCrontab(merged, null), mine);
 
   assert.equal(parseFlags(['--project'], { switches: ['project'] }).flags.project, true);

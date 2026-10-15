@@ -10,7 +10,7 @@ import { emitGuardAsk } from './emit.mjs';
 import { reportGuardDecision } from './report.mjs';
 
 export async function screenModelLoad(agent, tool, input, url) {
-  if (process.env.SHOMRA_MODEL_GUARD === '0' || String(process.env.SHOMRA_MODEL_GUARD).toLowerCase() === 'false') return;
+  if (process.env.NOFLY_MODEL_GUARD === '0' || String(process.env.NOFLY_MODEL_GUARD).toLowerCase() === 'false') return;
   if (!MODEL_WRITE_TOOLS.includes(String(tool).toLowerCase())) return;
   const filePath = input.file_path || input.path || input.filePath;
   if (!filePath || !isModelRefScannable(filePath)) return;
@@ -43,8 +43,8 @@ export async function screenModelLoad(agent, tool, input, url) {
   const kw = ((m.fix || {}).kwargs || []).map((k) => `${k.name}=${k.value}`).join(', ');
   const extra = flagged.length > 1 ? ` (+${flagged.length - 1} more flagged model${flagged.length - 1 === 1 ? '' : 's'})` : '';
   const reason =
-    `⚠ Shomra: "${m.id}" has known vulnerabilities (${m.verdict}, risk ${m.riskScore}) - ${titles}.${extra} ` +
-    `Safer: add ${kw || 'safe-loading arguments'} to the load call, pin the reviewed revision, or choose another model. (SHOMRA_MODEL_GUARD=0 to silence.)`;
+    `⚠ NoFly: "${m.id}" has known vulnerabilities (${m.verdict}, risk ${m.riskScore}) - ${titles}.${extra} ` +
+    `Safer: add ${kw || 'safe-loading arguments'} to the load call, pin the reviewed revision, or choose another model. (NOFLY_MODEL_GUARD=0 to silence.)`;
   await reportGuardDecision(url, resolveSettings(loadConfig()).apiKey, null, { tool_name: tool, tool_input: { file_path: filePath }, client_decision: 'FLAG', client_reason: `vulnerable model: ${m.id}`, machine: gateMachine(), env: detectEnv(), agent });
   emitGuardAsk(agent, reason);
 }

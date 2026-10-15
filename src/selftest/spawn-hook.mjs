@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
-import { shomraHookRe } from '../agents/hook-command.mjs';
+import { noflyHookRe } from '../agents/hook-command.mjs';
 import { VENDOR_TOOLS } from '../agents/vendor-tools.mjs';
 import { clampInt } from '../core/numbers.mjs';
 import { readRegularText } from '../core/safe-read.mjs';
@@ -16,17 +16,17 @@ import { readRegularText } from '../core/safe-read.mjs';
  * spawn fails silently.
  *
  * ⚠ ONLY OUR OWN ENTRY IS EVER SPAWNED. The command comes out of a settings file
- * that anything on this machine can write, so it is matched against the Shomra
+ * that anything on this machine can write, so it is matched against the NoFly
  * tool-guard pattern first. A self-test that executed whatever the settings file
  * said would be a local privilege escalation wearing a test's clothes.
  */
 
-export function isShomraToolGuard(command) {
-  return shomraHookRe('tool-guard').test(String(command ?? ''));
+export function isNoFlyToolGuard(command) {
+  return noflyHookRe('tool-guard').test(String(command ?? ''));
 }
 
 export function selftestTimeoutMs() {
-  return clampInt(process.env.SHOMRA_SELFTEST_TIMEOUT_MS, 30_000, 1000, 300_000);
+  return clampInt(process.env.NOFLY_SELFTEST_TIMEOUT_MS, 30_000, 1000, 300_000);
 }
 
 function readReceipts(file) {
@@ -52,8 +52,8 @@ function readReceipts(file) {
  * @returns {Promise<{code:number|null, stdout:string, stderr:string, ms:number, receipts:object[], spawnError:string|null}>}
  */
 export function runCanary({ command, vendor, canary, payload, cwd, session, receiptDir, env = process.env }) {
-  if (!isShomraToolGuard(command)) {
-    return Promise.resolve({ code: null, stdout: '', stderr: '', ms: 0, receipts: [], spawnError: 'not a Shomra tool-guard hook command - refused to spawn' });
+  if (!isNoFlyToolGuard(command)) {
+    return Promise.resolve({ code: null, stdout: '', stderr: '', ms: 0, receipts: [], spawnError: 'not a NoFly tool-guard hook command - refused to spawn' });
   }
   const receipt = path.join(receiptDir, `${vendor}.${canary}.jsonl`);
   const vendorEnv = VENDOR_TOOLS[vendor]?.env?.(cwd) ?? {};
@@ -61,9 +61,9 @@ export function runCanary({ command, vendor, canary, payload, cwd, session, rece
     ...env,
     ...vendorEnv,
     NO_COLOR: '1',
-    SHOMRA_SELFTEST_NONCE: session.nonce,
-    SHOMRA_SELFTEST_CANARY: canary,
-    SHOMRA_SELFTEST_OUT: receipt,
+    NOFLY_SELFTEST_NONCE: session.nonce,
+    NOFLY_SELFTEST_CANARY: canary,
+    NOFLY_SELFTEST_OUT: receipt,
   };
 
   const startedAt = Date.now();

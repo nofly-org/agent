@@ -38,14 +38,14 @@ function assertUsableArguments(name, server, tokens) {
   if (String(server.command).startsWith('-')) {
     usageExit(
       `"${server.command}" is a flag, not a command - the server NAME comes first.`,
-      `shomra mcp add <name> ${[server.command, ...(server.args || [])].join(' ')}`,
+      `nofly mcp add <name> ${[server.command, ...(server.args || [])].join(' ')}`,
     );
   }
   const program = String(server.command).split(/[\\/]/).pop().replace(/\.(exe|cmd|bat)$/i, '');
   if (RUNNER_NAMES.test(String(name)) && !RUNNER_NAMES.test(program) && !/[\\/]/.test(String(server.command))) {
     usageExit(
       `"${name}" is a runner, not a server name - it looks like the NAME argument was left out.`,
-      `shomra mcp add <name> ${[name, ...tokens].join(' ')}`,
+      `nofly mcp add <name> ${[name, ...tokens].join(' ')}`,
     );
   }
 }
@@ -53,7 +53,7 @@ function assertUsableArguments(name, server, tokens) {
 async function lookupSecurityIndex(flags, server, name) {
   if (flags['no-index']) return null;
   const { url } = resolveSettings(loadConfig());
-  if (!url) return { error: 'no backend configured - set SHOMRA_URL or run shomra init --url' };
+  if (!url) return { error: 'no backend configured - set NOFLY_URL or run nofly init --url' };
   try {
     return await mcpLookup(url, mcpLookupId(server, name));
   } catch (error) {
@@ -144,7 +144,7 @@ function outcomeNote(verdict) {
 
 export async function cmdMcpAdd(flags, positional, configFile) {
   const name = positional[1];
-  if (!name) usageExit(`Usage: ${bold('shomra mcp add <name> <command…>')}`);
+  if (!name) usageExit(`Usage: ${bold('nofly mcp add <name> <command…>')}`);
   if (['__proto__', 'constructor', 'prototype'].includes(name)) usageExit(`"${name}" cannot be used as a server name - pick another name.`);
 
   const { server, tokens } = buildServerEntry(flags, positional);

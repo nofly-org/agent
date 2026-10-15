@@ -15,11 +15,11 @@ const COMMAND_KEYS = new Set(['command', 'bash', 'sh', 'powershell', 'pwsh', 'wi
 const EXTS = 'sh|bash|zsh|ps1|psm1|bat|cmd|py|js|mjs|cjs|ts|rb|pl|php|lua';
 const REF_RE = new RegExp(`(?:^|["'\\s=;&|(\`])((?:\\$\\{?[A-Za-z_]\\w*\\}?|%[A-Za-z_]\\w*%|~|[A-Za-z]:)?[\\\\/]?(?:[\\w.@-]+[\\\\/])*[\\w.@-]+\\.(?:${EXTS}))(?=["'\\s;|&)\`]|$)`, 'g');
 const QUOTED_REF_RE = new RegExp(`(["'])((?:\\$\\{?[A-Za-z_]\\w*\\}?|%[A-Za-z_]\\w*%|~|[A-Za-z]:)?[^"'\\n]*[\\\\/][^"'\\n]*?\\.(?:${EXTS}))\\1`, 'g');
-const SHOMRA_GUARD_RE = /(?:^|[\\/])(?:shomra(?:-agent)?\.m?js|@shomra[\\/]agent[\\/].*)$/i;
+const NOFLY_GUARD_RE = /(?:^|[\\/])(?:(?:nofly|shomra)(?:-agent)?\.m?js|@(?:nofly|shomra)[\\/]agent[\\/].*)$/i;
 const MAX_REFS = 40;
 
 export function hookScriptMode(env = process.env, cfg = null) {
-  const raw = String(env.SHOMRA_HOOK_SCRIPTS ?? (cfg ?? safeConfig()).hookScripts ?? 'full').trim().toLowerCase();
+  const raw = String(env.NOFLY_HOOK_SCRIPTS ?? (cfg ?? safeConfig()).hookScripts ?? 'full').trim().toLowerCase();
   return HOOK_SCRIPT_MODES.includes(raw) ? raw : 'full';
 }
 
@@ -113,8 +113,8 @@ export function bundleHookScripts(artifact, hookFile, { projectDir, relPath, bud
       scripts.push({ ref, state: 'withheld', reason: 'credential-path' });
       continue;
     }
-    if (SHOMRA_GUARD_RE.test(ref)) {
-      scripts.push({ ref, state: 'shomra-guard' });
+    if (NOFLY_GUARD_RE.test(ref)) {
+      scripts.push({ ref, state: 'nofly-guard' });
       continue;
     }
     if (artifact.files.length >= MAX_BUNDLED) {

@@ -1,7 +1,7 @@
 name: Release to npm
 
 # Every push to main (i.e. every merge) bumps the patch version, tags it, and
-# publishes @shomra/agent to npm. The bump commit is marked [skip ci] so it does
+# publishes @nofly/agent to npm. The bump commit is marked [skip ci] so it does
 # not retrigger this workflow. Requires an NPM automation token in the repo
 # secret NPM_TOKEN (Settings → Secrets and variables → Actions).
 
@@ -35,7 +35,7 @@ jobs:
 
       - name: Configure git
         run: |
-          git config user.name "shomra-ci"
+          git config user.name "nofly-ci"
           git config user.email "ci@shomra.ai"
 
       - name: Bump patch version

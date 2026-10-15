@@ -10,8 +10,8 @@ import { serverEntries, unwrapMcpConfig, wrapMcpConfig } from '../src/mcp/config
 import { maskedLaunchArgs } from '../src/mcp/connect-gate.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
-const SELF = '/opt/shomra/shomra.mjs';
+const CLI = path.join(HERE, '..', 'nofly.mjs');
+const SELF = '/opt/nofly/nofly.mjs';
 const NODE = '/usr/bin/node';
 const KEY = 'shm_test_key_0000000000000000';
 
@@ -33,7 +33,7 @@ test('servers Claude Code keeps per project in ~/.claude.json are guarded and re
 });
 
 test('a server guarded by an install that moved is repointed, never wrapped twice', () => {
-  const config = { mcpServers: { files: { command: '/old/node', args: ['/old/lib/shomra.mjs', 'mcp-guard', '--name', 'files', '--', 'npx', '-y', 'server-filesystem'] } } };
+  const config = { mcpServers: { files: { command: '/old/node', args: ['/old/lib/nofly.mjs', 'mcp-guard', '--name', 'files', '--', 'npx', '-y', 'server-filesystem'] } } };
   const { wrapped, updated } = wrapMcpConfig(config, SELF, NODE);
   assert.deepEqual(wrapped, []);
   assert.deepEqual(updated, ['files']);
@@ -50,7 +50,7 @@ test('secrets in a launch line never reach the backend, and the package name sti
 });
 
 function startShim(env) {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-connect-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-connect-'));
   const fake = 'process.stdin.on("data", (d) => { for (const line of String(d).split("\\n").filter(Boolean)) { const m = JSON.parse(line); if (m.method === "initialize") process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: m.id, result: { protocolVersion: "2025-06-18", capabilities: {}, serverInfo: { name: "fake", version: "1" } } }) + "\\n"); } });';
   const child = spawn(process.execPath, [CLI, 'mcp-guard', '--name', 'fake', '--screen', 'local', '--', process.execPath, '-e', fake], {
     env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, ...env },
@@ -77,7 +77,7 @@ test('a backend that stalls mid-answer cannot hold an MCP server back past the t
     req.on('end', () => { res.writeHead(200, { 'content-type': 'application/json' }); res.write('{"decision":'); });
   });
   await new Promise((d) => server.listen(0, '127.0.0.1', d));
-  const shim = startShim({ SHOMRA_API_KEY: KEY, SHOMRA_URL: `http://127.0.0.1:${server.address().port}`, SHOMRA_GUARD_TIMEOUT_MS: '500' });
+  const shim = startShim({ NOFLY_API_KEY: KEY, NOFLY_URL: `http://127.0.0.1:${server.address().port}`, NOFLY_GUARD_TIMEOUT_MS: '500' });
   try {
     assert.ok(await waitFor(() => shim.output().includes('"serverInfo"'), 8000), shim.output());
   } finally {
@@ -97,22 +97,22 @@ test('a connect answer that is not a decision is never taken as one, and a 400 d
   await new Promise((d) => server.listen(0, '127.0.0.1', d));
   const url = `http://127.0.0.1:${server.address().port}`;
   try {
-    const strict = startShim({ SHOMRA_API_KEY: KEY, SHOMRA_URL: url, SHOMRA_GUARD_STRICT: '1' });
+    const strict = startShim({ NOFLY_API_KEY: KEY, NOFLY_URL: url, NOFLY_GUARD_STRICT: '1' });
     assert.ok(await waitFor(() => /-32001|refused/.test(strict.output()), 8000), strict.output());
     strict.child.kill('SIGTERM');
     status = 400;
     answer = { message: 'args must contain no more than 100 elements' };
-    const open = startShim({ SHOMRA_API_KEY: KEY, SHOMRA_URL: url });
+    const open = startShim({ NOFLY_API_KEY: KEY, NOFLY_URL: url });
     assert.ok(await waitFor(() => open.output().includes('"serverInfo"'), 8000), open.output());
     open.child.kill('SIGTERM');
-    assert.equal(fs.existsSync(path.join(open.home, '.shomra', 'guard-breaker.json')), false);
+    assert.equal(fs.existsSync(path.join(open.home, '.nofly', 'guard-breaker.json')), false);
   } finally {
     await new Promise((d) => server.close(d));
   }
 });
 
-test('shomra mcp guard keeps a private config private and says what it changed', { skip: process.platform === 'win32' }, () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-mcpguard-'));
+test('nofly mcp guard keeps a private config private and says what it changed', { skip: process.platform === 'win32' }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-mcpguard-'));
   try {
     const file = path.join(root, 'mcp.json');
     fs.writeFileSync(file, JSON.stringify({ mcpServers: { db: { command: 'npx', args: ['-y', 'db-server'], env: { DB_PASSWORD: 'hunter2' } } } }), { mode: 0o600 });
@@ -122,7 +122,7 @@ test('shomra mcp guard keeps a private config private and says what it changed',
     assert.match(out.stdout, /guarded db/);
     assert.ok(!/nothing to guard/.test(out.stdout), out.stdout);
     assert.equal(fs.statSync(file).mode & 0o777, 0o600);
-    assert.equal(fs.statSync(`${file}.shomra-backup`).mode & 0o777, 0o600, 'the backup holds the same secrets and keeps the same permissions');
+    assert.equal(fs.statSync(`${file}.nofly-backup`).mode & 0o777, 0o600, 'the backup holds the same secrets and keeps the same permissions');
     const broken = path.join(root, 'broken.json');
     fs.writeFileSync(broken, '{ "mcpServers": ');
     const bad = spawnSync(process.execPath, [CLI, 'mcp', 'guard', '--config', broken], { env: { ...process.env, HOME: root, NO_COLOR: '1' }, encoding: 'utf8', timeout: 30000 });
@@ -146,9 +146,9 @@ test('padding cannot push a payload past what the shim screens, and a text blob 
 });
 
 test('a refused server answers the client\'s own initialize id, so the client sees why instead of timing out', async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-refuse-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-refuse-'));
   const child = spawn(process.execPath, [CLI, 'mcp-guard', '--name', 'blocked', '--', process.execPath, '-e', 'setTimeout(() => {}, 60000)'], {
-    env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, SHOMRA_GUARD_STRICT: '1' },
+    env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, NOFLY_GUARD_STRICT: '1' },
   });
   let out = '';
   child.stdout.on('data', (d) => { out += d; });

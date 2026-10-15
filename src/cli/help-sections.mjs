@@ -3,12 +3,12 @@ import { bold, cyan, dim, green } from '../core/terminal.mjs';
 import { VERSION } from '../core/version.mjs';
 
 const BANNER = () => `
-${bold(cyan('Shomra'))} ${dim('- adversarial assurance for AI agents · v' + VERSION)}
+${bold(cyan('NoFly'))} ${dim('- adversarial assurance for AI agents · v' + VERSION)}
 `;
 
 const USAGE = () => `${bold('USAGE')}
-  shomra <command> [options]
-  shomra <command> --help     ${dim("one command's options and details")}
+  nofly <command> [options]
+  nofly <command> --help     ${dim("one command's options and details")}
 `;
 
 const MODES = () => `${bold('MODES')}  ${dim('- local-first: everything that can run on your machine does, with no account')}
@@ -16,7 +16,7 @@ const MODES = () => `${bold('MODES')}  ${dim('- local-first: everything that can
                         ${dim('Fully on-machine. Nothing leaves your machine. Your lead-in - no signup.')}
   ${green('Enrolled')}  ${dim('(shm_live_)')} adds org policy, AI ${bold('fix')}/${bold('why')}, deep scans (zip/model/memory) & the dashboard
   ${green('CI')}        ${dim('(shm_ci_)')}   scoped, revocable pipeline key for ${bold('pr')} / ${bold('check')} in CI
-  ${dim('Enroll with')} ${bold('shomra init --key shm_…')}${dim('; generate keys in the platform → Settings → API Keys.')}
+  ${dim('Enroll with')} ${bold('nofly init --key shm_…')}${dim('; generate keys in the platform → Settings → API Keys.')}
 `;
 
 const COMMANDS = () => `${bold('COMMANDS')}
@@ -26,7 +26,7 @@ const COMMANDS = () => `${bold('COMMANDS')}
   ${cyan('why')}           Explain a finding + false-positive read ${dim('<file> [--kind …] [--json]')}
   ${cyan('gate')}          Vet ONE AI artifact before install     ${dim('<file> [--kind …] [--strict] [--json]  ·  --all for a whole repo (CI)')}
   ${cyan('scan')}          Discover AI tooling on this machine    ${dim('[--report] [--json] [--path <dir>] [--all-users]')}
-  ${cyan('report')}        Discover + send inventory to your Shomra org ${dim('(alias: scan --report) [--json] [--all-users]')}
+  ${cyan('report')}        Discover + send inventory to your NoFly org ${dim('(alias: scan --report) [--json] [--all-users]')}
                 ${dim('--all-users (as root/SYSTEM, e.g. from an MDM) walks every OS account home into ONE report.')}
   ${cyan('status')}        Show config, enrollment + firewall health
   ${cyan('run')}           ${bold('Run a whole assurance playbook')} ${dim('<id> [--input k=v]… [--project <id>] [--json]  ·  --list for the catalog')}
@@ -36,7 +36,7 @@ const COMMANDS = () => `${bold('COMMANDS')}
   ${dim('Setup - run once per machine / repo')}
   ${cyan('init')}          Configure + enroll this machine       ${dim('--key shm_live_… [--url <backend>]  ·  --machine for a root-only machine-wide config')}
   ${cyan('schedule')}      Re-report on a timer (launchd / Task Scheduler / systemd / cron) ${dim('install [--every 6h] [--all-users] · remove · status')}
-                ${dim('A machine-wide schedule refuses a Node or Shomra a normal user can change (--allow-user-writable accepts it).')}
+                ${dim('A machine-wide schedule refuses a Node or NoFly a normal user can change (--allow-user-writable accepts it).')}
   ${cyan('protect')}       Wire the runtime firewall for every coding agent ${dim('[--project] [--force]')}
   ${cyan('install-hook')}  Wire the runtime firewall into ONE agent ${dim('[--agent claude|cursor|windsurf|gemini|codex|copilot|cline|aider|all] [--global|--managed] [--uninstall]')}
   ${cyan('selftest')}      ${bold('Prove the firewall is really in path')} ${dim('[--agent <name>|all] [--json] [--strict]')}
@@ -54,21 +54,21 @@ const COMMANDS = () => `${bold('COMMANDS')}
   ${cyan('design')}        ${bold('Threat-model a system before it exists')} ${dim('<file|dir|-> [--save --subject KIND:id] [--checklist] [--strict] [--json]')}
                 ${dim('Reads an RFC / design doc / ticket and says whether it closes a path from')}
                 ${dim('untrusted input to a consequence, plus what must be true before it ships.')}
-                ${dim('Pipe a ticket straight in: ')}${bold('gh issue view 42 --json body -q .body | shomra design -')}
+                ${dim('Pipe a ticket straight in: ')}${bold('gh issue view 42 --json body -q .body | nofly design -')}
   ${cyan('plan')}          ${bold('Threat-model what an agent is about to build')} ${dim('<file|-> [--strict] [--json]')}
                 ${dim('Same engine as design, on the agent\'s own plan. Also an MCP tool')}
-                ${dim('(')}${bold('shomra_review_plan')}${dim(') so every agent can call it mid-task, and a hook.')}
+                ${dim('(')}${bold('nofly_review_plan')}${dim(') so every agent can call it mid-task, and a hook.')}
   ${cyan('corpus')}        ${bold('Screen RAG documents before they are indexed')} ${dim('<dir|file> [--chunk-size N] [--manifest <f>] [--strict] [--json]')}
                 ${dim('A poisoned doc never enters the store. Reports the CHUNK a payload would')}
                 ${dim('land in, and counts every file it could not read as NOT covered.')}
   ${cyan('add')}           ${bold('Vet anything BEFORE it lands')} ${dim('mcp|skill|model|package <ref> [--force] [--strict] [--json]')}
                 ${dim('One gate for every acquisition channel an agent has.')}
   ${cyan('rules')}         ${bold('Teach the agent what gets blocked')} ${dim('[dir] [--write] [--check] [--agent claude,codex,cursor,gemini,copilot,windsurf,cline|all] [--json]')}
-                ${dim('Compiles what Shomra enforces + what this repo already trips into CLAUDE.md /')}
+                ${dim('Compiles what NoFly enforces + what this repo already trips into CLAUDE.md /')}
                 ${dim('AGENTS.md / .cursor/rules / copilot-instructions, inside a managed block that never')}
                 ${dim('touches your own text. --check fails CI when it goes stale.')}
-  ${cyan('mcp install')}   Register Shomra AS an MCP server with your agents ${dim('[--agent claude,cursor,gemini,windsurf|all] [--global]')}
-                ${dim('Lets the model call ')}${bold('shomra_review_change')}${dim(' on content BEFORE it writes it.')}
+  ${cyan('mcp install')}   Register NoFly AS an MCP server with your agents ${dim('[--agent claude,cursor,gemini,windsurf|all] [--global]')}
+                ${dim('Lets the model call ')}${bold('nofly_review_change')}${dim(' on content BEFORE it writes it.')}
 
   ${dim('CI & repo hygiene')}
   ${cyan('pr')}            Review a PR - inline findings on the diff ${dim('(CI) [--init] [--strict] [--dry-run]')}
@@ -81,10 +81,10 @@ const COMMANDS = () => `${bold('COMMANDS')}
   ${cyan('new agent')}     Scaffold a whole agent project that starts compliant ${dim('[name] [--framework vercel-ai]')}
   ${cyan('mcp add')}       Vet an MCP server, then add it to a config ${dim('<name> <command…>|--url <url> [--config <f>] [--force]')}
   ${cyan('mcp list')}      List the MCP servers in a config       ${dim('[--config <f>] [--json]')}
-  ${cyan('mcp guard')}     Route local (stdio) MCP servers through Shomra ${dim('[--screen backend|local] [--config <f>] [--uninstall]')}
-  ${cyan('mcp serve')}     Run Shomra AS an MCP server so agents call its checks ${dim('(review_change/rules/check/scan_models/fix/explain)')}
+  ${cyan('mcp guard')}     Route local (stdio) MCP servers through NoFly ${dim('[--screen backend|local] [--config <f>] [--uninstall]')}
+  ${cyan('mcp serve')}     Run NoFly AS an MCP server so agents call its checks ${dim('(review_change/rules/check/scan_models/fix/explain)')}
 
-  ${dim('Governance & advanced')}  ${dim('→')} ${bold('shomra admin')} ${dim('for the full list')}
+  ${dim('Governance & advanced')}  ${dim('→')} ${bold('nofly admin')} ${dim('for the full list')}
   ${cyan('admin')}         Deep scans, red-team, hardening, agent identity, LLM proxy
                 ${dim('scan-zip · model-scan · memory-scan · redteam · campaign · harden · agent-identity · llm-proxy · mdm-script')}
 
@@ -100,7 +100,7 @@ const GATE = () => `${bold('GATE')}
   secrets, exfil sinks, over-permissioned tool grants, install-lure prose) runs
   ON-MACHINE, so ${bold('gate')} returns a genuine verdict with no backend and no key.
   Pinned MCP packages are checked against osv.dev by name and version; set
-  ${bold('SHOMRA_OFFLINE=1')} (or ${bold('--offline')}) to skip that lookup.
+  ${bold('NOFLY_OFFLINE=1')} (or ${bold('--offline')}) to skip that lookup.
   When enrolled + reachable, the backend layers your ORG POLICY + governance on
   top. If the backend is down it falls back to the local verdict (and says so);
   ${bold('--strict')} instead fails closed (exit 1) because org policy couldn't be verified.
@@ -111,28 +111,28 @@ const GATE = () => `${bold('GATE')}
 `;
 
 const CHECK = () => `${bold('CHECK')}  ${dim('- the one command a developer runs')}
-  ${bold('shomra check')} answers "is my repo safe?" in one shot: it finds every AI
+  ${bold('nofly check')} answers "is my repo safe?" in one shot: it finds every AI
   artifact in the tree (MCP configs, Skills, slash commands, hooks, rules files)
   and gates them together, ${bold('local-first')} - a real on-machine verdict with no
   backend or key; enrolling layers your org policy on top. It is ${bold('gate --all')}
   with dev ergonomics:
-    ${dim('shomra check')}            every AI artifact under the repo
-    ${dim('shomra check --staged')}   only what's git-staged  ${dim('(wire into pre-commit / on-save)')}
-    ${dim('shomra check --changed')}  only what changed vs HEAD
-    ${dim('shomra check --rev <sha>')} a commit, read straight from git  ${dim('(--base-rev <sha>: only what changed since)')}
-    ${dim('shomra check --fix')}      gate, then remediate what isn't clean, in place
-    ${dim('shomra check --json')}     machine-readable - what an IDE extension calls
-    ${dim('shomra check --sarif')}    SARIF 2.1.0 - upload for native GitHub/GitLab PR annotations
+    ${dim('nofly check')}            every AI artifact under the repo
+    ${dim('nofly check --staged')}   only what's git-staged  ${dim('(wire into pre-commit / on-save)')}
+    ${dim('nofly check --changed')}  only what changed vs HEAD
+    ${dim('nofly check --rev <sha>')} a commit, read straight from git  ${dim('(--base-rev <sha>: only what changed since)')}
+    ${dim('nofly check --fix')}      gate, then remediate what isn't clean, in place
+    ${dim('nofly check --json')}     machine-readable - what an IDE extension calls
+    ${dim('nofly check --sarif')}    SARIF 2.1.0 - upload for native GitHub/GitLab PR annotations
   Exit 0 = clean, 1 = blocked, 2 = flagged with --strict.
 `;
 
 const BASELINE_AND_SUPPRESSION = () => `${bold('BASELINE & SUPPRESSION')}  ${dim('- adopt on a messy repo; silence a false positive')}
-  ${bold('shomra baseline')} records the current findings as accepted (.shomra/baseline.json,
+  ${bold('nofly baseline')} records the current findings as accepted (.nofly/baseline.json,
   line-independent) so only findings introduced AFTER it fail - commit it to share
   with the team. Silence individual findings three ways:
-    ${dim('.shomraignore')}   a repo file: ${dim('path/glob')} (skip file) or ${dim('path/glob :: title-substring')}
-    ${dim('inline comment')}  ${bold('// shomra-ignore')} / ${bold('# shomra-ignore')} on the finding's line or the one above
-    ${dim('whole file')}      ${bold('shomra-ignore-file')} in the first lines (works in JSON too)
+    ${dim('.noflyignore')}   a repo file: ${dim('path/glob')} (skip file) or ${dim('path/glob :: title-substring')}
+    ${dim('inline comment')}  ${bold('// nofly-ignore')} / ${bold('# nofly-ignore')} on the finding's line or the one above
+    ${dim('whole file')}      ${bold('nofly-ignore-file')} in the first lines (works in JSON too)
   Any suppression re-grades the artifact, so a fully-suppressed file drops to ALLOW -
   except a BLOCK your org's policy returned: repo files only silence findings, so that
   stays BLOCK ${dim('(ignored locally, still blocked by org policy)')}. Lift it in the platform.
@@ -140,7 +140,7 @@ const BASELINE_AND_SUPPRESSION = () => `${bold('BASELINE & SUPPRESSION')}  ${dim
 `;
 
 const POLICY_AS_CODE = () => `${bold('POLICY-AS-CODE')}  ${dim('- team gate rules, versioned in the repo')}
-  ${bold('.shomra/policy.yml')} (or .json) sets your team's thresholds, reviewed in PRs:
+  ${bold('.nofly/policy.yml')} (or .json) sets your team's thresholds, reviewed in PRs:
     ${dim('block: high')}       min severity that BLOCKS   ${dim('(critical|high|medium|low|none)')}
     ${dim('flag:  medium')}     min severity that FLAGS
     ${dim('allow: ["IPv4 address"]')}  finding titles to always downgrade
@@ -149,7 +149,7 @@ const POLICY_AS_CODE = () => `${bold('POLICY-AS-CODE')}  ${dim('- team gate rule
 `;
 
 const FIX = () => `${bold('FIX')}  ${dim('- remediate without leaving your editor')}
-  ${bold('shomra fix <file>')} generates a MINIMAL fix for whatever the gate flags in
+  ${bold('nofly fix <file>')} generates a MINIMAL fix for whatever the gate flags in
   that artifact and shows it as a unified diff; ${bold('--apply')} writes it back to the
   local file. The fix is produced on the platform with your org's AI key (so no
   provider key sits on the dev machine) - enrollment is required. When the
@@ -159,7 +159,7 @@ const FIX = () => `${bold('FIX')}  ${dim('- remediate without leaving your edito
 `;
 
 const WHY = () => `${bold('WHY')}  ${dim('- decide if a finding is real')}
-  ${bold('shomra why <file>')} is the developer shape of "investigate": for each finding
+  ${bold('nofly why <file>')} is the developer shape of "investigate": for each finding
   it gives a plain-English why-it-matters, a one-line exploit scenario, and an
   honest true/false-positive read - the conclusion, not a tool-call timeline.
   AI-distilled when enrolled; offline it prints the on-machine findings and their
@@ -167,7 +167,7 @@ const WHY = () => `${bold('WHY')}  ${dim('- decide if a finding is real')}
 `;
 
 const INSTALL_PRECOMMIT = () => `${bold('INSTALL-PRECOMMIT')}
-  ${bold('shomra install-precommit')} writes a ${dim('.git/hooks/pre-commit')} that runs
+  ${bold('nofly install-precommit')} writes a ${dim('.git/hooks/pre-commit')} that runs
   ${bold('check --staged')}, so a risky MCP config / skill / rules file is caught before
   it commits. A BLOCK stops the commit; flags warn but don't. Existing hooks are
   never clobbered (it tells you the one line to add, or ${bold('--force')} replaces with
@@ -180,7 +180,7 @@ const MODEL_SCAN = () => `${bold('MODEL-SCAN')}
   Flags eval/exec/os.system/subprocess, pickle/torch.load deserialization,
   __reduce__ gadgets, network egress and auto_map (AutoModel/AutoTokenizer)
   usage, each with a rule id, file:line and code snippet. Weights are never
-  downloaded and nothing is executed. Findings land in your Shomra dashboard.
+  downloaded and nothing is executed. Findings land in your NoFly dashboard.
 `;
 
 const MEMORY_SCAN = () => `${bold('MEMORY-SCAN')}
@@ -191,7 +191,7 @@ const MEMORY_SCAN = () => `${bold('MEMORY-SCAN')}
   reboots. Rules files are graded against an instruction baseline (standing
   directives are legitimate there; only hijack / conceal-from-user / staged-payload
   / exfil phrasing is poison), memory against a fact baseline. memory-scan reports
-  each write (with provenance) so Shomra can track drift from an approved baseline
+  each write (with provenance) so NoFly can track drift from an approved baseline
   and roll back a poisoned store. Once ${bold('install-hook')} is wired, the agent's own
   memory and rules-file writes are captured automatically. Analysis is static.
 
@@ -220,7 +220,7 @@ const REDTEAM = () => `${bold('REDTEAM')}
 
 const HARDEN = () => `${bold('HARDEN')}
   The self-hardening flywheel - turns a red-team breach into a defense. Runs a
-  red-team (or reuses one with ${bold('--run <id>')}), asks Shomra to propose high-precision
+  red-team (or reuses one with ${bold('--run <id>')}), asks NoFly to propose high-precision
   detection signatures for whatever got through, and VERIFIES each against a
   benign corpus: a candidate must catch the attack AND fire on zero legitimate
   messages, so the guard can only ever get tighter. With ${bold('--apply')} the survivors
@@ -236,15 +236,15 @@ const AGENT_IDENTITY = () => `${bold('AGENT IDENTITY')}
   against its policy at the runtime chokepoints on top of content screening.
 
   ${bold('On a developer machine')}: ${bold('agent-identity register --name "…" --purpose "…"')} mints
-  its shm_agt_ credential and saves it to ~/.shomra/config.json (0600); the
+  its shm_agt_ credential and saves it to ~/.nofly/config.json (0600); the
   runtime firewall, ${bold('llm-proxy')} and the MCP shim present it from the next call.
   ${bold('--for claude')} keeps one per coding agent, ${bold('--no-save')} prints it instead, and
-  ${bold('SHOMRA_AGENT')} still overrides it.
+  ${bold('NOFLY_AGENT')} still overrides it.
 
   ${bold('In CI or a cluster')}: the workload registers ITSELF with its own identity
   token, so the agent never holds a stored credential. It is automatic in GitHub
   Actions with ${bold('permissions: id-token: write')} and in GitLab with
-  ${bold('id_tokens: SHOMRA_ID_TOKEN')}; elsewhere pass ${bold('--workload kubernetes|entra|okta')}.
+  ${bold('id_tokens: NOFLY_ID_TOKEN')}; elsewhere pass ${bold('--workload kubernetes|entra|okta')}.
   Re-running it returns the same agent, so it is safe on every build. A stored
   credential in CI needs ${bold('--static')}.
 
@@ -265,7 +265,7 @@ const LLM_PROXY = () => `${bold('LLM-PROXY')}
 `;
 
 const RUNTIME_FIREWALL = () => `${bold('RUNTIME FIREWALL (multi-agent)')}
-  ${bold('shomra install-hook')} wires Shomra into a coding agent's own hook system so
+  ${bold('nofly install-hook')} wires NoFly into a coding agent's own hook system so
   it screens both channels - the pre-tool-call hook BEFORE a shell command,
   artifact write (adding an MCP/skill/command/hook/rules file), or MCP call
   runs, and the post-tool-call hook that screens content (WebFetch/Read/MCP
@@ -277,14 +277,14 @@ const RUNTIME_FIREWALL = () => `${bold('RUNTIME FIREWALL (multi-agent)')}
     ${dim('claude')} (Claude Code) · ${dim('cursor')} (Cursor) · ${dim('windsurf')} (Windsurf/Cascade) ·
     ${dim('gemini')} (Gemini CLI) · ${dim('codex')} (OpenAI Codex CLI) · ${dim('copilot')} (GitHub Copilot CLI) ·
     ${dim('cline')} (Cline) · ${dim('aider')} (Aider - no tool hooks, so it is routed through the LLM Guard proxy)
-  e.g. ${dim('shomra install-hook --agent cursor,windsurf')} or ${dim('shomra install-hook --agent all')}.
+  e.g. ${dim('nofly install-hook --agent cursor,windsurf')} or ${dim('nofly install-hook --agent all')}.
   Windsurf's post-hooks can flag/log but not withhold a result (vendor limit).
 
   ${bold('--managed')} (root or Administrator) installs the hooks machine-wide, where a
   developer cannot remove or switch them off: Claude Code managed settings
-  (managed-settings.d/50-shomra.json), /etc/codex/hooks.json, and Copilot CLI's
-  policy.d. ${bold('shomra admin mdm-script --guard')} adds it to the MDM bootstrap. It
-  refuses a Node or Shomra install a normal user can change, since every user's
+  (managed-settings.d/50-nofly.json), /etc/codex/hooks.json, and Copilot CLI's
+  policy.d. ${bold('nofly admin mdm-script --guard')} adds it to the MDM bootstrap. It
+  refuses a Node or NoFly install a normal user can change, since every user's
   agent would then run that user's code; ${bold('--allow-user-writable')} accepts the risk.
 
   Risky calls/results are blocked and every decision lands in Gate Activity,
@@ -298,12 +298,12 @@ const RUNTIME_FIREWALL = () => `${bold('RUNTIME FIREWALL (multi-agent)')}
   the local tier flags) escalate to the server for the full org-policy /
   identity / governance / flow engine, with a short timeout + a circuit breaker
   that skips a known-down backend. Fail-open by default (the local tier is still
-  enforcing); SHOMRA_GUARD_STRICT=1 to also fail-closed on the server tier.
+  enforcing); NOFLY_GUARD_STRICT=1 to also fail-closed on the server tier.
 
   ${bold('Skills (Claude Code).')} When the agent invokes a skill, the hook reads its
   SKILL.md (project .claude/skills, ~/.claude/skills or an installed plugin) plus
   the names of the files it bundles and asks the gate - the same check as
-  ${bold('shomra gate')}. A BLOCK refuses the call. Verdicts are cached on the
+  ${bold('nofly gate')}. A BLOCK refuses the call. Verdicts are cached on the
   machine by content for 10 minutes; a skill not found on disk is not blocked.
 `;
 
@@ -315,39 +315,39 @@ const EXIT_CODES = () => `${bold('EXIT CODES')}  ${dim('- one convention across 
 `;
 
 const ENV = () => `${bold('ENV')}
-  SHOMRA_API_KEY              API key (overrides config)
-  SHOMRA_URL                  Backend URL (overrides config)
-  SHOMRA_API_TIMEOUT_MS=30000 Per-request backend timeout for scan/gate/report (never hangs)
-  SHOMRA_AGENT                Agent credential (shm_agt_…) presented as x-shomra-agent (llm-proxy + firewall);
+  NOFLY_API_KEY              API key (overrides config)
+  NOFLY_URL                  Backend URL (overrides config)
+  NOFLY_API_TIMEOUT_MS=30000 Per-request backend timeout for scan/gate/report (never hangs)
+  NOFLY_AGENT                Agent credential (shm_agt_…) presented as x-nofly-agent (llm-proxy + firewall);
                               overrides the one \`agent-identity register\` saved
-  SHOMRA_WORKLOAD             Keyless sign-in: github | gitlab | kubernetes | entra | okta. The firewall trades
+  NOFLY_WORKLOAD             Keyless sign-in: github | gitlab | kubernetes | entra | okta. The firewall trades
                               the workload's own identity token for an hour-long agent credential and needs no
                               stored key. entra asks the Azure managed identity (AKS workload identity, App
-                              Service, Container Apps, VMs); okta reads SHOMRA_TOKEN_FILE or SHOMRA_ID_TOKEN
-  SHOMRA_AUDIENCE             The audience the agent's Keyless Sign-In panel shows (shomra:org:…, or the
+                              Service, Container Apps, VMs); okta reads NOFLY_TOKEN_FILE or NOFLY_ID_TOKEN
+  NOFLY_AUDIENCE             The audience the agent's Keyless Sign-In panel shows (shomra:org:…, or the
                               Entra or Okta binding's own audience)
-  SHOMRA_ID_TOKEN             A token the environment already holds (GitLab id_tokens, an Entra or Okta token)
-  SHOMRA_TOKEN_FILE           Token path (Kubernetes default /var/run/secrets/shomra/token, or an Okta token file)
-  SHOMRA_GATE_CONCURRENCY=8   Parallel backend gate/model-lookup calls in batch runs (1-32)
-  SHOMRA_GH_TOKEN             GitHub token for \`shomra pr\` (falls back to GITHUB_TOKEN)
-  SHOMRA_GUARD_STRICT=1       Fail-closed on the server tier if the backend is unreachable
-  SHOMRA_GUARD_LOCAL_FLAG=ask What a call the on-machine rules flag does when no server verdict arrives:
+  NOFLY_ID_TOKEN             A token the environment already holds (GitLab id_tokens, an Entra or Okta token)
+  NOFLY_TOKEN_FILE           Token path (Kubernetes default /var/run/secrets/nofly/token, or an Okta token file)
+  NOFLY_GATE_CONCURRENCY=8   Parallel backend gate/model-lookup calls in batch runs (1-32)
+  NOFLY_GH_TOKEN             GitHub token for \`nofly pr\` (falls back to GITHUB_TOKEN)
+  NOFLY_GUARD_STRICT=1       Fail-closed on the server tier if the backend is unreachable
+  NOFLY_GUARD_LOCAL_FLAG=ask What a call the on-machine rules flag does when no server verdict arrives:
                               ask (default), allow or deny
-  SHOMRA_GUARD_FAILOPEN_SEVERE=1  Let destructive calls run unscreened when no server verdict arrives
-  SHOMRA_GUARD_LOCAL=0        Disable the on-machine Tier-0 guard (route everything to the server)
-  SHOMRA_GUARD_IGNORE=<globs> Comma-separated file globs the runtime guard treats as known-safe (never
-                             withheld) - plus any .shomraignore in the working dir. For files with
+  NOFLY_GUARD_FAILOPEN_SEVERE=1  Let destructive calls run unscreened when no server verdict arrives
+  NOFLY_GUARD_LOCAL=0        Disable the on-machine Tier-0 guard (route everything to the server)
+  NOFLY_GUARD_IGNORE=<globs> Comma-separated file globs the runtime guard treats as known-safe (never
+                             withheld) - plus any .noflyignore in the working dir. For files with
                              benign patterns in source (detection code, fixtures, docs).
-  SHOMRA_GUARD_ALWAYS_ESCALATE=1  Send every call to the server (full telemetry, higher overhead)
-  SHOMRA_GUARD_TIMEOUT_MS=2000    Per-call server timeout budget (default 2000); the server answers inside it
-  SHOMRA_GUARD_TIER=fast          Ask for a 100ms screen: every enrichment pass is skipped and the verdict says so
-  SHOMRA_GUARD_BREAKER_MS=30000   Skip the server for this long after repeated failures (0 disables)
-  SHOMRA_GUARD_BREAKER_FAILURES=3 Failures in a row before the server is skipped (strict mode never skips it)
-  SHOMRA_LLM_PROXY_BASE       Proxy base URL install-hook writes for Aider (default http://127.0.0.1:4141/openai/v1)
-  SHOMRA_MODEL_GUARD=0        Disable the model-load screen in the PreToolUse hook
-  SHOMRA_MODEL_CACHE=0        Disable the on-machine model-index verdict cache
-  SHOMRA_MODEL_CACHE_TTL_MS   Model-cache freshness window (default 7 days)
-  SHOMRA_ALLOW_USER_NODE=1    Let a machine-wide schedule or managed hook run a Node or Shomra a normal user
+  NOFLY_GUARD_ALWAYS_ESCALATE=1  Send every call to the server (full telemetry, higher overhead)
+  NOFLY_GUARD_TIMEOUT_MS=2000    Per-call server timeout budget (default 2000); the server answers inside it
+  NOFLY_GUARD_TIER=fast          Ask for a 100ms screen: every enrichment pass is skipped and the verdict says so
+  NOFLY_GUARD_BREAKER_MS=30000   Skip the server for this long after repeated failures (0 disables)
+  NOFLY_GUARD_BREAKER_FAILURES=3 Failures in a row before the server is skipped (strict mode never skips it)
+  NOFLY_LLM_PROXY_BASE       Proxy base URL install-hook writes for Aider (default http://127.0.0.1:4141/openai/v1)
+  NOFLY_MODEL_GUARD=0        Disable the model-load screen in the PreToolUse hook
+  NOFLY_MODEL_CACHE=0        Disable the on-machine model-index verdict cache
+  NOFLY_MODEL_CACHE_TTL_MS   Model-cache freshness window (default 7 days)
+  NOFLY_ALLOW_USER_NODE=1    Let a machine-wide schedule or managed hook run a Node or NoFly a normal user
                               can change (same as --allow-user-writable)
   NODE_USE_ENV_PROXY=1        Send the CLI's requests through HTTPS_PROXY / HTTP_PROXY, honouring NO_PROXY
                               (Node releases whose \`node --help\` lists --use-env-proxy)

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { discoverAgentArtifacts } from '../src/inventory/agent-artifacts.mjs';
 import { classify } from '../src/inventory/artifacts/classify.mjs';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-extensions-test-'));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-extensions-test-'));
 process.on('exit', () => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {  } });
 const write = (rel, body) => {
   const full = path.join(tmp, rel);

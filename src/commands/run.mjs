@@ -53,7 +53,7 @@ function printCatalog(catalog) {
     if (required.length) console.log(`    ${dim('needs')} ${required.map((key) => bold(key)).join(', ')}`);
     console.log('');
   }
-  console.log(dim(`  Run one:  ${bold('shomra run <id> --input key=value')}\n`));
+  console.log(dim(`  Run one:  ${bold('nofly run <id> --input key=value')}\n`));
 }
 
 async function listPlaybooks({ url, apiKey, flags, hasId }) {

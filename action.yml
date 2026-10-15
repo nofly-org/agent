@@ -1,4 +1,4 @@
-# Shomra as a reusable GitHub Action.
+# NoFly as a reusable GitHub Action.
 #
 # The README already showed the workflow YAML to hand-write. That is a snippet
 # every consumer copies and then never updates, so a fix here reached nobody. A
@@ -7,9 +7,9 @@
 # Composite, not Docker: a Docker action pays an image pull on every run for a
 # zero-dependency Node CLI, and it cannot see the runner's own Node. This runs on
 # the runner directly.
-name: Shomra
+name: NoFly
 description: Gate the AI artifacts, models and secrets in a repo - MCP configs, skills, slash commands, hooks and rules files.
-author: Shomra
+author: NoFly
 branding:
   icon: shield
   color: blue
@@ -17,23 +17,23 @@ branding:
 inputs:
   args:
     description: >-
-      The full shomra command line to run, without the binary name.
+      The full nofly command line to run, without the binary name.
       Examples: "check --strict", "check --staged", "gate --all . --sarif",
       "design docs/ --strict", "rules --check".
     required: false
     default: check --strict
   version:
-    description: Version of @shomra/agent to run (npm dist-tag or exact version).
+    description: Version of @nofly/agent to run (npm dist-tag or exact version).
     required: false
     default: latest
   api-key:
     description: >-
-      Shomra API key (use a CI key, shm_ci_…). Optional - every gate runs
+      NoFly API key (use a CI key, shm_ci_…). Optional - every gate runs
       local-first, so the action works with no key at all; a key adds org policy,
       triage state and the dashboard record.
     required: false
   url:
-    description: Shomra backend URL. Required only when api-key is set.
+    description: NoFly backend URL. Required only when api-key is set.
     required: false
   working-directory:
     description: Directory to run in.
@@ -59,31 +59,34 @@ runs:
       with:
         node-version: '22'
 
-    - name: Run Shomra
+    - name: Run NoFly
       id: run
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
-        SHOMRA_API_KEY: ${{ inputs.api-key }}
-        SHOMRA_URL: ${{ inputs.url }}
-        SHOMRA_ACTION_ARGS: ${{ inputs.args }}
-        SHOMRA_ACTION_VERSION: ${{ inputs.version }}
-        SHOMRA_ACTION_FAIL_ON_FLAG: ${{ inputs.fail-on-flag }}
+        NOFLY_API_KEY: ${{ inputs.api-key }}
+        NOFLY_URL: ${{ inputs.url }}
+        NOFLY_ACTION_ARGS: ${{ inputs.args }}
+        NOFLY_ACTION_VERSION: ${{ inputs.version }}
+        NOFLY_ACTION_FAIL_ON_FLAG: ${{ inputs.fail-on-flag }}
       run: |
         set -o pipefail
-        if [[ ! "$SHOMRA_ACTION_VERSION" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        if [[ ! "$NOFLY_ACTION_VERSION" =~ ^[A-Za-z0-9._-]+$ ]]; then
           echo "::error::version must be an npm dist-tag or an exact version"
           exit 3
         fi
-        read -r -d '' -a argv <<< "$SHOMRA_ACTION_ARGS" || true
+        read -r -d '' -a argv <<< "$NOFLY_ACTION_ARGS" || true
         # --strict is appended rather than baked into the default, so a caller who
         # passes their own args still gets the fail-on-flag behaviour they asked
         # for, and passing --strict twice stays harmless.
-        if [ "$SHOMRA_ACTION_FAIL_ON_FLAG" = "true" ] && [[ " ${argv[*]} " != *" --strict "* ]]; then
+        if [ "$NOFLY_ACTION_FAIL_ON_FLAG" = "true" ] && [[ " ${argv[*]} " != *" --strict "* ]]; then
           argv+=("--strict")
         fi
+        # The CLI was published as @shomra/agent before the rename; older versions live only there.
+        pkg="@nofly/agent"
+        npm view "${pkg}@${NOFLY_ACTION_VERSION}" version >/dev/null 2>&1 || pkg="@shomra/agent"
         set +e
-        npx --yes "@shomra/agent@${SHOMRA_ACTION_VERSION}" "${argv[@]}"
+        npx --yes "${pkg}@${NOFLY_ACTION_VERSION}" "${argv[@]}"
         code=$?
         set -e
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"

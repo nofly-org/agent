@@ -12,7 +12,7 @@ import { guardStateTamper, insideGuardState, refuseOrAsk } from '../src/guard/se
 import { forwardHeaders, localClientOnly } from '../src/commands/llm-proxy.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
+const CLI = path.join(HERE, '..', 'nofly.mjs');
 
 async function serve(handler) {
   const server = http.createServer((req, res) => {
@@ -26,14 +26,14 @@ async function serve(handler) {
 
 test('the org key never follows a redirect to another origin', async () => {
   const stolen = [];
-  const evil = await serve((req, res) => { stolen.push(req.headers['x-shomra-key'] ?? null); res.end('{}'); });
+  const evil = await serve((req, res) => { stolen.push(req.headers['x-nofly-key'] ?? null); res.end('{}'); });
   const good = await serve((req, res) => {
     res.writeHead(307, { location: `http://localhost:${evil.port}/steal` });
     res.end();
   });
   try {
     await assert.rejects(
-      keyedFetch(`http://127.0.0.1:${good.port}/gate/tool-call`, { method: 'POST', headers: { 'X-Shomra-Key': 'shm_secret' }, body: '{}' }),
+      keyedFetch(`http://127.0.0.1:${good.port}/gate/tool-call`, { method: 'POST', headers: { 'X-NoFly-Key': 'shm_secret' }, body: '{}' }),
       /refused a redirect/,
     );
     assert.deepEqual(stolen, []);
@@ -46,7 +46,7 @@ test('the org key never follows a redirect to another origin', async () => {
 test('a same-origin redirect is still followed with the key', async () => {
   const seen = [];
   const s = await serve((req, res) => {
-    seen.push([req.url, req.headers['x-shomra-key'] ?? null]);
+    seen.push([req.url, req.headers['x-nofly-key'] ?? null]);
     if (req.url === '/old') {
       res.writeHead(308, { location: '/new' });
       return res.end();
@@ -54,7 +54,7 @@ test('a same-origin redirect is still followed with the key', async () => {
     res.end('{"ok":true}');
   });
   try {
-    const res = await keyedFetch(`http://127.0.0.1:${s.port}/old`, { method: 'POST', headers: { 'X-Shomra-Key': 'k' }, body: '{}' });
+    const res = await keyedFetch(`http://127.0.0.1:${s.port}/old`, { method: 'POST', headers: { 'X-NoFly-Key': 'k' }, body: '{}' });
     assert.equal(res.status, 200);
     assert.deepEqual(seen, [['/old', 'k'], ['/new', 'k']]);
   } finally {
@@ -81,30 +81,30 @@ test('a breaker stamped in the future does not hold the server tier off', () => 
 
 test('writes into the guard state directory are tamper, reads and ordinary work are not', () => {
   const home = '/home/dev';
-  const opts = { cwd: '/home/dev/project', home, stateDir: '/home/dev/.shomra' };
+  const opts = { cwd: '/home/dev/project', home, stateDir: '/home/dev/.nofly' };
   const hit = (tool, input) => !!guardStateTamper(tool, input, opts);
 
-  assert.equal(hit('Write', { file_path: '/home/dev/.shomra/config.json', content: '{}' }), true);
-  assert.equal(hit('Edit', { file_path: '~/.shomra/guard-breaker.json', old_string: 'a', new_string: 'b' }), true);
-  assert.equal(hit('Write', { file_path: '../.shomra/guard-subject-types.json', content: '{}' }), true);
-  assert.equal(hit('Bash', { command: 'echo \'{"at":99999999999999}\' > ~/.shomra/guard-breaker.json' }), true);
-  assert.equal(hit('Bash', { command: 'rm -rf ~/.shomra' }), true);
-  assert.equal(hit('Bash', { command: 'rm $HOME/.shomra/guard-ledger.json' }), true);
-  assert.equal(hit('Bash', { command: 'cp /tmp/x.json /home/dev/.shomra/config.json' }), true);
-  assert.equal(hit('apply_patch', { input: '*** Begin Patch\n*** Update File: /home/dev/.shomra/config.json\n@@\n-a\n+b\n*** End Patch' }), true);
+  assert.equal(hit('Write', { file_path: '/home/dev/.nofly/config.json', content: '{}' }), true);
+  assert.equal(hit('Edit', { file_path: '~/.nofly/guard-breaker.json', old_string: 'a', new_string: 'b' }), true);
+  assert.equal(hit('Write', { file_path: '../.nofly/guard-subject-types.json', content: '{}' }), true);
+  assert.equal(hit('Bash', { command: 'echo \'{"at":99999999999999}\' > ~/.nofly/guard-breaker.json' }), true);
+  assert.equal(hit('Bash', { command: 'rm -rf ~/.nofly' }), true);
+  assert.equal(hit('Bash', { command: 'rm $HOME/.nofly/guard-ledger.json' }), true);
+  assert.equal(hit('Bash', { command: 'cp /tmp/x.json /home/dev/.nofly/config.json' }), true);
+  assert.equal(hit('apply_patch', { input: '*** Begin Patch\n*** Update File: /home/dev/.nofly/config.json\n@@\n-a\n+b\n*** End Patch' }), true);
 
-  assert.equal(hit('mcp__filesystem__write_file', { path: '/home/dev/.shomra/config.json', content: '{}' }), true);
-  assert.equal(hit('mcp__filesystem__move_file', { source: '/tmp/x', destination: '/home/dev/.shomra/config.json' }), true);
-  assert.equal(hit('delete_file', { target_file: '/home/dev/.shomra/guard-ledger.json' }), true);
+  assert.equal(hit('mcp__filesystem__write_file', { path: '/home/dev/.nofly/config.json', content: '{}' }), true);
+  assert.equal(hit('mcp__filesystem__move_file', { source: '/tmp/x', destination: '/home/dev/.nofly/config.json' }), true);
+  assert.equal(hit('delete_file', { target_file: '/home/dev/.nofly/guard-ledger.json' }), true);
 
-  assert.equal(hit('Read', { file_path: '/home/dev/.shomra/config.json' }), false);
-  assert.equal(hit('mcp__filesystem__read_file', { path: '/home/dev/.shomra/config.json' }), false);
-  assert.equal(hit('Bash', { command: 'ls -la ~/.shomra' }), false);
-  assert.equal(hit('Bash', { command: 'shomra init --url https://api.shomra.ai' }), false);
+  assert.equal(hit('Read', { file_path: '/home/dev/.nofly/config.json' }), false);
+  assert.equal(hit('mcp__filesystem__read_file', { path: '/home/dev/.nofly/config.json' }), false);
+  assert.equal(hit('Bash', { command: 'ls -la ~/.nofly' }), false);
+  assert.equal(hit('Bash', { command: 'nofly init --url https://api.shomra.ai' }), false);
   assert.equal(hit('Bash', { command: 'rm -rf node_modules && npm ci' }), false);
-  assert.equal(hit('Write', { file_path: '/home/dev/project/.shomra/policy.yml', content: 'x' }), false);
+  assert.equal(hit('Write', { file_path: '/home/dev/project/.nofly/policy.yml', content: 'x' }), false);
   assert.equal(hit('Write', { file_path: '/home/dev/project/src/app.ts', content: 'x' }), false);
-  assert.equal(insideGuardState('/home/dev/.shomra-backup/config.json', opts), false);
+  assert.equal(insideGuardState('/home/dev/.nofly-backup/config.json', opts), false);
 });
 
 test('an agent that cannot ask a person is refused rather than waved through', () => {
@@ -115,7 +115,7 @@ test('an agent that cannot ask a person is refused rather than waved through', (
 
 function runGuard(home, payload, env = {}) {
   const base = { ...process.env, USERPROFILE: home, HOME: home, NO_COLOR: '1' };
-  for (const k of Object.keys(base)) if (k.startsWith('SHOMRA_')) delete base[k];
+  for (const k of Object.keys(base)) if (k.startsWith('NOFLY_')) delete base[k];
   return new Promise((done) => {
     const child = spawn(process.execPath, [CLI, 'tool-guard', '--agent', 'claude'], { env: { ...base, ...env }, cwd: home });
     let stdout = '';
@@ -135,20 +135,20 @@ function runGuard(home, payload, env = {}) {
 }
 
 test('the hook asks a person before the agent rewrites the guard breaker', async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-tamper-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-tamper-'));
   const out = await runGuard(home, {
     tool_name: 'Bash',
-    tool_input: { command: `echo '{"at":99999999999999}' > ${path.join(home, '.shomra', 'guard-breaker.json')}` },
+    tool_input: { command: `echo '{"at":99999999999999}' > ${path.join(home, '.nofly', 'guard-breaker.json')}` },
     cwd: home,
-  }, { SHOMRA_API_KEY: 'shm_test_key_0000000000000000', SHOMRA_URL: 'http://127.0.0.1:9', SHOMRA_GUARD_TIMEOUT_MS: '300' });
+  }, { NOFLY_API_KEY: 'shm_test_key_0000000000000000', NOFLY_URL: 'http://127.0.0.1:9', NOFLY_GUARD_TIMEOUT_MS: '300' });
   assert.equal(out.decision, 'ask');
   assert.match(out.reason, /guard state/);
 });
 
 test('a forged future breaker no longer skips the server', async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-breaker-'));
-  fs.mkdirSync(path.join(home, '.shomra'), { recursive: true });
-  fs.writeFileSync(path.join(home, '.shomra', 'guard-breaker.json'), JSON.stringify({ at: Date.now() + 86_400_000 }));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-breaker-'));
+  fs.mkdirSync(path.join(home, '.nofly'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.nofly', 'guard-breaker.json'), JSON.stringify({ at: Date.now() + 86_400_000 }));
   let hits = 0;
   const s = await serve((req, res) => {
     hits += 1;
@@ -157,9 +157,9 @@ test('a forged future breaker no longer skips the server', async () => {
   });
   try {
     const out = await runGuard(home, { tool_name: 'mcp__jira__get_issue', tool_input: { key: 'PROJ-1' }, cwd: home }, {
-      SHOMRA_API_KEY: 'shm_test_key_0000000000000000',
-      SHOMRA_URL: `http://127.0.0.1:${s.port}`,
-      SHOMRA_GUARD_TIMEOUT_MS: '3000',
+      NOFLY_API_KEY: 'shm_test_key_0000000000000000',
+      NOFLY_URL: `http://127.0.0.1:${s.port}`,
+      NOFLY_GUARD_TIMEOUT_MS: '3000',
     });
     assert.ok(hits >= 1, 'the server tier was skipped');
     assert.equal(out.decision, 'deny');
@@ -181,18 +181,18 @@ test('the LLM proxy serves loopback clients only', () => {
 
 test('the configured agent credential wins over one a local client sends', () => {
   const ctx = { apiKey: 'org', actor: 'host/user', sessionId: 's', agentId: 'shm_agt_configured' };
-  assert.equal(forwardHeaders({ 'x-shomra-agent': 'impostor' }, ctx)['x-shomra-agent'], 'shm_agt_configured');
-  assert.equal(forwardHeaders({ 'x-shomra-agent': 'shm_agt_app' }, { ...ctx, agentId: null })['x-shomra-agent'], 'shm_agt_app');
-  assert.equal(forwardHeaders({ 'x-shomra-key': 'caller' }, ctx)['x-shomra-key'], 'org');
+  assert.equal(forwardHeaders({ 'x-nofly-agent': 'impostor' }, ctx)['x-nofly-agent'], 'shm_agt_configured');
+  assert.equal(forwardHeaders({ 'x-nofly-agent': 'shm_agt_app' }, { ...ctx, agentId: null })['x-nofly-agent'], 'shm_agt_app');
+  assert.equal(forwardHeaders({ 'x-nofly-key': 'caller' }, ctx)['x-nofly-key'], 'org');
 });
 
 test('with no configured agent the proxy forwards a client agent header only when it is a shm_agt_ credential', () => {
   const ctx = { apiKey: 'org', actor: 'host/user', sessionId: 's', agentId: null };
-  assert.equal('x-shomra-agent' in forwardHeaders({ 'x-shomra-agent': 'billing-bot' }, ctx), false);
-  assert.equal(forwardHeaders({ 'x-shomra-agent': '  shm_agt_app  ' }, ctx)['x-shomra-agent'], 'shm_agt_app');
-  assert.equal('x-shomra-agent' in forwardHeaders({}, ctx), false);
-  assert.equal(forwardHeaders({ 'x-shomra-agent': 'impostor' }, { ...ctx, agentId: 'billing-bot' })['x-shomra-agent'], 'billing-bot');
-  const user = forwardHeaders({ 'x-shomra-user': 'dana@acme.test', 'x-shomra-user-token': 'tok', 'x-shomra-agent': 'billing-bot' }, ctx);
-  assert.equal(user['x-shomra-user'], 'dana@acme.test');
-  assert.equal(user['x-shomra-user-token'], 'tok');
+  assert.equal('x-nofly-agent' in forwardHeaders({ 'x-nofly-agent': 'billing-bot' }, ctx), false);
+  assert.equal(forwardHeaders({ 'x-nofly-agent': '  shm_agt_app  ' }, ctx)['x-nofly-agent'], 'shm_agt_app');
+  assert.equal('x-nofly-agent' in forwardHeaders({}, ctx), false);
+  assert.equal(forwardHeaders({ 'x-nofly-agent': 'impostor' }, { ...ctx, agentId: 'billing-bot' })['x-nofly-agent'], 'billing-bot');
+  const user = forwardHeaders({ 'x-nofly-user': 'dana@acme.test', 'x-nofly-user-token': 'tok', 'x-nofly-agent': 'billing-bot' }, ctx);
+  assert.equal(user['x-nofly-user'], 'dana@acme.test');
+  assert.equal(user['x-nofly-user-token'], 'tok');
 });

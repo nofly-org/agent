@@ -9,7 +9,7 @@ import { describeFetchError } from '../core/keyed-fetch.mjs';
 
 const MODEL_CACHE_FILE = path.join(CONFIG_DIR, 'model-cache.json');
 
-function modelCacheOff() { return process.env.SHOMRA_MODEL_CACHE === '0' || String(process.env.SHOMRA_MODEL_CACHE).toLowerCase() === 'false'; }
+function modelCacheOff() { return process.env.NOFLY_MODEL_CACHE === '0' || String(process.env.NOFLY_MODEL_CACHE).toLowerCase() === 'false'; }
 
 function loadModelCache() { try { return JSON.parse(readRegularText(MODEL_CACHE_FILE)) || {}; } catch { return {}; } }
 
@@ -28,7 +28,7 @@ export function pruneModelCache(cache, { now = Date.now(), ttl = 0, max = MODEL_
 
 export async function modelLookup(url, id, sha, timeoutMs) {
   const key = `${id}@${sha || 'latest'}`;
-  const ttl = clampInt(process.env.SHOMRA_MODEL_CACHE_TTL_MS, 7 * 24 * 3600 * 1000, 0, 365 * 24 * 3600 * 1000);
+  const ttl = clampInt(process.env.NOFLY_MODEL_CACHE_TTL_MS, 7 * 24 * 3600 * 1000, 0, 365 * 24 * 3600 * 1000);
   const cache = modelCacheOff() ? {} : loadModelCache();
   const hit = cache[key];
 
@@ -36,7 +36,7 @@ export async function modelLookup(url, id, sha, timeoutMs) {
 
   if (!url) {
     if (hit && hit.data) return { ...hit.data, cached: true, stale: true };
-    throw new Error('model index not configured (set SHOMRA_URL to enrich)');
+    throw new Error('model index not configured (set NOFLY_URL to enrich)');
   }
 
   if (breakerOpen()) {
@@ -46,9 +46,9 @@ export async function modelLookup(url, id, sha, timeoutMs) {
 
   const q = `id=${encodeURIComponent(id)}${sha ? `&sha=${encodeURIComponent(sha)}` : ''}`;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs ?? clampInt(process.env.SHOMRA_API_TIMEOUT_MS, 15000, 1000, 60000));
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs ?? clampInt(process.env.NOFLY_API_TIMEOUT_MS, 15000, 1000, 60000));
   try {
-    const res = await fetch(`${url}/models/lookup?${q}`, { signal: ctrl.signal, headers: { Accept: 'application/json', 'User-Agent': 'shomra-agent' } });
+    const res = await fetch(`${url}/models/lookup?${q}`, { signal: ctrl.signal, headers: { Accept: 'application/json', 'User-Agent': 'nofly-agent' } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     breakerReset();
@@ -86,7 +86,7 @@ export function modelFixPlan(findings, sha) {
     kwargs.push({ name: 'trust_remote_code', value: 'False', reason: "Never run the model repo's own Python during load." });
   }
   if (sha) {
-    kwargs.push({ name: 'revision', value: JSON.stringify(String(sha).slice(0, 40)), reason: 'Pin to the exact revision Shomra reviewed instead of a mutable branch (supply-chain).' });
+    kwargs.push({ name: 'revision', value: JSON.stringify(String(sha).slice(0, 40)), reason: 'Pin to the exact revision NoFly reviewed instead of a mutable branch (supply-chain).' });
   }
   return kwargs.length ? { kwargs } : null;
 }

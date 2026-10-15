@@ -91,7 +91,7 @@ test('a Gemini extension manifest is a plugin artifact', () => {
 });
 
 test('install records outside HOME are not followed', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-outside-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-outside-'));
   fs.mkdirSync(path.join(dir, '.claude', 'plugins'), { recursive: true });
   fs.writeFileSync(path.join(dir, '.claude', 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'x@y': [{ installPath: path.parse(dir).root }] } }));
   assert.deepEqual(installedPluginManifests(path.join(dir, '.claude')), []);
@@ -112,7 +112,7 @@ test('pluginRootOf climbs out of the vendor manifest directory', () => {
 });
 
 test('a component file symlinked OUT of the plugin is never read', (t) => {
-  const dir = fs.mkdtempSync(path.join(os.homedir(), '.shomra-plugin-link-'));
+  const dir = fs.mkdtempSync(path.join(os.homedir(), '.nofly-plugin-link-'));
   process.on('exit', () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {  } });
   const secret = path.join(dir, 'secret.txt');
   fs.writeFileSync(secret, 'aws_secret_access_key = SHOULD-NEVER-LEAVE');

@@ -24,7 +24,7 @@ function mcpReach() {
   let total = 0;
   let mediated = 0;
   let files = 0;
-  const selfHints = ['mcp-guard', 'shomra'];
+  const selfHints = ['mcp-guard', 'nofly', 'shomra'];
 
   for (const { file } of mcpConfigCandidates()) {
     const entries = serverEntries(readJson(file));
@@ -45,7 +45,7 @@ function precommitInstalled() {
   const dir = gitHooksPath(process.cwd());
   if (!dir) return false;
   try {
-    return /shomra/i.test(readRegularText(path.join(dir, 'pre-commit'), 1024 * 1024));
+    return /nofly|shomra/i.test(readRegularText(path.join(dir, 'pre-commit'), 1024 * 1024));
   } catch {
     return false;
   }
@@ -102,7 +102,7 @@ function subjects() {
     mode: precommit ? 'ENFORCE' : 'ABSENT',
     axes: { presence: precommit ? 'DEPLOYED' : 'NOT_DEPLOYED', reach: null, ...UNMEASURED },
     statement: precommit
-      ? 'A Shomra pre-commit hook is installed in this repository.'
+      ? 'A NoFly pre-commit hook is installed in this repository.'
       : 'No install-time check runs in this repository, so an artifact reaches it without passing one.',
   });
 
@@ -146,9 +146,9 @@ export function cmdLedger(flags = {}) {
   console.log(dim('  Discrimination and prevention need an attack. Nothing here fired one, so no row'));
   console.log(dim('  can reach "held under test" - and this report says so rather than rounding up.'));
   console.log('');
-  console.log(`  ${dim('Publish it:')} shomra ledger --json > ledger.json`);
+  console.log(`  ${dim('Publish it:')} nofly ledger --json > ledger.json`);
   console.log(`  ${dim('Check it:  ')} npx controlledger-verify ledger.json`);
-  if (!enrolled) console.log(`  ${dim('Prove it:  ')} shomra init --key shm_…  ${dim('- to attack these controls and fill the last two axes')}`);
+  if (!enrolled) console.log(`  ${dim('Prove it:  ')} nofly init --key shm_…  ${dim('- to attack these controls and fill the last two axes')}`);
   console.log('');
   return 0;
 }

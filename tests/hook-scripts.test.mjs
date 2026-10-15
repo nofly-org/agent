@@ -7,7 +7,7 @@ import path from 'node:path';
 import { discoverAgentArtifacts } from '../src/inventory/agent-artifacts.mjs';
 import { bundleHookScripts, hookScriptMode, resolveRef, scriptRefs } from '../src/inventory/artifacts/hook-scripts.mjs';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-hookscripts-'));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-hookscripts-'));
 const put = (rel, body) => {
   const full = path.join(tmp, rel);
   fs.mkdirSync(path.dirname(full), { recursive: true });
@@ -33,13 +33,13 @@ put('.claude/settings.json', JSON.stringify({
 
 const roots = [{ vendor: 'claude-code', scope: 'project', dir: path.join(tmp, '.claude') }];
 const hookOf = (mode) => {
-  const prev = process.env.SHOMRA_HOOK_SCRIPTS;
-  process.env.SHOMRA_HOOK_SCRIPTS = mode;
+  const prev = process.env.NOFLY_HOOK_SCRIPTS;
+  process.env.NOFLY_HOOK_SCRIPTS = mode;
   try {
     return discoverAgentArtifacts(tmp, roots).artifacts.find((a) => a.kind === 'hook');
   } finally {
-    if (prev === undefined) delete process.env.SHOMRA_HOOK_SCRIPTS;
-    else process.env.SHOMRA_HOOK_SCRIPTS = prev;
+    if (prev === undefined) delete process.env.NOFLY_HOOK_SCRIPTS;
+    else process.env.NOFLY_HOOK_SCRIPTS = prev;
   }
 };
 
@@ -70,10 +70,10 @@ test('hash mode sends fingerprints and no bodies; off sends nothing', () => {
 });
 
 test('mode is read from the environment, then the config file, and defaults to full', () => {
-  assert.equal(hookScriptMode({ SHOMRA_HOOK_SCRIPTS: 'hash' }, {}), 'hash');
+  assert.equal(hookScriptMode({ NOFLY_HOOK_SCRIPTS: 'hash' }, {}), 'hash');
   assert.equal(hookScriptMode({}, { hookScripts: 'off' }), 'off');
   assert.equal(hookScriptMode({}, {}), 'full');
-  assert.equal(hookScriptMode({ SHOMRA_HOOK_SCRIPTS: 'bogus' }, {}), 'full');
+  assert.equal(hookScriptMode({ NOFLY_HOOK_SCRIPTS: 'bogus' }, {}), 'full');
 });
 
 test('plugin and project roots resolve like the agent does', () => {
@@ -90,13 +90,13 @@ test('Windows paths: drive letters and quoted paths with spaces', () => {
   assert.deepEqual(scriptRefs('"C:\\Program Files\\nodejs\\node.exe" D:\\x\\y.js'), ['D:\\x\\y.js'], 'the interpreter .exe is not a script');
 });
 
-test('the Shomra guard itself is recognised, never shipped and graded', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-self-'));
-  fs.writeFileSync(path.join(dir, 'shomra.mjs'), 'const SIGS = [/curl .* \\| sh/, "rm -rf /"];\n');
-  const artifact = { path: '.claude/settings.json', content: JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: `node ${path.join(dir, 'shomra.mjs')} tool-guard --agent claude` }] }] } }), files: [], metadata: {} };
+test('the NoFly guard itself is recognised, never shipped and graded', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-self-'));
+  fs.writeFileSync(path.join(dir, 'nofly.mjs'), 'const SIGS = [/curl .* \\| sh/, "rm -rf /"];\n');
+  const artifact = { path: '.claude/settings.json', content: JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: `node ${path.join(dir, 'nofly.mjs')} tool-guard --agent claude` }] }] } }), files: [], metadata: {} };
   bundleHookScripts(artifact, path.join(dir, 'settings.json'), { projectDir: dir, relPath: () => null, budget: { bytes: 1e6 }, capped: [], mode: 'full' });
   assert.equal(artifact.files.length, 0);
-  assert.equal(artifact.metadata.hookScripts.scripts[0].state, 'shomra-guard');
+  assert.equal(artifact.metadata.hookScripts.scripts[0].state, 'nofly-guard');
 });
 
 test('the bundle stays inside the byte budget and says so', () => {

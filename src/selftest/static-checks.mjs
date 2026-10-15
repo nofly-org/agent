@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { agentHookFiles, managedFile } from '../agents/hook-files.mjs';
-import { PACKAGE_SPEC, SELF_PATH, shomraHookRe } from '../agents/hook-command.mjs';
+import { PACKAGE_SPEC, SELF_PATH, noflyHookRe } from '../agents/hook-command.mjs';
 import { KIND_LABEL, VENDOR_TOOLS, matcherCovers, missingTools } from '../agents/vendor-tools.mjs';
 import { VERSION } from '../core/version.mjs';
 import { readRegularText } from '../core/safe-read.mjs';
@@ -14,7 +14,7 @@ import { readRegularText } from '../core/safe-read.mjs';
  * ⚠ AN INSTALLED HOOK IS NOT A COVERED ONE. The entry can be present, point at
  * the right binary and still name a matcher that leaves this vendor's shell tool
  * out, in which case every command the agent runs reaches nobody while the
- * settings file, the dashboard and `shomra status` all say "installed". That gap
+ * settings file, the dashboard and `nofly status` all say "installed". That gap
  * is the one thing a server-side simulation cannot see, so it is stated as its
  * own state (POROUS) with the exact names and the command that widens them.
  */
@@ -41,7 +41,7 @@ export function installedVendors(keys = Object.keys(VENDOR_TOOLS)) {
   return keys.filter((k) => vendorInstalled(k));
 }
 
-const CLINE_MARK_RE = /\/\/ shomra cline hook/;
+const CLINE_MARK_RE = /\/\/ (?:nofly|shomra) cline hook/;
 const CLINE_RUN_RE = /spawnSync\((".*?"|'npx'),\s*\[(.*?)\]/;
 
 function clineEntry(file, event) {
@@ -75,7 +75,7 @@ function readJson(file) {
 }
 
 /**
- * Every Shomra tool-guard entry in one settings file, in the vendor's own shape.
+ * Every NoFly tool-guard entry in one settings file, in the vendor's own shape.
  * ⚠ `matcher: null` is not "no matcher" - for a flat-event vendor there is no
  * such field, and the EVENT is what decides whether the hook runs.
  */
@@ -83,7 +83,7 @@ export function hookEntries(vendor, file) {
   if (VENDOR_TOOLS[vendor]?.settings?.shape === 'cline-scripts') return path.basename(file) === 'PreToolUse' ? clineEntry(file, 'PreToolUse') : [];
   const cfg = readJson(file);
   if (!cfg) return [];
-  const re = shomraHookRe('tool-guard');
+  const re = noflyHookRe('tool-guard');
   const out = [];
   const shape = VENDOR_TOOLS[vendor]?.settings?.shape;
 
@@ -127,13 +127,13 @@ export function hookEntries(vendor, file) {
  * that is not the one running, both read as "installed" everywhere else.
  */
 export function commandHealth(command) {
-  const npm = /@shomra\/agent@([\w.\-]+)/.exec(command);
+  const npm = /@(?:nofly|shomra)\/agent@([\w.\-]+)/.exec(command);
   if (npm) {
-    return npm[1] === VERSION
+    return npm[0] === PACKAGE_SPEC
       ? { ok: true, how: 'npm', detail: PACKAGE_SPEC }
-      : { ok: true, stale: true, how: 'npm', detail: `pinned to @shomra/agent@${npm[1]}, this CLI is ${VERSION}` };
+      : { ok: true, stale: true, how: 'npm', detail: `pinned to ${npm[0]}, this CLI is ${VERSION}` };
   }
-  const named = [...command.matchAll(/"([^"]+shomra\.mjs)"|'([^']+shomra\.mjs)'|([^\s"']+shomra\.mjs)/g)].map((m) => m[1] ?? m[2] ?? m[3]).filter(Boolean);
+  const named = [...command.matchAll(/"([^"]+(?:nofly|shomra)\.mjs)"|'([^']+(?:nofly|shomra)\.mjs)'|([^\s"']+(?:nofly|shomra)\.mjs)/g)].map((m) => m[1] ?? m[2] ?? m[3]).filter(Boolean);
   const target = named[0];
   if (!target) return { ok: true, how: 'npm', detail: 'resolved through the package manager' };
   if (!fs.existsSync(target)) return { ok: false, how: 'path', detail: `${target} does not exist on this machine - the agent's hook spawn fails and the call runs unscreened` };
@@ -156,7 +156,7 @@ export function staticCheck(vendor) {
   const v = VENDOR_TOOLS[vendor];
   const files = agentHookFiles(vendor).filter((f) => fs.existsSync(f));
   const installs = files.flatMap((file) => hookEntries(vendor, file).map((e) => ({ ...e, file, scope: file === managedFile(vendor) ? 'machine' : scopeOf(file) })));
-  const fix = `shomra install-hook --agent ${vendor}`;
+  const fix = `nofly install-hook --agent ${vendor}`;
 
   if (!installs.length) {
     return {
@@ -168,7 +168,7 @@ export function staticCheck(vendor) {
       missing: [],
       notes: [],
       fix,
-      statement: `No Shomra tool-guard hook is installed for ${v.label} on this machine, so nothing screens what it runs.`,
+      statement: `No NoFly tool-guard hook is installed for ${v.label} on this machine, so nothing screens what it runs.`,
     };
   }
 
@@ -185,7 +185,7 @@ export function staticCheck(vendor) {
       missing: [],
       notes,
       fix,
-      statement: `${v.label}'s Shomra hook in ${legacy.file} is installed in a shape the agent ignores: ${legacy.legacy}. Re-run the install to rewrite it.`,
+      statement: `${v.label}'s NoFly hook in ${legacy.file} is installed in a shape the agent ignores: ${legacy.legacy}. Re-run the install to rewrite it.`,
     };
   }
   for (const i of installs) {
@@ -251,7 +251,7 @@ export function environmentChecks({ url, apiKey, strict, breakerOpen, subjectTyp
     id: 'server',
     ok: !!url && !!apiKey,
     label: 'Server and credentials',
-    detail: url && apiKey ? `${url} · key ${String(apiKey).slice(0, 10)}…` : 'not configured - run `shomra init --key shm_… --url <backend>`; only the local tier runs',
+    detail: url && apiKey ? `${url} · key ${String(apiKey).slice(0, 10)}…` : 'not configured - run `nofly init --key shm_… --url <backend>`; only the local tier runs',
   });
   rows.push({
     id: 'breaker',
@@ -263,7 +263,7 @@ export function environmentChecks({ url, apiKey, strict, breakerOpen, subjectTyp
     id: 'strict',
     ok: true,
     label: 'Fail mode',
-    detail: strict ? 'fail-closed (SHOMRA_GUARD_STRICT=1)' : 'fail-open - an unreachable server lets routine calls through',
+    detail: strict ? 'fail-closed (NOFLY_GUARD_STRICT=1)' : 'fail-open - an unreachable server lets routine calls through',
   });
   rows.push({
     id: 'subject-types',

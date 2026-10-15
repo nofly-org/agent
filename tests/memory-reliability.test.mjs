@@ -12,7 +12,7 @@ import { redactLocally } from '../src/detect/local-redact.mjs';
 import { restoreRefusal, restoreVerdict } from '../src/guard/memory-restore.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
+const CLI = path.join(HERE, '..', 'nofly.mjs');
 const sha = (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex');
 
 function runHook(cmd, payload, { home, cwd, env }) {
@@ -33,7 +33,7 @@ function runHook(cmd, payload, { home, cwd, env }) {
 }
 
 test('a ledger window with an unreadable start still reports its unscreened calls', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-ledger-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-ledger-'));
   try {
     const store = makeLedgerStore(dir);
     fs.writeFileSync(store.file, JSON.stringify({ open: { openedAt: 'yesterday', reason: 'timeout', unscreened: '2', local: 3 }, pending: [{ opened_at: 'garbage' }] }));
@@ -77,16 +77,16 @@ test('a rollback never writes agent configuration, scripts or plugin manifests, 
 });
 
 test('a rollback already in place is acknowledged as applied, not as a refusal', async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-restore-ack-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-restore-ack-'));
   const file = path.join(home, 'work', 'CLAUDE.md');
   const old = '# Notes\n- version two\n';
   const wanted = '# Notes\n- version one\n';
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, old);
-  fs.mkdirSync(path.join(home, '.shomra', 'memory-ledger'), { recursive: true });
-  fs.writeFileSync(path.join(home, '.shomra', 'config.json'), JSON.stringify({ machineId: 'abcd1234ffff', apiKey: 'shm_test_key_0000000000000000' }));
+  fs.mkdirSync(path.join(home, '.nofly', 'memory-ledger'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.nofly', 'config.json'), JSON.stringify({ machineId: 'abcd1234ffff', apiKey: 'shm_test_key_0000000000000000' }));
   const key = crypto.createHash('sha1').update(path.resolve(file).toLowerCase()).digest('hex');
-  fs.writeFileSync(path.join(home, '.shomra', 'memory-ledger', `${key}.json`), JSON.stringify({ path: file, hashes: [sha(old)] }));
+  fs.writeFileSync(path.join(home, '.nofly', 'memory-ledger', `${key}.json`), JSON.stringify({ path: file, hashes: [sha(old)] }));
   let ackStatus = 500;
   const acks = [];
   const server = http.createServer((req, res) => {
@@ -103,7 +103,7 @@ test('a rollback already in place is acknowledged as applied, not as a refusal',
     });
   });
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
-  const env = { SHOMRA_URL: `http://127.0.0.1:${server.address().port}` };
+  const env = { NOFLY_URL: `http://127.0.0.1:${server.address().port}` };
   try {
     await runHook('memory-restore', '{}', { home, cwd: home, env });
     assert.equal(fs.readFileSync(file, 'utf8'), wanted, 'the rollback was written');
@@ -121,13 +121,13 @@ test('a rollback already in place is acknowledged as applied, not as a refusal',
 });
 
 test('a memory change reported while the server is down is sent again once it answers', async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-oob-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-oob-'));
   const repo = path.join(home, 'repo');
   fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
   const file = path.join(repo, 'CLAUDE.md');
   fs.writeFileSync(file, '# rules\n- run tests\n');
-  fs.mkdirSync(path.join(home, '.shomra'), { recursive: true });
-  fs.writeFileSync(path.join(home, '.shomra', 'config.json'), JSON.stringify({ machineId: 'abcd1234ffff', apiKey: 'shm_test_key_0000000000000000' }));
+  fs.mkdirSync(path.join(home, '.nofly'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.nofly', 'config.json'), JSON.stringify({ machineId: 'abcd1234ffff', apiKey: 'shm_test_key_0000000000000000' }));
   let status = 200;
   const ingests = [];
   const server = http.createServer((req, res) => {
@@ -145,7 +145,7 @@ test('a memory change reported while the server is down is sent again once it an
     });
   });
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
-  const env = { SHOMRA_URL: `http://127.0.0.1:${server.address().port}` };
+  const env = { NOFLY_URL: `http://127.0.0.1:${server.address().port}` };
   const session = () => runHook('session-guard', { session_id: 's', cwd: repo }, { home, cwd: repo, env });
   try {
     await session();

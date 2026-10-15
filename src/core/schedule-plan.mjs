@@ -1,9 +1,10 @@
 import path from 'node:path';
 
-export const SCHEDULE_LABEL = 'io.shomra.report';
-export const TASK_NAME = 'ShomraReport';
-export const SYSTEMD_UNIT = 'shomra-report';
-export const CRON_MARKER = '# shomra-report';
+export const SCHEDULE_LABEL = 'io.nofly.report';
+export const TASK_NAME = 'NoFlyReport';
+export const SYSTEMD_UNIT = 'nofly-report';
+export const CRON_MARKER = '# nofly-report';
+export const LEGACY_SCHEDULE = { label: 'io.shomra.report', task: 'ShomraReport', unit: 'shomra-report', cron: '# shomra-report' };
 export const MIN_HOURS = 1;
 export const MAX_HOURS = 168;
 export const DEFAULT_HOURS = 6;
@@ -23,12 +24,12 @@ export function reportArgs({ allUsers = false } = {}) {
 
 const xml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 
-export function launchdPlistPath({ system, home }) {
-  return system ? path.posix.join('/Library/LaunchDaemons', `${SCHEDULE_LABEL}.plist`) : path.posix.join(home, 'Library', 'LaunchAgents', `${SCHEDULE_LABEL}.plist`);
+export function launchdPlistPath({ system, home }, label = SCHEDULE_LABEL) {
+  return system ? path.posix.join('/Library/LaunchDaemons', `${label}.plist`) : path.posix.join(home, 'Library', 'LaunchAgents', `${label}.plist`);
 }
 
 export function launchdLogPath({ system, home }) {
-  return system ? '/Library/Logs/Shomra/report.log' : path.posix.join(home, 'Library', 'Logs', 'Shomra', 'report.log');
+  return system ? '/Library/Logs/NoFly/report.log' : path.posix.join(home, 'Library', 'Logs', 'NoFly', 'report.log');
 }
 
 export function launchdPlist({ node, entry, args, hours, logFile }) {
@@ -73,7 +74,7 @@ export function windowsTaskXml({ node, entry, args, hours, system, userId }) {
   return `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Shomra endpoint AI inventory report</Description>
+    <Description>NoFly endpoint AI inventory report</Description>
   </RegistrationInfo>
   <Triggers>
     <TimeTrigger>
@@ -121,7 +122,7 @@ export function systemdUnitDir({ system, home }) {
 
 export function systemdService({ node, entry, args }) {
   return `[Unit]
-Description=Shomra endpoint AI inventory report
+Description=NoFly endpoint AI inventory report
 Wants=network-online.target
 After=network-online.target
 
@@ -135,7 +136,7 @@ IOSchedulingClass=idle
 
 export function systemdTimer({ hours, system }) {
   return `[Unit]
-Description=Run the Shomra endpoint report every ${hours}h
+Description=Run the NoFly endpoint report every ${hours}h
 
 [Timer]
 OnBootSec=5min
@@ -161,7 +162,7 @@ export function cronLine({ node, entry, args, hours }) {
   return `${cronSchedule(hours)} ${cmd} >/dev/null 2>&1 ${CRON_MARKER}`;
 }
 
-export const isCronEntry = (l) => String(l).trimEnd().endsWith(CRON_MARKER);
+export const isCronEntry = (l) => [CRON_MARKER, LEGACY_SCHEDULE.cron].some((marker) => String(l).trimEnd().endsWith(marker));
 
 export function mergeCrontab(existing, line) {
   const kept = String(existing ?? '').split(/\r?\n/).filter((l) => !isCronEntry(l));

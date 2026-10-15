@@ -1,10 +1,10 @@
-# @shomra/agent
+# @nofly/agent
 
 **Adversarial assurance for AI agents**, as a local-first CLI. It sits inside
 your coding agent and CI and blocks dangerous tool-calls, shell commands and
 data exfiltration *before they run* - on your machine, even offline. Enrolled,
-it also attacks your org’s own guardrails (`shomra admin redteam`) and turns
-each breach into a false-positive-gated control (`shomra harden`). It also vets AI
+it also attacks your org’s own guardrails (`nofly admin redteam`) and turns
+each breach into a false-positive-gated control (`nofly harden`). It also vets AI
 artifacts (MCP configs, Skills, slash commands, hooks, rules files) before they
 install. Start with a free on-machine scan - no signup.
 
@@ -16,25 +16,25 @@ Also available as a [Dev Container Feature](devcontainer-feature/) (the guard
 exists before the first keystroke in Codespaces / Gitpod / a local rebuild) and a
 [GitHub Action](action.yml).
 
-**There is no `curl … | sh` installer, deliberately.** Shomra's own Tier-0 guard
+**There is no `curl … | sh` installer, deliberately.** NoFly's own Tier-0 guard
 blocks piping a downloaded script into a shell, and the rules block it writes
 tells coding agents never to do it. Shipping that one-liner would be the product
 contradicting its own control in its own README.
 
 ```bash
-npm i -g @shomra/agent      # global `shomra`
+npm i -g @nofly/agent      # global `nofly`
 # or run without installing:
-npx @shomra/agent gate .mcp.json
+npx @nofly/agent gate .mcp.json
 ```
 
 ## Auth (optional)
 
-Shomra is **local-first** - there is no built-in backend and no telemetry. `gate`,
+NoFly is **local-first** - there is no built-in backend and no telemetry. `gate`,
 `check`, `models`, `secrets`, and the runtime firewall all run on your machine
 with no key. The one lookup that goes out without a key is the name and version
 of each pinned MCP server package, checked against the public advisory database
-at osv.dev; set `SHOMRA_OFFLINE=1` (or pass `--offline`) to keep even that on the
-machine. You only connect to a Shomra org to layer on your **org policy**,
+at osv.dev; set `NOFLY_OFFLINE=1` (or pass `--offline`) to keep even that on the
+machine. You only connect to a NoFly org to layer on your **org policy**,
 cloud/deep scans, AI fixes, and the Model Security Index.
 
 When enrolled, artifact content goes to your backend for org policy - with every
@@ -42,10 +42,10 @@ secret value replaced on the machine by a same-shape stand-in first, so the
 backend still sees that a credential is there, of which kind, but never the
 credential itself.
 
-- **Dev machine:** `shomra init --key shm_live_… --url https://shomra.your-co.com` (writes `~/.shomra/config.json`).
+- **Dev machine:** `nofly init --key shm_live_… --url https://nofly.your-co.com` (writes `~/.nofly/config.json`).
 - **CI / headless:** set env vars instead - no `init` needed:
-  - `SHOMRA_API_KEY` - your org key
-  - `SHOMRA_URL` - your backend URL
+  - `NOFLY_API_KEY` - your org key
+  - `NOFLY_URL` - your backend URL
 
 Without either, every backend-only feature degrades cleanly to the on-machine result.
 
@@ -56,12 +56,12 @@ policy, owner and purpose.
 
 - **Dev machine** - one command, nothing to copy:
   ```bash
-  shomra agent-identity register --name "Dana's Claude Code" --type coding-agent \
+  nofly agent-identity register --name "Dana's Claude Code" --type coding-agent \
     --purpose "Writes and reviews code in the payments repos" --owner dana@acme.com --for claude
   ```
-  The `shm_agt_` credential is saved to `~/.shomra/config.json` (owner-only) and the
+  The `shm_agt_` credential is saved to `~/.nofly/config.json` (owner-only) and the
   runtime firewall presents it from the next call - no `export`, no restart.
-  `--no-save` prints it once instead; `SHOMRA_AGENT` always overrides it.
+  `--no-save` prints it once instead; `NOFLY_AGENT` always overrides it.
 - **CI / Kubernetes** - the agent holds no secret. The workload registers *itself*
   with its own identity token (the pipeline's CI key only authorizes the
   registration), and running it on every build returns the same agent:
@@ -69,35 +69,35 @@ policy, owner and purpose.
   permissions:
     id-token: write
   steps:
-    - run: npx @shomra/agent agent-identity register --name release-bot --type ci --purpose "Publishes the API release"
+    - run: npx @nofly/agent agent-identity register --name release-bot --type ci --purpose "Publishes the API release"
       env:
-        SHOMRA_API_KEY: ${{ secrets.SHOMRA_API_KEY }}
-        SHOMRA_URL: https://your-shomra-backend
+        NOFLY_API_KEY: ${{ secrets.NOFLY_API_KEY }}
+        NOFLY_URL: https://your-nofly-backend
   ```
-  GitHub Actions and GitLab (`id_tokens: SHOMRA_ID_TOKEN`) are detected
+  GitHub Actions and GitLab (`id_tokens: NOFLY_ID_TOKEN`) are detected
   automatically; elsewhere pass `--workload kubernetes|entra|okta`. Later steps
-  sign in through `SHOMRA_WORKLOAD` / `SHOMRA_AUDIENCE` (written to `$GITHUB_ENV`
+  sign in through `NOFLY_WORKLOAD` / `NOFLY_AUDIENCE` (written to `$GITHUB_ENV`
   for you). A stored credential from CI needs `--static`.
 
-`shomra status` shows which identity this machine presents and where it comes from.
+`nofly status` shows which identity this machine presents and where it comes from.
 
 ## Quickstart
 
 ```bash
-shomra check                           # "is my repo safe?" - gate every AI artifact at once
-shomra check --staged                  # only what's git-staged (pre-commit / editor-on-save)
-shomra check --fix                     # gate, then remediate what isn't clean, in place
-shomra fix .mcp.json --apply           # AI-fix one artifact and write it back
-shomra why .mcp.json                   # why each finding matters + is-it-a-false-positive
-shomra install-precommit               # block risky staged AI artifacts on git commit
-shomra install-hook --agent claude     # wire the runtime firewall into Claude Code
-shomra install-hook --uninstall        # take it out again (your own hooks are kept)
-shomra selftest --agent all            # prove the firewall is really in path on THIS machine
-shomra rules --write                   # teach the agent what gets blocked, so it never writes it
-shomra mcp install                     # let the agent gate its own content BEFORE writing it
-shomra scan                            # discover AI tooling on this machine
-shomra status                          # config + firewall health
-shomra help                            # full command list
+nofly check                           # "is my repo safe?" - gate every AI artifact at once
+nofly check --staged                  # only what's git-staged (pre-commit / editor-on-save)
+nofly check --fix                     # gate, then remediate what isn't clean, in place
+nofly fix .mcp.json --apply           # AI-fix one artifact and write it back
+nofly why .mcp.json                   # why each finding matters + is-it-a-false-positive
+nofly install-precommit               # block risky staged AI artifacts on git commit
+nofly install-hook --agent claude     # wire the runtime firewall into Claude Code
+nofly install-hook --uninstall        # take it out again (your own hooks are kept)
+nofly selftest --agent all            # prove the firewall is really in path on THIS machine
+nofly rules --write                   # teach the agent what gets blocked, so it never writes it
+nofly mcp install                     # let the agent gate its own content BEFORE writing it
+nofly scan                            # discover AI tooling on this machine
+nofly status                          # config + firewall health
+nofly help                            # full command list
 ```
 
 `check`, `fix` and `why` are the verbs a developer lives in - everything below is
@@ -117,14 +117,14 @@ drives precise editor squiggles and `why`/`fix` point at the exact offending lin
 ### The install-time verbs (still here)
 
 ```bash
-shomra gate my-skill/SKILL.md          # vet ONE artifact (auto-classified from the path)
-shomra gate --all .                    # vet every AI artifact in the repo (the CI form)
+nofly gate my-skill/SKILL.md          # vet ONE artifact (auto-classified from the path)
+nofly gate --all .                    # vet every AI artifact in the repo (the CI form)
 ```
 
 ### Starting a new agent project
 
 ```bash
-shomra new agent triage-bot            # a project that starts compliant
+nofly new agent triage-bot            # a project that starts compliant
 ```
 
 Guard enforcing on every model call, an egress allowlist in code rather than in
@@ -152,7 +152,7 @@ on top.
 
 **Backend outage:** by default it falls back to the on-machine verdict (org
 policy not applied). `--strict` fails closed (exit 1) because org policy can't be
-verified. Every backend call is bounded by `SHOMRA_API_TIMEOUT_MS` (default 30s),
+verified. Every backend call is bounded by `NOFLY_API_TIMEOUT_MS` (default 30s),
 so a job never hangs.
 
 ### GitHub Actions - the reusable action
@@ -162,13 +162,13 @@ so a job never hangs.
 - uses: shomra-org/agent@v0
   with:
     args: check           # --strict is appended unless fail-on-flag: 'false'
-    api-key: ${{ secrets.SHOMRA_API_KEY }}   # optional - the gate is local-first
-    url: ${{ secrets.SHOMRA_URL }}
+    api-key: ${{ secrets.NOFLY_API_KEY }}   # optional - the gate is local-first
+    url: ${{ secrets.NOFLY_URL }}
 ```
 
 Wire it as a **required status check** on a protected branch and it becomes the
 un-bypassable control on GitHub.com, which has no server-side hooks. On
-self-hosted Git and GitHub Enterprise, `shomra install-precommit --pre-receive`
+self-hosted Git and GitHub Enterprise, `nofly install-precommit --pre-receive`
 (below) refuses the push itself.
 
 The hand-written workflow below still works and shows what the action does.
@@ -176,7 +176,7 @@ The hand-written workflow below still works and shows what the action does.
 ### GitHub Actions - by hand
 
 ```yaml
-name: Shomra AI-artifact gate
+name: NoFly AI-artifact gate
 on: [pull_request]
 jobs:
   gate:
@@ -187,51 +187,51 @@ jobs:
         with: { node-version: 22 }
       - name: Vet AI artifacts
         env:
-          SHOMRA_API_KEY: ${{ secrets.SHOMRA_API_KEY }}
-          SHOMRA_URL: ${{ secrets.SHOMRA_URL }}
-        run: npx @shomra/agent gate --all . --strict
+          NOFLY_API_KEY: ${{ secrets.NOFLY_API_KEY }}
+          NOFLY_URL: ${{ secrets.NOFLY_URL }}
+        run: npx @nofly/agent gate --all . --strict
 ```
 
 CI provider, repo, branch and commit are auto-detected and recorded, so security
 sees local-vs-CI gate activity in the dashboard.
 
-### GitHub PR reviewer - inline annotations (`shomra pr`)
+### GitHub PR reviewer - inline annotations (`nofly pr`)
 
-`shomra pr` is a richer PR-native path: on a `pull_request` it gates only the AI
+`nofly pr` is a richer PR-native path: on a `pull_request` it gates only the AI
 artifacts **changed vs the base branch** and posts a **GitHub Check Run with
 inline annotations** on the offending lines - no GitHub App or extra backend
 required, just the workflow's `GITHUB_TOKEN`. Scaffold it in one shot:
 
 ```bash
-npx @shomra/agent pr --init      # writes .github/workflows/shomra.yml (--force to overwrite)
+npx @nofly/agent pr --init      # writes .github/workflows/nofly.yml (--force to overwrite)
 ```
 
 The generated workflow:
 
 ```yaml
-name: Shomra AI Security
+name: NoFly AI Security
 on: pull_request
 permissions:
   contents: read
   checks: write            # required to post the check-run
 jobs:
-  shomra:
+  nofly:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }   # need the base ref to diff changed artifacts
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: npx @shomra/agent pr
+      - run: npx @nofly/agent pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHOMRA_API_KEY: ${{ secrets.SHOMRA_API_KEY }}   # optional - applies org policy
-          SHOMRA_URL: ${{ secrets.SHOMRA_URL }}           # optional - your backend
+          NOFLY_API_KEY: ${{ secrets.NOFLY_API_KEY }}   # optional - applies org policy
+          NOFLY_URL: ${{ secrets.NOFLY_URL }}           # optional - your backend
 ```
 
 The check-run **conclusion** mirrors the gate: `failure` on any BLOCK, `neutral`
 on FLAG (or `failure` with `--strict`), `success` when clean. `--dry-run`/`--json`
-print the computed check-run without posting. Without `SHOMRA_API_KEY` it still
+print the computed check-run without posting. Without `NOFLY_API_KEY` it still
 runs local-first; with a key, your **org policy** (below) drives the verdict.
 
 ### SARIF - native code-scanning annotations
@@ -240,13 +240,13 @@ runs local-first; with a key, your **org policy** (below) drives the verdict.
 (and GitLab) render as inline code-scanning annotations without a custom parser:
 
 ```yaml
-      - run: npx @shomra/agent check . --sarif > shomra.sarif
+      - run: npx @nofly/agent check . --sarif > nofly.sarif
       - uses: github/codeql-action/upload-sarif@v3
-        with: { sarif_file: shomra.sarif }
+        with: { sarif_file: nofly.sarif }
 ```
 
-`shomra pr` accepts it too: bare `--sarif` writes SARIF to stdout,
-`--sarif=shomra.sarif` writes a file alongside the normal check-run output.
+`nofly pr` accepts it too: bare `--sarif` writes SARIF to stdout,
+`--sarif=nofly.sarif` writes a file alongside the normal check-run output.
 
 ### Org policy + triage on top of CI
 
@@ -266,19 +266,19 @@ policies you defined - not just a fixed severity threshold. Two things follow:
 ### GitLab CI
 
 ```yaml
-shomra-gate:
+nofly-gate:
   image: node:20
   script:
-    - npx @shomra/agent gate --all . --strict
+    - npx @nofly/agent gate --all . --strict
   variables:
-    SHOMRA_API_KEY: $SHOMRA_API_KEY
-    SHOMRA_URL: $SHOMRA_URL
+    NOFLY_API_KEY: $NOFLY_API_KEY
+    NOFLY_URL: $NOFLY_URL
 ```
 
 ### pre-receive (server-side, cannot be skipped)
 
 ```bash
-shomra install-precommit --pre-receive /srv/git/your-repo.git
+nofly install-precommit --pre-receive /srv/git/your-repo.git
 ```
 
 A pre-commit hook is a courtesy: it lives on the developer's machine, it is one
@@ -290,9 +290,9 @@ It **fails closed** - the opposite of the client hook. Blocking a local commit
 because a binary is missing is hostile; waving a push through for the same reason
 makes deleting the binary the bypass.
 
-It reads each pushed commit straight from git (`shomra check --rev <new>
+It reads each pushed commit straight from git (`nofly check --rev <new>
 --base-rev <old>`), with no checkout, so a pushed `.gitattributes` cannot change
-what it sees. It judges what the push changes, and waivers (`.shomraignore`,
+what it sees. It judges what the push changes, and waivers (`.noflyignore`,
 baseline, ignore marks, policy) count only as they stood before the push - push
 a waiver on its own first, then the change it covers. Re-run the install command
 to upgrade a hook installed by an older version.
@@ -311,7 +311,7 @@ a required status check instead.
 git diff --cached --name-only --diff-filter=ACM \
   | grep -Ei '(\.mcp\.json|SKILL\.md|CLAUDE\.md|AGENTS\.md|\.cursorrules|/\.claude/(commands|agents)/.*\.md|/\.claude/settings(\.local)?\.json)$' \
   | while read -r f; do
-      npx @shomra/agent gate "$f" || exit 1
+      npx @nofly/agent gate "$f" || exit 1
     done
 ```
 
@@ -319,16 +319,16 @@ Add `--json` anywhere to get machine-readable output for custom reporting.
 
 ## Runtime firewall
 
-`shomra install-hook [--agent claude|cursor|windsurf|gemini|codex|copilot|cline|aider|all]`
-wires Shomra into a coding agent's own hooks. `shomra install-hook --uninstall`
-(add `--global` for your user settings) takes it out again: only Shomra's entries
+`nofly install-hook [--agent claude|cursor|windsurf|gemini|codex|copilot|cline|aider|all]`
+wires NoFly into a coding agent's own hooks. `nofly install-hook --uninstall`
+(add `--global` for your user settings) takes it out again: only NoFly's entries
 are removed, your own hooks and settings are left as they were, and a settings
-file Shomra cannot parse (comments, trailing commas) is reported and never
+file NoFly cannot parse (comments, trailing commas) is reported and never
 rewritten. It is **tiered**: catastrophic tool
 calls (`curl|sh`, reverse shells, base64 RCE, live secrets, injection) are
 blocked on-machine with zero network; only policy-relevant calls escalate to the
 backend, behind a short timeout + circuit breaker - so a slow or down backend
-never freezes the agent. Fail-open by default; `SHOMRA_GUARD_STRICT=1` fails
+never freezes the agent. Fail-open by default; `NOFLY_GUARD_STRICT=1` fails
 closed on the server tier.
 
 Each agent gets its hooks in the format it actually loads:
@@ -337,24 +337,24 @@ Each agent gets its hooks in the format it actually loads:
 | :- | :- | :- |
 | Claude Code | `~/.claude/settings.json`, or `.claude/settings.json` in a repo | Covers `Bash`, `PowerShell`, `Monitor`, file writes, skills and MCP calls. |
 | Codex CLI | `~/.codex/hooks.json`, or `.codex/hooks.json`, under its `"hooks"` key | Codex runs a new user or project hook only after you trust it in the review it shows at its next start. |
-| GitHub Copilot CLI | `~/.copilot/hooks/shomra.json` (or `$COPILOT_HOME/hooks/`), or `.github/hooks/shomra.json` | Version 1 format, with separate bash and PowerShell commands. |
-| Cline | `PreToolUse` and `PostToolUse` scripts in `~/Documents/Cline/Hooks` (or `~/.cline/hooks`), or `.clinerules/hooks` | Cline cannot pause a call for approval, so a call Shomra would ask about is refused with the reason. |
+| GitHub Copilot CLI | `~/.copilot/hooks/nofly.json` (or `$COPILOT_HOME/hooks/`), or `.github/hooks/nofly.json` | Version 1 format, with separate bash and PowerShell commands. |
+| Cline | `PreToolUse` and `PostToolUse` scripts in `~/Documents/Cline/Hooks` (or `~/.cline/hooks`), or `.clinerules/hooks` | Cline cannot pause a call for approval, so a call NoFly would ask about is refused with the reason. |
 | Gemini CLI, Cursor, Windsurf | their own settings or hooks file | |
 
 Running the install again repairs an older install written in a shape the agent
-ignored, and a hook left pointing at a Node or Shomra install that was removed.
+ignored, and a hook left pointing at a Node or NoFly install that was removed.
 
-**Managed install, for organizations.** `sudo shomra install-hook --managed`
+**Managed install, for organizations.** `sudo nofly install-hook --managed`
 (or an elevated Administrator on Windows) writes the hooks where a developer
 cannot remove or switch them off: Claude Code's managed settings
-(`managed-settings.d/50-shomra.json`, read by Claude Code 2.1.83 or later), `/etc/codex/hooks.json` (Codex runs these
+(`managed-settings.d/50-nofly.json`, read by Claude Code 2.1.83 or later), `/etc/codex/hooks.json` (Codex runs these
 without a trust review), and Copilot CLI's `policy.d`. Add `--guard` to
-`shomra admin mdm-script` to include it in the Jamf, Intune or Kandji bootstrap,
-which installs Shomra in a root-owned location so nobody can quietly replace
+`nofly admin mdm-script` to include it in the Jamf, Intune or Kandji bootstrap,
+which installs NoFly in a root-owned location so nobody can quietly replace
 what the hooks run. If you also deliver Claude Code settings from the admin
 console or an MDM profile, set `managedSourcesBehavior: "merge"` there, or Claude
 Code skips the managed settings folder; check with `/status`. Set
-`SHOMRA_MANAGED_ROOT` to write the same files under a staging folder, for
+`NOFLY_MANAGED_ROOT` to write the same files under a staging folder, for
 example when building a golden image.
 A symlinked settings file stays a symlink, and a file installed by root for
 another user keeps that user as its owner.
@@ -368,8 +368,8 @@ A call the on-machine rules flag as high risk (a reverse tunnel, a netcat shell,
 data posted to the network) is never run silently just because no server
 answered. With no backend configured, or when the backend is unreachable or
 rejects the credential, the agent **asks you** and names what matched. Set
-`SHOMRA_GUARD_LOCAL_FLAG=allow` to let flagged calls through or `=deny` to refuse
-them. A `.shomraignore` committed in a repo only quiets paths that really resolve
+`NOFLY_GUARD_LOCAL_FLAG=allow` to let flagged calls through or `=deny` to refuse
+them. A `.noflyignore` committed in a repo only quiets paths that really resolve
 inside that repo, so it can never silence a write to `~/.bashrc` or a symlinked
 path outside it.
 
@@ -395,18 +395,18 @@ Three channels are screened:
 | **Tool call** | PreToolUse / `beforeShellExecution` | the shell command, artifact write or MCP call, before it runs |
 | **Tool result** | PostToolUse / `afterMCPExecution` | injection, exfil sinks and hidden payloads in what a fetch/read brings *back* |
 | **Prompt** | `UserPromptSubmit` (Claude Code, Codex) / `beforeSubmitPrompt` (Cursor) / `BeforeAgent` (Gemini CLI) | what **you** paste, before it leaves the machine |
-| **Plan** | `PreToolUse` on `ExitPlanMode` (Claude Code) | nothing - it *informs*. See [`shomra plan`](#shomra-plan--threat-model-what-the-agent-is-about-to-build) |
+| **Plan** | `PreToolUse` on `ExitPlanMode` (Claude Code) | nothing - it *informs*. See [`nofly plan`](#nofly-plan--threat-model-what-the-agent-is-about-to-build) |
 
 **Skills are checked when they are invoked (Claude Code).** The `Skill` tool is
 in the tool-call matcher, so when the agent loads a skill the hook resolves it to
 its `SKILL.md` - project `.claude/skills/<name>/`, `~/.claude/skills/<name>/`, or
 an installed plugin's `skills/` for `plugin:name` - and sends it, with the names
-of the files it bundles, to the same gate `shomra gate` uses. A BLOCK refuses the
+of the files it bundles, to the same gate `nofly gate` uses. A BLOCK refuses the
 call, so a skill your org denied in the Artifact Registry does not run. Verdicts
 are cached on the machine by content for 10 minutes, so an unchanged skill is
 checked once. A skill that cannot be found on disk is not blocked; with
-`SHOMRA_GUARD_STRICT=1` a skill the gate could not be reached to check is refused.
-Re-run `shomra install-hook` to add `Skill` to an existing install's matcher.
+`NOFLY_GUARD_STRICT=1` a skill the gate could not be reached to check is refused.
+Re-run `nofly install-hook` to add `Skill` to an existing install's matcher.
 
 Every call the Claude Code hook escalates also carries `active_artifacts`: the
 `CLAUDE.md` / `.claude/rules` files, skills, subagents and commands of the project
@@ -415,7 +415,7 @@ Registry hashes content, so a session running with an artifact your org denied i
 refused even when the call itself never names it. The list is computed once per
 session and recomputed only when one of those files or folders changes.
 
-### Proving it is actually in path - `shomra selftest`
+### Proving it is actually in path - `nofly selftest`
 
 An installed hook is not a covered one. The matcher in a settings file decides
 whether the hook runs at all, and a tool it does not name is never screened - not
@@ -424,9 +424,9 @@ hook never fires and a machine whose agents are idle report exactly the same
 thing, which is nothing.
 
 ```bash
-shomra selftest --agent all            # static + live, exits non-zero on any hole
-shomra selftest --json                 # the same reading, machine-readable
-shomra selftest --strict               # also non-zero on a warning
+nofly selftest --agent all            # static + live, exits non-zero on any hole
+nofly selftest --json                 # the same reading, machine-readable
+nofly selftest --strict               # also non-zero on a warning
 ```
 
 It does two things no simulation can:
@@ -455,7 +455,7 @@ pasted text that reads as an instruction to an agent is passed through but
 flagged **to the model** as untrusted data rather than blocked - you meant to
 send it, the risk is that you did not read it. Backtick-quoted payloads are
 down-ranked, so asking *why does `<pattern>` get flagged* is never blocked.
-`SHOMRA_PROMPT_GUARD_OFF=1` disables just this channel. Only the two vendors with
+`NOFLY_PROMPT_GUARD_OFF=1` disables just this channel. Only the two vendors with
 a documented pre-submit hook that can stop a submission are wired; the rest get
 nothing rather than a guessed event name that would silently never fire.
 
@@ -465,14 +465,14 @@ Everything above intercepts *after* the model has written something. These run
 before it.
 
 ```bash
-shomra design docs/rfc.md  # threat-model a system that does not exist yet
-shomra add model owner/m   # vet anything before it lands on the machine
-shomra rules --write       # teach the agent what gets blocked here
-shomra rules --check       # CI: fail when the block goes stale
-shomra mcp install         # let the agent gate its own content before writing it
+nofly design docs/rfc.md  # threat-model a system that does not exist yet
+nofly add model owner/m   # vet anything before it lands on the machine
+nofly rules --write       # teach the agent what gets blocked here
+nofly rules --check       # CI: fail when the block goes stale
+nofly mcp install         # let the agent gate its own content before writing it
 ```
 
-### `shomra design` - threat-model the ticket, not the repo
+### `nofly design` - threat-model the ticket, not the repo
 
 Every other command needs an artifact. This one reads a **description** - an RFC,
 a design doc, a Jira/Linear ticket, a PR body - and answers the only question
@@ -480,10 +480,10 @@ worth asking before anyone writes code: does the thing being described hand an
 attacker a path from untrusted input to a consequence?
 
 ```bash
-shomra design docs/rfc-042.md
-shomra design docs/ --strict                       # every design doc, fail on any closed path
-gh issue view 42 --json body -q .body | shomra design -
-shomra design docs/rfc-042.md --checklist | gh issue comment 42 -F -
+nofly design docs/rfc-042.md
+nofly design docs/ --strict                       # every design doc, fail on any closed path
+gh issue view 42 --json body -q .body | nofly design -
+nofly design docs/rfc-042.md --checklist | gh issue comment 42 -F -
 ```
 
 It uses the platform's own model: capabilities split into **sources** (untrusted
@@ -506,39 +506,39 @@ Exit codes: `1` when untrusted input reaches execution or a destructive action
 (the shape where the attacker picks the action), `2` for any other closed path
 under `--strict`.
 
-### `shomra plan` - threat-model what the agent is about to build
+### `nofly plan` - threat-model what the agent is about to build
 
 `design` reads a document a human remembered to write. Coding agents produce a
 **plan** before every non-trivial task, constantly and automatically, and nothing
 looks at it. Same analysis, a hundred times the frequency, zero human effort.
 
-The loop: agent proposes a plan → Shomra threat-models it → the controls land in
+The loop: agent proposes a plan → NoFly threat-models it → the controls land in
 the agent's context **before it writes line one**. The agent builds the guarded
 version first, instead of building the unguarded one and having the firewall
 refuse it three tool calls later.
 
 Three ways in, deliberately redundant, strongest first:
 
-1. **`shomra_review_plan`** - an MCP tool, so any MCP-capable agent can call it
-   mid-task with no vendor hook. Register it with `shomra mcp install`.
+1. **`nofly_review_plan`** - an MCP tool, so any MCP-capable agent can call it
+   mid-task with no vendor hook. Register it with `nofly mcp install`.
 2. **The rules block asks the agent to call it.** Once the MCP server is
-   registered, `shomra rules --write` adds a *Before you implement a plan*
+   registered, `nofly rules --write` adds a *Before you implement a plan*
    section - so `mcp install` and `rules --write` compose into a closed loop.
 3. **A Claude Code `PreToolUse` hook on `ExitPlanMode`**, wired by
    `install-hook`. Zero-effort, but that tool name is not in the published hook
    docs, so it is the optional path and never the only one.
 
 ```bash
-shomra plan plan.md            # or: … | shomra plan -
+nofly plan plan.md            # or: … | nofly plan -
 ```
 
 **A plan is a proposal, so the default is to inform, never refuse.** Denying a
 plan spends a turn and tells the model only that it was wrong, not how - the
 controls are the useful payload. Only untrusted-input-reaches-a-hard-sink
-escalates to *ask*, and only under `SHOMRA_GUARD_STRICT=1`.
-`SHOMRA_PLAN_GUARD_OFF=1` disables just this channel.
+escalates to *ask*, and only under `NOFLY_GUARD_STRICT=1`.
+`NOFLY_PLAN_GUARD_OFF=1` disables just this channel.
 
-### `shomra corpus` - screen the index, not the retrieval
+### `nofly corpus` - screen the index, not the retrieval
 
 The result firewall screens what a retrieval brings *back*. Nothing screened what
 went **in** - so a poisoned document sits in the vector store indefinitely,
@@ -552,7 +552,7 @@ once per retrieval. And a document that fails is simply never embedded - a
 control rather than a detection.
 
 ```bash
-shomra corpus ./kb --manifest .shomra/corpus.json
+nofly corpus ./kb --manifest .nofly/corpus.json
 ```
 
 ```
@@ -579,17 +579,17 @@ Fenced code blocks are down-ranked - a docs corpus is full of examples, and an
 example is not a live instruction. A directive in prose is the real threat and
 survives the down-rank.
 
-### `shomra add` - vet at acquisition, not after
+### `nofly add` - vet at acquisition, not after
 
 `mcp add` gated one channel. An agent acquires from four, and the other three had
 no gate at all: a skill copied out of a gist, a model pulled from the Hub, a
 package installed because an agent suggested the name.
 
 ```bash
-shomra add mcp files npx -y @modelcontextprotocol/server-filesystem /tmp
-shomra add skill ./downloaded-skill      # manifest AND the scripts it bundles
-shomra add model openai-community/gpt2   # against the Model Index, before any weights download
-shomra add package langchian --type pypi # → BLOCK: 2 edits from langchain
+nofly add mcp files npx -y @modelcontextprotocol/server-filesystem /tmp
+nofly add skill ./downloaded-skill      # manifest AND the scripts it bundles
+nofly add model openai-community/gpt2   # against the Model Index, before any weights download
+nofly add package langchian --type pypi # → BLOCK: 2 edits from langchain
 ```
 
 One verdict vocabulary (ALLOW / FLAG / BLOCK), one exit-code contract, `--force`
@@ -601,7 +601,7 @@ which is a much worse question to be asked.
 package the AI catalog does not recognise all return **FLAG**, not ALLOW -
 "we could not check" and "it is fine" are different answers.
 
-**`shomra rules`** compiles what Shomra actually enforces - plus what *this repo*
+**`nofly rules`** compiles what NoFly actually enforces - plus what *this repo*
 already trips, plus your org's policy when enrolled - into the agent's own
 context files:
 
@@ -609,52 +609,52 @@ context files:
 |---|---|
 | Claude Code | `CLAUDE.md` |
 | Codex CLI (and the cross-vendor default) | `AGENTS.md` |
-| Cursor | `.cursor/rules/shomra.mdc` |
+| Cursor | `.cursor/rules/nofly.mdc` |
 | GitHub Copilot | `.github/copilot-instructions.md` |
 | Gemini CLI | `GEMINI.md` |
 | Windsurf | `.windsurfrules` |
-| Cline | `.clinerules/shomra.md` |
+| Cline | `.clinerules/nofly.md` |
 
-It writes inside a `<!-- BEGIN SHOMRA MANAGED BLOCK -->` marker pair and **never
+It writes inside a `<!-- BEGIN NOFLY MANAGED BLOCK -->` marker pair and **never
 touches a line outside it**, so your own rules are safe and re-running is a
 no-op. The block is derived, not boilerplate: sections switch on according to
 what the repo holds (MCP configs, skills, model loads, agent-calling code), and
 an **"Already present in this repo"** section names the findings a local gate
 pass actually found, with paths. Commit the result and keep it honest with
-`shomra rules --check`, which exits 1 when the block is missing or stale.
+`nofly rules --check`, which exits 1 when the block is missing or stale.
 
-The generated block is itself an AI rules file, so `shomra rules` gates its own
+The generated block is itself an AI rules file, so `nofly rules` gates its own
 output and refuses to write anything its own checker would block.
 
-**`shomra mcp install`** registers Shomra *as* an MCP server with your agents, so
-the model can call it in its own loop - most usefully `shomra_review_change`,
+**`nofly mcp install`** registers NoFly *as* an MCP server with your agents, so
+the model can call it in its own loop - most usefully `nofly_review_change`,
 which takes proposed file content plus its intended path and returns a verdict
 **without writing anything to disk**. A BLOCK there costs nothing; the same
-content on disk costs a blocked tool call and a wasted turn. `shomra_rules`,
-`shomra_check`, `shomra_explain`, `shomra_fix` and `shomra_scan_models` are
-exposed too. `shomra mcp serve` runs the server directly (stdio JSON-RPC) if you
+content on disk costs a blocked tool call and a wasted turn. `nofly_rules`,
+`nofly_check`, `nofly_explain`, `nofly_fix` and `nofly_scan_models` are
+exposed too. `nofly mcp serve` runs the server directly (stdio JSON-RPC) if you
 prefer to wire it by hand.
 
-**`shomra mcp guard`** goes the other way: it rewrites your agents' MCP configs so
-every local (stdio) server launches behind a Shomra shim. The shim sits between
+**`nofly mcp guard`** goes the other way: it rewrites your agents' MCP configs so
+every local (stdio) server launches behind a NoFly shim. The shim sits between
 the agent and the server and judges each tool call before it reaches the server
 and each result before it reaches the model. `--uninstall` puts the original
 launch lines back.
 
 ```bash
-shomra mcp guard                     # wrap every stdio server; screening follows enrolment
-shomra mcp guard --screen backend    # each call/result goes to Shomra: tool policy, taint, steering, org policies
-shomra mcp guard --screen local      # on-machine rules only - no tool arguments or results leave the machine
+nofly mcp guard                     # wrap every stdio server; screening follows enrolment
+nofly mcp guard --screen backend    # each call/result goes to NoFly: tool policy, taint, steering, org policies
+nofly mcp guard --screen local      # on-machine rules only - no tool arguments or results leave the machine
 ```
 
 The mode is read in this order: `--screen` on the wrapped launch line,
-`SHOMRA_MCP_SCREEN`, `mcpScreen` in `~/.shomra/config.json`, then the default:
+`NOFLY_MCP_SCREEN`, `mcpScreen` in `~/.nofly/config.json`, then the default:
 `backend` when the machine is enrolled, `local` when it is not. An unknown value
 is refused rather than guessed. `local` is a weaker tier you choose on purpose -
 no tool policy, taint or steering. In `backend` mode an unreachable backend falls
-back to the local rules; set `SHOMRA_GUARD_STRICT=1` to refuse instead.
+back to the local rules; set `NOFLY_GUARD_STRICT=1` to refuse instead.
 
-## Adopting Shomra on an existing repo
+## Adopting NoFly on an existing repo
 
 A brand-new gate on a repo with history will flag things. Three layers make
 adoption friction-free - all of them re-grade the artifact, so a fully
@@ -664,27 +664,27 @@ findings but never lift an org decision, so that artifact stays BLOCK and is
 reported as *ignored locally, still blocked by org policy*. Accept the risk or
 add an exception in the platform instead:
 
-- **`shomra baseline`** records every current finding, and the lines it was
-  seen on, in `.shomra/baseline.json` - commit it so the whole team shares it.
+- **`nofly baseline`** records every current finding, and the lines it was
+  seen on, in `.nofly/baseline.json` - commit it so the whole team shares it.
   From then on only findings introduced *after* the baseline fail, including a
   new copy of one it accepted, even in the same file; moving an accepted line
   does not matter. Re-run it to refresh after cleanups. Skip it per-run with
   `--no-baseline`.
-- **`.shomraignore`** - a repo file of `path/glob` lines (skip the file) or
+- **`.noflyignore`** - a repo file of `path/glob` lines (skip the file) or
   `path/glob :: title-substring` lines (skip one finding class in those files).
   The runtime firewall honors it too, so test fixtures and detection source
-  aren't withheld. Silence a single finding inline with `// shomra-ignore` (or
-  `# shomra-ignore`) on the finding's line or the line above, or opt a whole
-  file out with `shomra-ignore-file` in its first lines (works in JSON as a
-  `"_shomra": "shomra-ignore-file"` key). A mark covers only its own line: the
+  aren't withheld. Silence a single finding inline with `// nofly-ignore` (or
+  `# nofly-ignore`) on the finding's line or the line above, or opt a whole
+  file out with `nofly-ignore-file` in its first lines (works in JSON as a
+  `"_nofly": "nofly-ignore-file"` key). A mark covers only its own line: the
   same problem on another line of the file is still reported. `--no-suppress`
   ignores all of this.
-- **In `shomra pr` these waivers come from the base branch**, never from the
-  pull request itself: a `.shomraignore`, baseline, policy or ignore mark the
+- **In `nofly pr` these waivers come from the base branch**, never from the
+  pull request itself: a `.noflyignore`, baseline, policy or ignore mark the
   pull request adds takes effect once it is merged, so nobody can approve their
   own findings by committing a waiver beside them. With no base branch in the
   checkout, `pr` checks every artifact and trusts no waiver.
-- **`.shomra/policy.yml`** - policy-as-code, reviewed in PRs like any code:
+- **`.nofly/policy.yml`** - policy-as-code, reviewed in PRs like any code:
 
   ```yaml
   block: high              # min severity that BLOCKS (critical|high|medium|low|none)
@@ -701,31 +701,31 @@ add an exception in the platform instead:
 
 | Var | Purpose |
 |-----|---------|
-| `SHOMRA_API_KEY` | Org API key (overrides config) |
-| `SHOMRA_URL` | Backend URL (overrides config) |
-| `SHOMRA_API_TIMEOUT_MS` | Per-request backend timeout (default 30000) |
-| `SHOMRA_AGENT` | Agent credential (`shm_agt_…`) presented to `llm-proxy` + firewall; overrides the one `agent-identity register` saved. A bare handle still works but is only a claim anyone can type. Unset, `llm-proxy` forwards a client's own `x-shomra-agent` only when it is a `shm_agt_` credential |
-| `SHOMRA_GATE_CONCURRENCY` | Parallel backend calls in batch gate / model lookups (default 8, 1-32) |
-| `SHOMRA_GH_TOKEN` | GitHub token for `shomra pr` (falls back to `GITHUB_TOKEN`) |
-| `SHOMRA_ENVIRONMENT` | Declare where this runs: `LOCAL` \| `CI` \| `REMOTE`. Set `REMOTE` on a cloud agent runtime whose markers Shomra does not yet detect (Codex cloud, Jules, Cursor background agents, Devin…), so its sessions are not counted as developer machines. ⚠ It may only ever RAISE — it can never relabel a detected cloud container as a laptop. |
-| `SHOMRA_GUARD_STRICT` | `1` = firewall fails closed on the server tier |
-| `SHOMRA_GUARD_LOCAL_FLAG` | What a call the on-machine rules flag does when no server verdict arrives: `ask` (default), `allow`, or `deny`. Defaults to `allow` when `SHOMRA_GUARD_FAILOPEN_SEVERE=1` |
-| `SHOMRA_GUARD_FAILOPEN_SEVERE` | `1` = let destructive calls through unscreened when no server verdict arrives (default: ask) |
-| `SHOMRA_GUARD_LOCAL` | `0` = disable the on-machine Tier-0 guard |
-| `SHOMRA_GUARD_IGNORE` | Comma-separated file globs the runtime guard treats as known-safe (adds to `.shomraignore`) |
-| `SHOMRA_GUARD_ALWAYS_ESCALATE` | `1` = send every call to the server (full telemetry, higher overhead) |
-| `SHOMRA_GUARD_TIMEOUT_MS` | Firewall per-call server timeout (default 2000) |
-| `SHOMRA_GUARD_BREAKER_MS` | Skip the server this long after repeated failures (default 30000; `0` disables) |
-| `SHOMRA_GUARD_BREAKER_FAILURES` | Failures in a row before the server is skipped (default 3). One slow or failed screen no longer switches the server off for every later call, and `SHOMRA_GUARD_STRICT` never skips it. |
-| `SHOMRA_LLM_PROXY_BASE` | Proxy base URL `install-hook` writes for Aider (default `http://127.0.0.1:4141/openai/v1`) |
-| `SHOMRA_MODEL_GUARD` | `0` = disable the model-load screen in the PreToolUse hook |
-| `SHOMRA_PROMPT_GUARD_OFF` | `1` = disable the prompt channel only (tool-call and tool-result guards stay on) |
-| `SHOMRA_PLAN_GUARD_OFF` | `1` = disable the plan channel only |
-| `SHOMRA_MODEL_CACHE` | `0` = disable the on-machine model-index verdict cache |
-| `SHOMRA_MODEL_CACHE_TTL_MS` | Model-cache freshness window (default 7 days) |
-| `SHOMRA_ALLOW_USER_NODE` | `1` = let a machine-wide schedule or `install-hook --managed` run a Node or Shomra install a normal user can change (same as `--allow-user-writable`) |
+| `NOFLY_API_KEY` | Org API key (overrides config) |
+| `NOFLY_URL` | Backend URL (overrides config) |
+| `NOFLY_API_TIMEOUT_MS` | Per-request backend timeout (default 30000) |
+| `NOFLY_AGENT` | Agent credential (`shm_agt_…`) presented to `llm-proxy` + firewall; overrides the one `agent-identity register` saved. A bare handle still works but is only a claim anyone can type. Unset, `llm-proxy` forwards a client's own `x-nofly-agent` only when it is a `shm_agt_` credential |
+| `NOFLY_GATE_CONCURRENCY` | Parallel backend calls in batch gate / model lookups (default 8, 1-32) |
+| `NOFLY_GH_TOKEN` | GitHub token for `nofly pr` (falls back to `GITHUB_TOKEN`) |
+| `NOFLY_ENVIRONMENT` | Declare where this runs: `LOCAL` \| `CI` \| `REMOTE`. Set `REMOTE` on a cloud agent runtime whose markers NoFly does not yet detect (Codex cloud, Jules, Cursor background agents, Devin…), so its sessions are not counted as developer machines. ⚠ It may only ever RAISE — it can never relabel a detected cloud container as a laptop. |
+| `NOFLY_GUARD_STRICT` | `1` = firewall fails closed on the server tier |
+| `NOFLY_GUARD_LOCAL_FLAG` | What a call the on-machine rules flag does when no server verdict arrives: `ask` (default), `allow`, or `deny`. Defaults to `allow` when `NOFLY_GUARD_FAILOPEN_SEVERE=1` |
+| `NOFLY_GUARD_FAILOPEN_SEVERE` | `1` = let destructive calls through unscreened when no server verdict arrives (default: ask) |
+| `NOFLY_GUARD_LOCAL` | `0` = disable the on-machine Tier-0 guard |
+| `NOFLY_GUARD_IGNORE` | Comma-separated file globs the runtime guard treats as known-safe (adds to `.noflyignore`) |
+| `NOFLY_GUARD_ALWAYS_ESCALATE` | `1` = send every call to the server (full telemetry, higher overhead) |
+| `NOFLY_GUARD_TIMEOUT_MS` | Firewall per-call server timeout (default 2000) |
+| `NOFLY_GUARD_BREAKER_MS` | Skip the server this long after repeated failures (default 30000; `0` disables) |
+| `NOFLY_GUARD_BREAKER_FAILURES` | Failures in a row before the server is skipped (default 3). One slow or failed screen no longer switches the server off for every later call, and `NOFLY_GUARD_STRICT` never skips it. |
+| `NOFLY_LLM_PROXY_BASE` | Proxy base URL `install-hook` writes for Aider (default `http://127.0.0.1:4141/openai/v1`) |
+| `NOFLY_MODEL_GUARD` | `0` = disable the model-load screen in the PreToolUse hook |
+| `NOFLY_PROMPT_GUARD_OFF` | `1` = disable the prompt channel only (tool-call and tool-result guards stay on) |
+| `NOFLY_PLAN_GUARD_OFF` | `1` = disable the plan channel only |
+| `NOFLY_MODEL_CACHE` | `0` = disable the on-machine model-index verdict cache |
+| `NOFLY_MODEL_CACHE_TTL_MS` | Model-cache freshness window (default 7 days) |
+| `NOFLY_ALLOW_USER_NODE` | `1` = let a machine-wide schedule or `install-hook --managed` run a Node or NoFly install a normal user can change (same as `--allow-user-writable`) |
 | `NODE_USE_ENV_PROXY` | `1` = send the CLI's requests through `HTTPS_PROXY` / `HTTP_PROXY`, honouring `NO_PROXY` (Node releases whose `node --help` lists `--use-env-proxy`). Without it Node ignores those variables, and a failed request says so |
 | `NODE_EXTRA_CA_CERTS` | Path to a company CA bundle, for a proxy that inspects HTTPS |
-| `NODE_DISABLE_COMPILE_CACHE` | `1` = do not keep compiled code in `~/.shomra/compile-cache` (on by default on Node 22.8+, it makes every hook start faster) |
+| `NODE_DISABLE_COMPILE_CACHE` | `1` = do not keep compiled code in `~/.nofly/compile-cache` (on by default on Node 22.8+, it makes every hook start faster) |
 
-Run `shomra help` for the full command reference, or `shomra <command> --help` for one command.
+Run `nofly help` for the full command reference, or `nofly <command> --help` for one command.

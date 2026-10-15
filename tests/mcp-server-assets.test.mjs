@@ -28,8 +28,8 @@ test('the env shown and stored with an MCP server asset carries keys, never a va
 });
 
 test('a discovered MCP server reports its env keys in metadata without the raw values', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-mcp-assets-'));
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-mcp-home-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-mcp-assets-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-mcp-home-'));
   fs.writeFileSync(path.join(root, '.mcp.json'), JSON.stringify({
     mcpServers: { pg: { command: 'uvx', args: ['pg-mcp==1.0'], env: { DB_PASSWORD: 'hunter2', DB_HOST: 'localhost' } } },
   }));

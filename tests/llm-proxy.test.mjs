@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { BodyTooLarge, readBody } from '../src/commands/llm-proxy.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
+const CLI = path.join(HERE, '..', 'nofly.mjs');
 const sleep = (ms) => new Promise((d) => { setTimeout(d, ms); });
 
 async function freePort() {
@@ -48,11 +48,11 @@ async function startBackend() {
 }
 
 async function startProxy(backendUrl, port) {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-proxy-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-proxy-'));
   const base = { ...process.env };
-  for (const k of Object.keys(base)) if (k.startsWith('SHOMRA_')) delete base[k];
+  for (const k of Object.keys(base)) if (k.startsWith('NOFLY_')) delete base[k];
   const child = spawn(process.execPath, [CLI, 'llm-proxy', '--port', String(port)], {
-    env: { ...base, HOME: home, USERPROFILE: home, NO_COLOR: '1', SHOMRA_API_KEY: 'shm_test_proxy', SHOMRA_URL: backendUrl },
+    env: { ...base, HOME: home, USERPROFILE: home, NO_COLOR: '1', NOFLY_API_KEY: 'shm_test_proxy', NOFLY_URL: backendUrl },
   });
   let output = '';
   child.stdout.on('data', (d) => { output += d; });

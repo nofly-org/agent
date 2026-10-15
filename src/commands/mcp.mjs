@@ -12,9 +12,15 @@ function fileMode(file) {
   }
 }
 import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
-import { MCP_HOST_CONFIGS, MCP_HOST_KEYS, shomraMcpEntry } from '../mcp/hosts.mjs';
+import { MCP_HOST_CONFIGS, MCP_HOST_KEYS, noflyMcpEntry } from '../mcp/hosts.mjs';
 import { runMcpServer } from '../mcp/server.mjs';
 import { cmdMcpAdd, cmdMcpList } from './mcp-add.mjs';
+
+function isLegacyServeEntry(entry) {
+  const args = Array.isArray(entry?.args) ? entry.args.map(String) : [];
+  const at = args.indexOf('mcp');
+  return at > 0 && args[at + 1] === 'serve' && /(?:nofly|shomra)(?:\.mjs)?$/i.test(args[at - 1]);
+}
 
 function cmdMcpInstall(flags) {
   const requested = flags.agent
@@ -28,7 +34,7 @@ function cmdMcpInstall(flags) {
   }
 
   const global = !!flags.global;
-  const entry = shomraMcpEntry();
+  const entry = noflyMcpEntry();
   const out = [];
 
   for (const key of requested) {
@@ -43,9 +49,11 @@ function cmdMcpInstall(flags) {
       continue;
     }
     if (!cfg.mcpServers || typeof cfg.mcpServers !== 'object' || Array.isArray(cfg.mcpServers)) cfg.mcpServers = {};
-    const before = JSON.stringify(cfg.mcpServers.shomra || null);
-    cfg.mcpServers.shomra = entry;
-    const changed = before !== JSON.stringify(entry);
+    const before = JSON.stringify(cfg.mcpServers.nofly || null);
+    cfg.mcpServers.nofly = entry;
+    const legacy = isLegacyServeEntry(cfg.mcpServers.shomra);
+    if (legacy) delete cfg.mcpServers.shomra;
+    const changed = legacy || before !== JSON.stringify(entry);
     if (changed) {
       try {
         writeJsonFile(file, cfg);
@@ -57,19 +65,19 @@ function cmdMcpInstall(flags) {
     }
     out.push({ agent: key, file, changed });
     if (!flags.json) {
-      if (changed) console.log(`  ${green('✓')} Registered the Shomra MCP server for ${bold(host.label)} ${dim('→ ' + file)}`);
+      if (changed) console.log(`  ${green('✓')} Registered the NoFly MCP server for ${bold(host.label)} ${dim('→ ' + file)}`);
       else console.log(`  ${yellow('•')} ${host.label} ${dim('already registered (' + file + ')')}`);
     }
   }
 
   if (flags.json) { console.log(JSON.stringify({ scope: global ? 'global' : 'project', installed: out }, null, 2)); return; }
-  console.log(dim('\n  The agent can now call Shomra in its own loop: ') + bold('shomra_review_change') + dim(' (gate content BEFORE writing it),'));
-  console.log(dim('  ') + bold('shomra_rules') + dim(' (what will be refused here), plus check / explain / fix / scan_models.'));
+  console.log(dim('\n  The agent can now call NoFly in its own loop: ') + bold('nofly_review_change') + dim(' (gate content BEFORE writing it),'));
+  console.log(dim('  ') + bold('nofly_rules') + dim(' (what will be refused here), plus check / explain / fix / scan_models.'));
   console.log(dim('  Restart the agent to pick up the new server.'));
   if (!global) {
 
     console.log(dim('  Note: the entry holds absolute paths for THIS machine. If you commit it, teammates should'));
-    console.log(dim('        run ') + bold('shomra mcp install') + dim(' themselves rather than rely on the committed path.'));
+    console.log(dim('        run ') + bold('nofly mcp install') + dim(' themselves rather than rely on the committed path.'));
   }
   console.log('');
 }
@@ -92,7 +100,7 @@ async function cmdMcpGuardInstall(flags) {
   const undo = !!flags.uninstall;
   const screen = flags.screen === undefined ? undefined : String(flags.screen).trim().toLowerCase();
   if (screen !== undefined && !['backend', 'local'].includes(screen)) {
-    console.error(`  ${red('✗')} --screen must be "backend" (org policy, taint, steering - calls and results are sent to Shomra) or "local" (on-machine rules only, nothing leaves the machine).`);
+    console.error(`  ${red('✗')} --screen must be "backend" (org policy, taint, steering - calls and results are sent to NoFly) or "local" (on-machine rules only, nothing leaves the machine).`);
     process.exitCode = 2;
     return;
   }
@@ -121,7 +129,7 @@ async function cmdMcpGuardInstall(flags) {
     if (changed) {
       try {
 
-        if (!undo) keepBackup(file + '.shomra-backup', before, fileMode(file));
+        if (!undo) keepBackup(file + '.nofly-backup', before, fileMode(file));
         writeJsonFile(file, cfg);
       } catch (e) {
         console.log(`  ${red('✗')} ${label} ${dim('- ' + e.message)}`);
@@ -149,12 +157,12 @@ async function cmdMcpGuardInstall(flags) {
   }
   if (failed) console.log(dim(`\n  ${failed} config(s) could not be read and were left as they were.`));
   if (!undo) {
-    console.log(dim(`\n  Every stdio MCP server in ${failed ? 'the configs read' : 'these configs'} now starts through Shomra: a DENIED / REVOKED / QUARANTINED`));
+    console.log(dim(`\n  Every stdio MCP server in ${failed ? 'the configs read' : 'these configs'} now starts through NoFly: a DENIED / REVOKED / QUARANTINED`));
     console.log(dim('  server is refused before its process exists, and poisoned tool descriptions are'));
     console.log(dim('  withheld from the model at tools/list rather than at the first call.'));
-    console.log(dim('  Tool calls and results are screened ') + bold(screen === 'local' ? 'on this machine only' : screen === 'backend' ? 'by your Shomra org' : 'by your Shomra org when enrolled, else locally') + dim(' - change with --screen backend|local,'));
-    console.log(dim('  SHOMRA_MCP_SCREEN, or "mcpScreen" in ~/.shomra/config.json.'));
-    console.log(dim('  Restart the agent to pick up the change. Undo: ') + bold('shomra mcp guard --uninstall') + '\n');
+    console.log(dim('  Tool calls and results are screened ') + bold(screen === 'local' ? 'on this machine only' : screen === 'backend' ? 'by your NoFly org' : 'by your NoFly org when enrolled, else locally') + dim(' - change with --screen backend|local,'));
+    console.log(dim('  NOFLY_MCP_SCREEN, or "mcpScreen" in ~/.nofly/config.json.'));
+    console.log(dim('  Restart the agent to pick up the change. Undo: ') + bold('nofly mcp guard --uninstall') + '\n');
   } else {
     console.log(dim('\n  Original launch lines restored. Restart the agent.\n'));
   }
@@ -170,6 +178,6 @@ export async function cmdMcp(flags, positional) {
   if (sub === 'list') return cmdMcpList(flags, configFile);
   if (sub === 'add') return cmdMcpAdd(flags, positional, configFile);
 
-  console.error(red('✗') + ` Usage: ${bold('shomra mcp add <name> <command…> | --url <url>')} ${dim('|')} ${bold('shomra mcp list')}`);
+  console.error(red('✗') + ` Usage: ${bold('nofly mcp add <name> <command…> | --url <url>')} ${dim('|')} ${bold('nofly mcp list')}`);
   process.exit(EXIT_USAGE);
 }

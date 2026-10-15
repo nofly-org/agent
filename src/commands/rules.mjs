@@ -9,7 +9,7 @@ import { detectEnv } from '../gate/environment.mjs';
 import { DEC_RANK } from '../gate/sast.mjs';
 import { rulesContext } from '../rules/context.mjs';
 import { generateRules, mergeRulesBlock, resolveRulesTargets, rulesBlock, rulesBlockDamage } from '../rules/generate.mjs';
-import { RULES_BEGIN, RULES_TARGETS } from '../rules/sections.mjs';
+import { RULES_BEGIN, RULES_TARGETS, currentMarkers, hasRulesBlock } from '../rules/sections.mjs';
 import { writeFileAtomic } from '../core/json-file.mjs';
 import { readFailure, readRegularText } from '../core/safe-read.mjs';
 
@@ -58,16 +58,17 @@ function planTarget(root, key, block) {
   const target = RULES_TARGETS[key];
   const absolutePath = path.join(root, target.file);
 
-  let existing = '';
+  let raw = '';
   try {
-    existing = readRegularText(absolutePath);
+    raw = readRegularText(absolutePath);
   } catch (error) {
     if (error.code !== 'ENOENT') return { key, label: target.label, file: target.file, abs: absolutePath, next: null, worsens: false, state: 'unreadable', damage: readFailure(error) };
   }
 
+  const existing = currentMarkers(raw);
   const damage = rulesBlockDamage(existing);
   if (damage) return { key, label: target.label, file: target.file, abs: absolutePath, next: null, worsens: false, state: 'damaged', damage };
-  const next = mergeRulesBlock(existing, block, target);
+  const next = mergeRulesBlock(existing, block, target) ?? (existing !== raw ? existing : null);
   const hadBlock = existing.includes(RULES_BEGIN);
   const worsens = next !== null && gateRank(next, target.file) > (existing ? gateRank(existing, target.file) : 0);
 
@@ -103,15 +104,25 @@ function buildJsonReport({ root, sections, orgLines, orgError, gate, context, wr
 
 function printDriftReport(plan, drifted) {
   if (!drifted.length) {
-    console.log(`\n  ${green(`✓ Shomra rules current in ${plan.length} ${plural(plan.length, 'file')}.`)}\n`);
+    console.log(`\n  ${green(`✓ NoFly rules current in ${plan.length} ${plural(plan.length, 'file')}.`)}\n`);
     return;
   }
-  console.log(`\n  ${red(`✗ Shomra rules out of date in ${drifted.length} ${plural(drifted.length, 'file')}:`)}`);
+  console.log(`\n  ${red(`✗ NoFly rules out of date in ${drifted.length} ${plural(drifted.length, 'file')}:`)}`);
   for (const target of drifted) {
     const state = target.state === 'absent' ? red('absent') : target.state === 'damaged' ? red('damaged') : target.state === 'unreadable' ? red('unreadable') : yellow('stale ');
     console.log(`    ${state} ${bold(target.file)} ${dim(`· ${target.label}`)}`);
   }
-  console.log(dim('\n  Run ') + bold('shomra rules --write') + dim(' and commit the result.\n'));
+  console.log(dim('\n  Run ') + bold('nofly rules --write') + dim(' and commit the result.\n'));
+}
+
+function dropLegacyOwnedFile(target) {
+  const legacy = RULES_TARGETS[target.key]?.legacyFile;
+  if (!legacy) return;
+  const file = path.join(path.dirname(target.abs), path.relative(path.dirname(RULES_TARGETS[target.key].file), legacy));
+  try {
+    if (hasRulesBlock(readRegularText(file))) fs.unlinkSync(file);
+  } catch {
+  }
 }
 
 function writeTarget(target, flags) {
@@ -120,7 +131,7 @@ function writeTarget(target, flags) {
     return { wrote: false, failed: true };
   }
   if (target.state === 'damaged') {
-    if (!flags.json) console.log(`  ${red('✗')} ${target.file} ${dim(`- its Shomra block is damaged (${target.damage}). Fix or remove the block by hand; nothing was changed.`)}`);
+    if (!flags.json) console.log(`  ${red('✗')} ${target.file} ${dim(`- its NoFly block is damaged (${target.damage}). Fix or remove the block by hand; nothing was changed.`)}`);
     return { wrote: false, failed: true };
   }
   if (target.state === 'current') {
@@ -135,6 +146,7 @@ function writeTarget(target, flags) {
   }
   try {
     writeFileAtomic(target.abs, target.next);
+    dropLegacyOwnedFile(target);
     if (!flags.json) {
       console.log(`  ${green('✓')} ${target.state === 'stale' ? 'Updated' : 'Wrote'} ${bold(target.file)} ${dim(`· ${target.label}`)}`);
     }
@@ -154,15 +166,15 @@ function printWriteSummary(wrote, sections, orgLines, failed = 0) {
   const orgNote = orgLines.length ? ` · ${orgLines.length} org ${plural(orgLines.length, 'directive')}` : '';
   console.log(`\n  ${headline}${dim(` · ${sections.length} ${plural(sections.length, 'section')}${orgNote}`)}`);
   console.log(dim('  Commit these - the agent reads them before it writes, so the blocked pattern is never generated.'));
-  console.log(dim('  Keep them honest in CI with ') + bold('shomra rules --check') + dim('.\n'));
+  console.log(dim('  Keep them honest in CI with ') + bold('nofly rules --check') + dim('.\n'));
 }
 
 function printPreview({ root, context, sections, apiKey, orgError, body, gate, plan }) {
   const artifacts = `${context.artifactCount} ${plural(context.artifactCount, 'artifact')}`;
-  console.log(bold(cyan('\n  Shomra rules')) + dim(` - ${sections.length} ${plural(sections.length, 'section')} for ${artifacts} under ${root}`));
+  console.log(bold(cyan('\n  NoFly rules')) + dim(` - ${sections.length} ${plural(sections.length, 'section')} for ${artifacts} under ${root}`));
 
   if (orgError) console.log(`  ${yellow('⚠')} ${dim(`org policy not applied - ${orgError}`)}`);
-  else if (!apiKey) console.log(`  ${dim('On-machine rules only - run')} ${bold('shomra init')} ${dim('to layer your org policy on top.')}`);
+  else if (!apiKey) console.log(`  ${dim('On-machine rules only - run')} ${bold('nofly init')} ${dim('to layer your org policy on top.')}`);
 
   console.log('');
   console.log(body.split('\n').map((line) => `  ${dim(line)}`).join('\n'));
@@ -170,14 +182,14 @@ function printPreview({ root, context, sections, apiKey, orgError, body, gate, p
   const gateLabel = gate && gate.verdict === 'ALLOW'
     ? green('✓ gate: clean')
     : yellow(`gate: ${gate ? gate.verdict : 'unknown'}`);
-  console.log(`  ${gateLabel}${dim(" - the block passes Shomra's own rules-file check.")}`);
+  console.log(`  ${gateLabel}${dim(" - the block passes NoFly's own rules-file check.")}`);
   console.log('');
 
   for (const target of plan) {
     const mark = target.state === 'current' ? green('✓') : target.state === 'stale' ? yellow('~') : dim('+');
     console.log(`  ${mark} ${bold(target.file)} ${dim(`· ${target.label} · ${target.state}`)}`);
   }
-  console.log(dim('\n  Write them with ') + bold('shomra rules --write') + dim(' (nothing outside the markers is touched).\n'));
+  console.log(dim('\n  Write them with ') + bold('nofly rules --write') + dim(' (nothing outside the markers is touched).\n'));
 }
 
 export async function cmdRules(flags, positional) {
@@ -207,7 +219,7 @@ export async function cmdRules(flags, positional) {
   if (gate && gate.verdict === 'BLOCK') {
     emitJson();
     if (!flags.json) {
-      console.error(`\n${red('✗')} The generated block does not pass Shomra's own rules-file gate - refusing to write. This is a bug in the CLI; please report it.`);
+      console.error(`\n${red('✗')} The generated block does not pass NoFly's own rules-file gate - refusing to write. This is a bug in the CLI; please report it.`);
     }
     process.exitCode = 1;
     return;
@@ -215,7 +227,7 @@ export async function cmdRules(flags, positional) {
 
   if (observedOmitted && !flags.json) {
     const issues = `${observedOmitted} ${plural(observedOmitted, 'issue')}`;
-    console.log(`  ${yellow('!')} ${dim(`Left out the "already present in this repo" section (${issues}) - quoting those titles tripped the rules gate. Run `)}${bold('shomra check')}${dim(' to see them.')}`);
+    console.log(`  ${yellow('!')} ${dim(`Left out the "already present in this repo" section (${issues}) - quoting those titles tripped the rules gate. Run `)}${bold('nofly check')}${dim(' to see them.')}`);
   }
 
   if (flags.check) {

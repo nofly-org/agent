@@ -7,7 +7,7 @@ const MAX_DEPTH = 24;
 const MEDIA_MIME_RE = /^(?:image|audio|video)\//i;
 const BASE64_RE = /^[A-Za-z0-9+/=_-]+$/;
 const TOKEN_RE = /^[\w.:/@+#=,-]{0,64}$/;
-const SECOND_NOTICE = '[withheld by Shomra]';
+const SECOND_NOTICE = '[withheld by NoFly]';
 const SECRET_SHAPES = SECRET_PATTERNS.map(({ re }) => new RegExp(re.source, re.flags.replace(/[gy]/g, '')));
 
 function structuralToken(value) {
@@ -19,7 +19,7 @@ function structuralToken(value) {
 function windowText(text, max) {
   if (text.length <= max) return text;
   const half = Math.floor(max / 2);
-  return `${text.slice(0, half)}\n[shomra: ${text.length - half * 2} characters not read]\n${text.slice(text.length - half)}`;
+  return `${text.slice(0, half)}\n[nofly: ${text.length - half * 2} characters not read]\n${text.slice(text.length - half)}`;
 }
 
 function mediaPayload(parent, key, value) {
@@ -47,7 +47,7 @@ export function resultText(response, max = MAX_LOCAL_TEXT) {
       try {
         rest = JSON.stringify(value) ?? '';
       } catch {
-        rest = '[shomra: a nested part of this result could not be read]';
+        rest = '[nofly: a nested part of this result could not be read]';
       }
       parts.push(rest);
       size += rest.length;

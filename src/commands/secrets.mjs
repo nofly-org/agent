@@ -173,7 +173,7 @@ export async function cmdSecrets(flags, positional) {
     return;
   }
 
-  console.log(bold(cyan('\n  Shomra secrets')) + dim(` - ${path.relative(process.cwd(), target.single ? target.single.full : root).split(path.sep).join('/') || '.'}${flags.history ? ' · working tree + git history' : ' · working tree'}`));
+  console.log(bold(cyan('\n  NoFly secrets')) + dim(` - ${path.relative(process.cwd(), target.single ? target.single.full : root).split(path.sep).join('/') || '.'}${flags.history ? ' · working tree + git history' : ' · working tree'}`));
   if (!isGit) console.log(dim('  (not a git repo - working tree only; --history unavailable)'));
   else if (!flags.history) console.log(dim('  Tip: add ') + bold('--history') + dim(' to also scan past commits (a leaked key removed from HEAD is still live).'));
   for (const note of incomplete) console.log(`  ${yellow('⚠')} ${dim(note)}`);

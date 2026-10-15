@@ -11,7 +11,7 @@ import path from 'node:path';
  * NoDefaultCurrentDirectoryInExePath is set - which on a developer's machine or
  * a Windows CI runner it normally is not. The working directory is the
  * repository being checked, so a `git.bat` committed to a pull request ran the
- * moment `shomra check` looked at it - with the job's token in its environment,
+ * moment `nofly check` looked at it - with the job's token in its environment,
  * or on the laptop of whoever opened the repo in the editor extension. git is
  * resolved here against ABSOLUTE PATH directories only and always run by its full
  * path; no git on PATH means no git, which every caller already treats as

@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { grade } from '../detect/guard-signals.mjs';
 import { readRegularText } from '../core/safe-read.mjs';
+import { REPO_CONFIG_DIRS, REPO_IGNORE_FILES } from './repo-policy.mjs';
 
-const IGNORE_MARK = /(?:\/\/|#|<!--|;)\s*shomra-ignore(-file|-next-line)?\b[:\s]?(.*)$/i;
+const IGNORE_MARK = /(?:\/\/|#|<!--|;)\s*(?:nofly|shomra)-ignore(-file|-next-line)?\b[:\s]?(.*)$/i;
 
 export function globToRe(glob) {
   const esc = String(glob).trim().replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*').replace(/\?/g, '.');
@@ -12,9 +13,11 @@ export function globToRe(glob) {
 }
 
 export function loadIgnoreRules(root) {
-  let raw = '';
-  try { raw = readRegularText(path.join(root, '.shomraignore'), 1024 * 1024); } catch {  }
-  return parseIgnoreRules(raw);
+  const raw = [];
+  for (const file of REPO_IGNORE_FILES) {
+    try { raw.push(readRegularText(path.join(root, file), 1024 * 1024)); } catch {  }
+  }
+  return parseIgnoreRules(raw.join('\n'));
 }
 
 export function parseIgnoreRules(raw) {
@@ -30,7 +33,10 @@ export function parseIgnoreRules(raw) {
 }
 
 export function loadBaseline(root) {
-  try { return parseBaseline(readRegularText(path.join(root, '.shomra', 'baseline.json'))); } catch { return null; }
+  for (const dir of REPO_CONFIG_DIRS) {
+    try { return parseBaseline(readRegularText(path.join(root, dir, 'baseline.json'))); } catch {  }
+  }
+  return null;
 }
 
 export function parseBaseline(raw) {
@@ -93,7 +99,7 @@ function readLinesBounded(fullPath) {
   }
 }
 
-const FILE_MARK = /\bshomra-ignore-file\b/i;
+const FILE_MARK = /\b(?:nofly|shomra)-ignore-file\b/i;
 const FILE_MARK_LINES = 5;
 
 const linesMark = (text) => {
@@ -157,7 +163,7 @@ function inlineSuppressed(fullPath, line, cache, ledger) {
   return refused ? 'refused' : null;
 }
 
-export const REFUSED_MARK_NOTE = 'a shomra-ignore mark added by this change applies only once it is merged';
+export const REFUSED_MARK_NOTE = 'a nofly-ignore mark added by this change applies only once it is merged';
 
 function findingSource(r, f) {
   if (!f.file || f.file === r.path) return r.full ? path.resolve(r.full) : null;
@@ -201,9 +207,9 @@ function baselineReason(r, f, baseline, cache, used) {
 }
 
 function suppressionReason(r, f, rules, baseline, cache, ledgerFor, used) {
-  if (rules.fileGlobs.some((re) => re.test(r.path))) return 'ignored (.shomraignore)';
+  if (rules.fileGlobs.some((re) => re.test(r.path))) return 'ignored (.noflyignore)';
   const title = String(f.title || '').toLowerCase();
-  if (rules.findingRules.some((rule) => rule.re.test(r.path) && title.includes(rule.titleSub))) return 'ignored (.shomraignore)';
+  if (rules.findingRules.some((rule) => rule.re.test(r.path) && title.includes(rule.titleSub))) return 'ignored (.noflyignore)';
   if (baseline) {
     const reason = baselineReason(r, f, baseline, cache, used);
     if (reason) return reason;
@@ -214,8 +220,8 @@ function suppressionReason(r, f, rules, baseline, cache, ledgerFor, used) {
 }
 
 export const ORG_BLOCK_NOTE = 'ignored locally, still blocked by org policy';
-export const MARK_REACH_NOTE = 'a shomra-ignore mark covers only the line it governs, and this appears on another line';
-export const BASELINE_REACH_NOTE = 'the baseline accepted this on other lines, not on this one - run shomra baseline again to accept it';
+export const MARK_REACH_NOTE = 'a nofly-ignore mark covers only the line it governs, and this appears on another line';
+export const BASELINE_REACH_NOTE = 'the baseline accepted this on other lines, not on this one - run nofly baseline again to accept it';
 const MAX_RECHECK_ROUNDS = 16;
 const LINE_REASONS = { 'inline-line': 'inline', 'baseline-line': 'baseline' };
 const publicReason = (reason) => LINE_REASONS[reason] ?? reason;

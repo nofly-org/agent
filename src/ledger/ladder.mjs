@@ -114,7 +114,7 @@ export function buildReport(subjects, version) {
   return {
     format: 'controlledger/1',
     specVersion: '1.0',
-    producer: { name: 'shomra-cli', version: String(version ?? '') },
+    producer: { name: 'nofly-cli', version: String(version ?? '') },
     generatedAt: new Date().toISOString(),
     basis: controls.length && controls.every((c) => c.basis === 'conclusive') ? 'conclusive' : 'floor',
     controls,

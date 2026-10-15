@@ -13,6 +13,6 @@ export function envFlag(name) {
 export function guardWait() {
   return {
     guard_timeout_ms: guardTimeoutMs(),
-    ...(String(process.env.SHOMRA_GUARD_TIER ?? '').trim().toLowerCase() === 'fast' ? { screen_tier: 'fast' } : {}),
+    ...(String(process.env.NOFLY_GUARD_TIER ?? '').trim().toLowerCase() === 'fast' ? { screen_tier: 'fast' } : {}),
   };
 }

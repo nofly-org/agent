@@ -71,7 +71,7 @@ export function readSqliteMcpServers(file) {
   let st;
   try { st = fs.statSync(file); } catch { return { servers: [], state: 'unreadable' }; }
   if (st.size > MAX_DB_BYTES) return { servers: [], state: 'oversized' };
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-mcpdb-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-mcpdb-'));
   const copy = path.join(dir, 'store.sqlite');
   let db;
   try {

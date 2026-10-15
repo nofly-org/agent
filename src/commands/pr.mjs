@@ -16,24 +16,24 @@ import { writeFileAtomic } from '../core/json-file.mjs';
 import { readRegularText } from '../core/safe-read.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
 
-const PR_WORKFLOW = `name: Shomra AI Security
+const PR_WORKFLOW = `name: NoFly AI Security
 on: pull_request
 permissions:
   contents: read
   checks: write
 jobs:
-  shomra:
+  nofly:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }   # full history so the PR diff resolves
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: npx @shomra/agent pr
+      - run: npx @nofly/agent pr
         env:
           GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-          SHOMRA_API_KEY: \${{ secrets.SHOMRA_API_KEY }}   # optional - applies org policy
-          SHOMRA_URL: \${{ secrets.SHOMRA_URL }}           # optional - your backend
+          NOFLY_API_KEY: \${{ secrets.NOFLY_API_KEY }}   # optional - applies org policy
+          NOFLY_URL: \${{ secrets.NOFLY_URL }}           # optional - your backend
 `;
 
 function readGithubEvent() {
@@ -54,7 +54,7 @@ function githubApiBase() {
 async function githubApi(token, method, apiPath, body) {
   const res = await keyedFetch(`${githubApiBase()}${apiPath}`, {
     method,
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json', 'User-Agent': 'shomra-agent' },
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json', 'User-Agent': 'nofly-agent' },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) throw new Error(`GitHub ${method} ${apiPath} → ${res.status} ${(await res.text()).slice(0, 200)}`);
@@ -69,18 +69,18 @@ function pullRequestScope(root, { base, baseSha }) {
 
 const GH_LEVEL = { CRITICAL: 'failure', HIGH: 'failure', MEDIUM: 'warning', LOW: 'notice', INFO: 'notice' };
 
-const CHECK_RUN_NAME = 'Shomra AI Security';
+const CHECK_RUN_NAME = 'NoFly AI Security';
 const MAX_ANNOTATIONS = 50;
 
 function writeWorkflow(flags) {
-  const workflow = path.resolve('.github/workflows/shomra.yml');
+  const workflow = path.resolve('.github/workflows/nofly.yml');
   if (fs.existsSync(workflow) && !flags.force) {
     console.error(`${red('✗')} ${path.relative(process.cwd(), workflow)} exists. Use ${bold('--force')}.`);
     process.exit(EXIT_USAGE);
   }
   writeFileAtomic(workflow, PR_WORKFLOW);
-  console.log(`\n  ${green('✓ Wrote')} ${bold('.github/workflows/shomra.yml')} ${dim('- commit it; PRs will get an inline Shomra review.')}`);
-  console.log(`${dim('  Optional: add ') + bold('SHOMRA_API_KEY') + dim(' as a repo secret to also apply org policy.')}\n`);
+  console.log(`\n  ${green('✓ Wrote')} ${bold('.github/workflows/nofly.yml')} ${dim('- commit it; PRs will get an inline NoFly review.')}`);
+  console.log(`${dim('  Optional: add ') + bold('NOFLY_API_KEY') + dim(' as a repo secret to also apply org policy.')}\n`);
 }
 
 function headShaFromGit() {
@@ -91,7 +91,7 @@ function resolvePrContext(flags) {
   const event = readGithubEvent();
   const context = {
     repo: flags.repo || process.env.GITHUB_REPOSITORY,
-    token: flags.token || process.env.SHOMRA_GH_TOKEN || process.env.GITHUB_TOKEN,
+    token: flags.token || process.env.NOFLY_GH_TOKEN || process.env.GITHUB_TOKEN,
     base: flags.base || process.env.GITHUB_BASE_REF || event.pull_request?.base?.ref || 'main',
     baseSha: flags.base ? null : event.pull_request?.base?.sha || null,
     headSha: flags.sha || event.pull_request?.head?.sha || process.env.GITHUB_SHA || headShaFromGit(),
@@ -136,7 +136,7 @@ function buildAnnotations(results, base) {
           finding.title,
           finding.remediationText ? `Fix: ${finding.remediationText}` : '',
           finding.suppressionRefused ? `Not suppressed: ${finding.suppressionRefused}.` : '',
-          `Run \`shomra fix ${result.path}\` to remediate.`,
+          `Run \`nofly fix ${result.path}\` to remediate.`,
         ].filter(Boolean).join('\n'),
       });
     }
@@ -183,7 +183,7 @@ function buildCheckRun({ headSha, results, annotations, blocked, flagged, suppre
 function runNotes({ scope, base, outcome, strictOutage }) {
   const notes = [];
   if (!scope) notes.push(`The base branch "${base}" was not found in this checkout, so every AI artifact was checked and no suppression, baseline or repo policy was trusted. Check out full history (fetch-depth: 0) to check only what the pull request changed.`);
-  if (outcome.backendDown || outcome.authFailed) notes.push(`Org policy was not applied: the Shomra backend was unreachable or refused the credential${strictOutage ? ', so this check fails closed (--strict)' : ''}.`);
+  if (outcome.backendDown || outcome.authFailed) notes.push(`Org policy was not applied: the NoFly backend was unreachable or refused the credential${strictOutage ? ', so this check fails closed (--strict)' : ''}.`);
   for (const entry of outcome.rejected || []) notes.push(`The backend refused \`${entry.path}\` (${entry.reason}), so org policy was not applied to it.`);
   return notes;
 }
@@ -267,7 +267,7 @@ export async function cmdPr(flags, positional) {
       checkRun: dryRun ? checkRun : undefined,
     }, null, 2));
   } else if (flags.sarif !== true) {
-    console.log(bold(cyan('\n  Shomra pr')) + dim(` - ${repo} #${prNumber ?? '?'} · ${results.length} changed artifact(s) · ${annotations.length} finding(s)`));
+    console.log(bold(cyan('\n  NoFly pr')) + dim(` - ${repo} #${prNumber ?? '?'} · ${results.length} changed artifact(s) · ${annotations.length} finding(s)`));
     for (const note of notes) console.log(`  ${yellow('⚠')} ${dim(note)}`);
   }
 

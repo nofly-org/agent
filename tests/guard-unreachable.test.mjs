@@ -22,8 +22,8 @@ import { fileURLToPath } from 'node:url';
  */
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-unreachable-'));
+const CLI = path.join(HERE, '..', 'nofly.mjs');
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-unreachable-'));
 
 const SEVERE = { tool_name: 'Bash', tool_input: { command: 'rm -rf /var/lib/postgres/data' }, cwd: home };
 const ROUTINE = { tool_name: 'Read', tool_input: { file_path: '/repo/README.md' }, cwd: home };
@@ -34,9 +34,9 @@ const ROUTINE_ESCALATED = { tool_name: 'mcp__jira__get_issue', tool_input: { key
 
 function guard(payload, env = {}, command = 'tool-guard') {
   const base = { ...process.env, USERPROFILE: home, HOME: home, NO_COLOR: '1' };
-  for (const k of Object.keys(base)) if (k.startsWith('SHOMRA_')) delete base[k];
+  for (const k of Object.keys(base)) if (k.startsWith('NOFLY_')) delete base[k];
   for (const dir of [home, os.homedir()]) {
-    fs.rmSync(path.join(dir, '.shomra', 'guard-breaker.json'), { force: true });
+    fs.rmSync(path.join(dir, '.nofly', 'guard-breaker.json'), { force: true });
   }
   return new Promise((done) => {
     const child = spawn(process.execPath, [CLI, command, '--agent', 'claude'], {
@@ -81,34 +81,34 @@ async function serve(handler) {
 const KEY = 'shm_test_key_0000000000000000';
 
 test('a SEVERE call the guard could not screen ASKS a person, it does not silently allow', async () => {
-  const out = await guard(SEVERE, { SHOMRA_API_KEY: KEY, SHOMRA_URL: 'http://127.0.0.1:9', SHOMRA_GUARD_TIMEOUT_MS: '300' });
+  const out = await guard(SEVERE, { NOFLY_API_KEY: KEY, NOFLY_URL: 'http://127.0.0.1:9', NOFLY_GUARD_TIMEOUT_MS: '300' });
   assert.equal(out.decision, 'ask', `expected ask, got ${out.decision} (${out.stdout})`);
   assert.match(out.reason, /could not screen/i);
 });
 
 test('…and the sentence says the call was NOT judged, rather than calling it dangerous', async () => {
-  const out = await guard(SEVERE, { SHOMRA_API_KEY: KEY, SHOMRA_URL: 'http://127.0.0.1:9', SHOMRA_GUARD_TIMEOUT_MS: '300' });
+  const out = await guard(SEVERE, { NOFLY_API_KEY: KEY, NOFLY_URL: 'http://127.0.0.1:9', NOFLY_GUARD_TIMEOUT_MS: '300' });
   assert.match(out.reason, /Nothing has judged it/i);
   assert.doesNotMatch(out.reason, /\bmalicious\b|\battack\b/i);
 });
 
 test('a force push over a shared branch counts as severe - it was MATERIAL until the ladder was fixed', async () => {
-  const out = await guard(FORCE_PUSH, { SHOMRA_API_KEY: KEY, SHOMRA_URL: 'http://127.0.0.1:9', SHOMRA_GUARD_TIMEOUT_MS: '300' });
+  const out = await guard(FORCE_PUSH, { NOFLY_API_KEY: KEY, NOFLY_URL: 'http://127.0.0.1:9', NOFLY_GUARD_TIMEOUT_MS: '300' });
   assert.equal(out.decision, 'ask', `expected ask, got ${out.decision}`);
 });
 
 test('a ROUTINE call still flows when the guard is unreachable - this is what keeps the hook installed', async () => {
-  const out = await guard(ROUTINE, { SHOMRA_API_KEY: KEY, SHOMRA_URL: 'http://127.0.0.1:9', SHOMRA_GUARD_TIMEOUT_MS: '300' });
+  const out = await guard(ROUTINE, { NOFLY_API_KEY: KEY, NOFLY_URL: 'http://127.0.0.1:9', NOFLY_GUARD_TIMEOUT_MS: '300' });
   assert.equal(out.decision, null, `a routine call must not prompt; got ${out.stdout}`);
   assert.equal(out.code, 0);
 });
 
-test('SHOMRA_GUARD_FAILOPEN_SEVERE restores the old behaviour for an org that wants it', async () => {
+test('NOFLY_GUARD_FAILOPEN_SEVERE restores the old behaviour for an org that wants it', async () => {
   const out = await guard(SEVERE, {
-    SHOMRA_API_KEY: KEY,
-    SHOMRA_URL: 'http://127.0.0.1:9',
-    SHOMRA_GUARD_TIMEOUT_MS: '300',
-    SHOMRA_GUARD_FAILOPEN_SEVERE: '1',
+    NOFLY_API_KEY: KEY,
+    NOFLY_URL: 'http://127.0.0.1:9',
+    NOFLY_GUARD_TIMEOUT_MS: '300',
+    NOFLY_GUARD_FAILOPEN_SEVERE: '1',
   });
   assert.equal(out.decision, null, `expected the escape hatch to allow; got ${out.stdout}`);
 });
@@ -125,7 +125,7 @@ test('a 429 is retried against Retry-After, and a served verdict is honoured', a
     res.end(JSON.stringify({ decision: 'BLOCK', reason: 'Blocked by org policy.' }));
   });
   try {
-    const out = await guard(SEVERE, { SHOMRA_API_KEY: KEY, SHOMRA_URL: s.url, SHOMRA_GUARD_TIMEOUT_MS: '4000' });
+    const out = await guard(SEVERE, { NOFLY_API_KEY: KEY, NOFLY_URL: s.url, NOFLY_GUARD_TIMEOUT_MS: '4000' });
     assert.equal(hits, 2, 'the 429 must be retried once, not counted as an outage');
     assert.equal(out.decision, 'deny', `expected the retry's BLOCK to be honoured; got ${out.stdout}`);
   } finally {
@@ -139,11 +139,11 @@ test('a 429 that keeps coming does not trip the breaker - one burst must not swi
     res.end('{}');
   });
   try {
-    const out = await guard(SEVERE, { SHOMRA_API_KEY: KEY, SHOMRA_URL: s.url, SHOMRA_GUARD_TIMEOUT_MS: '4000' });
+    const out = await guard(SEVERE, { NOFLY_API_KEY: KEY, NOFLY_URL: s.url, NOFLY_GUARD_TIMEOUT_MS: '4000' });
     assert.equal(out.decision, 'ask', 'an unscreened severe call still asks');
     assert.equal(
-      fs.existsSync(path.join(os.homedir(), '.shomra', 'guard-breaker.json'))
-        || fs.existsSync(path.join(home, '.shomra', 'guard-breaker.json')),
+      fs.existsSync(path.join(os.homedir(), '.nofly', 'guard-breaker.json'))
+        || fs.existsSync(path.join(home, '.nofly', 'guard-breaker.json')),
       false,
       'a rate limit is not an outage: tripping the breaker skips the server for the whole cooldown',
     );
@@ -158,7 +158,7 @@ test('a reachable server that ALLOWS is still an allow - the rung check only cov
     res.end(JSON.stringify({ decision: 'ALLOW' }));
   });
   try {
-    const out = await guard(SEVERE, { SHOMRA_API_KEY: KEY, SHOMRA_URL: s.url, SHOMRA_GUARD_TIMEOUT_MS: '4000' });
+    const out = await guard(SEVERE, { NOFLY_API_KEY: KEY, NOFLY_URL: s.url, NOFLY_GUARD_TIMEOUT_MS: '4000' });
     assert.equal(out.decision, null, `a screened allow must not prompt; got ${out.stdout}`);
   } finally {
     await s.close();
@@ -176,8 +176,8 @@ test('a reachable server that ALLOWS is still an allow - the rung check only cov
  * unit tests were green the whole time it was inert.
  */
 test('an unreachable screen opens a gap window on disk - an outage nothing recorded reads like a quiet one', async () => {
-  await guard(SEVERE, { SHOMRA_API_KEY: KEY, SHOMRA_URL: 'http://127.0.0.1:9', SHOMRA_GUARD_TIMEOUT_MS: '300' });
-  const file = path.join(home, '.shomra', 'guard-ledger.json');
+  await guard(SEVERE, { NOFLY_API_KEY: KEY, NOFLY_URL: 'http://127.0.0.1:9', NOFLY_GUARD_TIMEOUT_MS: '300' });
+  const file = path.join(home, '.nofly', 'guard-ledger.json');
   assert.ok(fs.existsSync(file), 'no ledger file: the window was never opened');
   const state = JSON.parse(fs.readFileSync(file, 'utf8'));
   const counted = (state.open?.unscreened ?? 0) + (state.open?.local ?? 0);
@@ -198,12 +198,12 @@ test('the gap rides out on the next call that gets through, and the server sees 
   try {
     /* One outage to open a window, then one reachable call to carry it. The
      * breaker cooldown is switched off so the second call actually goes out. */
-    await guard(SEVERE, { SHOMRA_API_KEY: KEY, SHOMRA_URL: 'http://127.0.0.1:9', SHOMRA_GUARD_TIMEOUT_MS: '300' });
+    await guard(SEVERE, { NOFLY_API_KEY: KEY, NOFLY_URL: 'http://127.0.0.1:9', NOFLY_GUARD_TIMEOUT_MS: '300' });
     await guard(ROUTINE_ESCALATED, {
-      SHOMRA_API_KEY: KEY,
-      SHOMRA_URL: s.url,
-      SHOMRA_GUARD_TIMEOUT_MS: '4000',
-      SHOMRA_GUARD_BREAKER_MS: '0',
+      NOFLY_API_KEY: KEY,
+      NOFLY_URL: s.url,
+      NOFLY_GUARD_TIMEOUT_MS: '4000',
+      NOFLY_GUARD_BREAKER_MS: '0',
     });
     assert.ok(seen, 'the request carried no guard_ledger at all');
     assert.ok(Array.isArray(seen.gaps), `guard_ledger has no gaps array: ${JSON.stringify(seen)}`);
@@ -226,11 +226,11 @@ test('and it is acknowledged, so one outage is not re-reported forever', async (
     res.end(JSON.stringify({ decision: 'ALLOW' }));
   });
   try {
-    await guard(SEVERE, { SHOMRA_API_KEY: KEY, SHOMRA_URL: 'http://127.0.0.1:9', SHOMRA_GUARD_TIMEOUT_MS: '300' });
-    const env = { SHOMRA_API_KEY: KEY, SHOMRA_URL: s.url, SHOMRA_GUARD_TIMEOUT_MS: '4000', SHOMRA_GUARD_BREAKER_MS: '0' };
+    await guard(SEVERE, { NOFLY_API_KEY: KEY, NOFLY_URL: 'http://127.0.0.1:9', NOFLY_GUARD_TIMEOUT_MS: '300' });
+    const env = { NOFLY_API_KEY: KEY, NOFLY_URL: s.url, NOFLY_GUARD_TIMEOUT_MS: '4000', NOFLY_GUARD_BREAKER_MS: '0' };
     await guard(ROUTINE_ESCALATED, env);
     await guard(ROUTINE_ESCALATED, env);
-    const state = JSON.parse(fs.readFileSync(path.join(home, '.shomra', 'guard-ledger.json'), 'utf8'));
+    const state = JSON.parse(fs.readFileSync(path.join(home, '.nofly', 'guard-ledger.json'), 'utf8'));
     assert.equal((state.pending ?? []).length, 0, `an acknowledged gap must not stay pending: ${JSON.stringify(state)}`);
   } finally {
     await s.close();
@@ -250,7 +250,7 @@ test('the guard tells the server how long it will wait, so the answer can arrive
     res.end(JSON.stringify({ decision: 'ALLOW' }));
   });
   try {
-    await guard(ROUTINE_ESCALATED, { SHOMRA_API_KEY: KEY, SHOMRA_URL: s.url, SHOMRA_GUARD_TIMEOUT_MS: '1700', SHOMRA_GUARD_BREAKER_MS: '0' });
+    await guard(ROUTINE_ESCALATED, { NOFLY_API_KEY: KEY, NOFLY_URL: s.url, NOFLY_GUARD_TIMEOUT_MS: '1700', NOFLY_GUARD_BREAKER_MS: '0' });
     assert.equal(declared, 1700, 'the declared wait must be the one this hook actually waits, or the server plans for the wrong clock');
   } finally {
     await s.close();
@@ -271,8 +271,8 @@ test('the prompt guard declares the same wait and tier, so a slow prompt screen 
   });
   try {
     const prompt = { prompt: 'Summarise the release notes for the team', session_id: 's-prompt', cwd: home };
-    const env = { SHOMRA_API_KEY: KEY, SHOMRA_URL: s.url, SHOMRA_GUARD_TIMEOUT_MS: '1700', SHOMRA_GUARD_BREAKER_MS: '0' };
-    await guard(prompt, { ...env, SHOMRA_GUARD_TIER: 'fast' }, 'prompt-guard');
+    const env = { NOFLY_API_KEY: KEY, NOFLY_URL: s.url, NOFLY_GUARD_TIMEOUT_MS: '1700', NOFLY_GUARD_BREAKER_MS: '0' };
+    await guard(prompt, { ...env, NOFLY_GUARD_TIER: 'fast' }, 'prompt-guard');
     await guard(prompt, env, 'prompt-guard');
     assert.deepEqual(seen, [[1700, 'fast'], [1700, null]], 'the prompt hook waits the same clock the tool hook does and must say so');
   } finally {
@@ -287,7 +287,7 @@ test('a call waiting for the person tells the person, not only the model', async
     res.end(JSON.stringify(waiting));
   });
   try {
-    const out = await guard(ROUTINE_ESCALATED, { SHOMRA_API_KEY: KEY, SHOMRA_URL: s.url, SHOMRA_GUARD_BREAKER_MS: '0' });
+    const out = await guard(ROUTINE_ESCALATED, { NOFLY_API_KEY: KEY, NOFLY_URL: s.url, NOFLY_GUARD_BREAKER_MS: '0' });
     const body = JSON.parse(out.stdout);
     assert.equal(out.decision, 'deny');
     assert.match(body.systemMessage ?? '', /Check your phone: confirm sendtnemyap with code A7K2/, 'the person sees the code, and a bidi override in a tool name never reaches their screen');
@@ -299,14 +299,14 @@ test('a call waiting for the person tells the person, not only the model', async
     res.end(JSON.stringify({ decision: 'BLOCK', reason: 'Blocked by policy.' }));
   });
   try {
-    const out = await guard(ROUTINE_ESCALATED, { SHOMRA_API_KEY: KEY, SHOMRA_URL: plain.url, SHOMRA_GUARD_BREAKER_MS: '0' });
+    const out = await guard(ROUTINE_ESCALATED, { NOFLY_API_KEY: KEY, NOFLY_URL: plain.url, NOFLY_GUARD_BREAKER_MS: '0' });
     assert.equal(JSON.parse(out.stdout).systemMessage, undefined, 'an ordinary refusal adds no message of its own');
   } finally {
     await plain.close();
   }
 });
 
-test('SHOMRA_GUARD_TIER=fast asks the server for its fast screen, and nothing else does', async () => {
+test('NOFLY_GUARD_TIER=fast asks the server for its fast screen, and nothing else does', async () => {
   const tiers = [];
   const s = await serve((req, res, body) => {
     try {
@@ -319,8 +319,8 @@ test('SHOMRA_GUARD_TIER=fast asks the server for its fast screen, and nothing el
     res.end(JSON.stringify({ decision: 'ALLOW' }));
   });
   try {
-    const env = { SHOMRA_API_KEY: KEY, SHOMRA_URL: s.url, SHOMRA_GUARD_BREAKER_MS: '0' };
-    await guard(ROUTINE_ESCALATED, { ...env, SHOMRA_GUARD_TIER: 'fast' });
+    const env = { NOFLY_API_KEY: KEY, NOFLY_URL: s.url, NOFLY_GUARD_BREAKER_MS: '0' };
+    await guard(ROUTINE_ESCALATED, { ...env, NOFLY_GUARD_TIER: 'fast' });
     await guard(ROUTINE_ESCALATED, env);
     assert.deepEqual(tiers, ['fast', null], 'fast only when asked for - an absent tier is a full screen');
   } finally {
@@ -329,7 +329,7 @@ test('SHOMRA_GUARD_TIER=fast asks the server for its fast screen, and nothing el
 });
 
 test('an unscreened write is graded by the file it writes, not by the words inside it', async () => {
-  const env = { SHOMRA_API_KEY: KEY, SHOMRA_URL: 'http://127.0.0.1:9', SHOMRA_GUARD_TIMEOUT_MS: '300' };
+  const env = { NOFLY_API_KEY: KEY, NOFLY_URL: 'http://127.0.0.1:9', NOFLY_GUARD_TIMEOUT_MS: '300' };
   const write = (file, content) => guard({ tool_name: 'Write', tool_input: { file_path: file, content }, cwd: home }, env);
   for (const file of [path.join(home, '.bashrc'), path.join(home, '.ssh', 'authorized_keys'), path.join(home, 'repo', '.env')]) {
     const out = await write(file, 'export PATH=/opt/tools/bin:$PATH\n');

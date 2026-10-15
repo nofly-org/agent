@@ -16,7 +16,7 @@ function planAdvice(r, { maxControls = 5 } = {}) {
   if (r.verdict !== 'OPEN_PATH') return null;
   const worst = r.paths.filter((p) => p.severity === r.worst).slice(0, 3);
   const lines = [
-    `[Shomra] This plan closes ${r.paths.length} attack path${r.paths.length === 1 ? '' : 's'}. Build the guarded version now - it is far cheaper than retrofitting it:`,
+    `[NoFly] This plan closes ${r.paths.length} attack path${r.paths.length === 1 ? '' : 's'}. Build the guarded version now - it is far cheaper than retrofitting it:`,
   ];
   for (const p of worst) lines.push(`- ${p.severity}: ${CAP_LABEL[p.source]} reaches ${CAP_LABEL[p.sink]}. ${p.story}`);
   lines.push('Satisfy these as you implement:');
@@ -28,7 +28,7 @@ function planAdvice(r, { maxControls = 5 } = {}) {
 export async function cmdPlan(flags, positional) {
   const target = positional[0] || flags.path;
   if (!target) {
-    console.error(red('✗') + ' Usage: ' + bold('shomra plan <file|->') + dim('  (use - to pipe the plan on stdin)'));
+    console.error(red('✗') + ' Usage: ' + bold('nofly plan <file|->') + dim('  (use - to pipe the plan on stdin)'));
     process.exit(EXIT_USAGE);
   }
   let text;
@@ -52,7 +52,7 @@ export async function cmdPlan(flags, positional) {
 
 export async function cmdPlanGuard(flags) {
   const agent = resolveAgentFlag(flags);
-  if (envFlag('SHOMRA_PLAN_GUARD_OFF')) process.exit(0);
+  if (envFlag('NOFLY_PLAN_GUARD_OFF')) process.exit(0);
 
   const payload = readHookPayload() ?? process.exit(0);
 
@@ -78,7 +78,7 @@ export async function cmdPlanGuard(flags) {
     client_reason: `plan closes ${r.paths.length} attack path(s); worst ${r.worst}`,
   });
 
-  if (r.worst === 'CRITICAL' && envFlag('SHOMRA_GUARD_STRICT')) {
+  if (r.worst === 'CRITICAL' && envFlag('NOFLY_GUARD_STRICT')) {
     emitGuardAsk(agent, advice);
   }
   process.stdout.write(JSON.stringify({

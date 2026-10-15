@@ -68,7 +68,7 @@ function redactChunk(src, opts) {
   const masked = [];
   for (const m of merged) {
     out += src.slice(cursor, m.start);
-    out += `[shomra:redacted:${m.category}]`;
+    out += `[nofly:redacted:${m.category}]`;
     cursor = m.end;
     masked.push({ label: m.labels.join(' + '), category: m.category, chars: m.end - m.start });
   }

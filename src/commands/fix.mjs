@@ -13,14 +13,14 @@ import { maskSecrets } from '../detect/secret-mask.mjs';
 export async function cmdFix(flags, positional) {
   const file = positional[0];
   if (!file) {
-    console.error(red('✗') + ' Usage: ' + bold('shomra fix <file> [--apply] [--kind mcp|skill|command|subagent|hook|rules] [--json]'));
+    console.error(red('✗') + ' Usage: ' + bold('nofly fix <file> [--apply] [--kind mcp|skill|command|subagent|hook|rules] [--json]'));
     process.exit(EXIT_USAGE);
   }
   const cfg = loadConfig();
   const { apiKey, url } = resolveSettings(cfg);
   if (!apiKey) {
-    console.error('\n' + red('✗') + ' ' + bold('shomra fix') + ' needs enrollment - the fix is generated on the platform with your org AI key.');
-    console.error('  ' + dim('Run ') + bold('shomra init --key shm_live_…') + dim(', or apply the guidance from ') + bold('shomra check') + dim(' by hand.\n'));
+    console.error('\n' + red('✗') + ' ' + bold('nofly fix') + ' needs enrollment - the fix is generated on the platform with your org AI key.');
+    console.error('  ' + dim('Run ') + bold('nofly init --key shm_live_…') + dim(', or apply the guidance from ') + bold('nofly check') + dim(' by hand.\n'));
     process.exit(EXIT_USAGE);
   }
   let target = path.resolve(String(file));
@@ -58,7 +58,7 @@ export async function fixOneFile(target, { apiKey, url, flags }) {
     if (!flags.json && !flags.silent) console.error(line);
     return false;
   };
-  if (isSymlink(target)) return fail(`  ${red('✗')} ${rel} is a symlink - Shomra will not write a fix through it. Fix the file it points at directly.`);
+  if (isSymlink(target)) return fail(`  ${red('✗')} ${rel} is a symlink - NoFly will not write a fix through it. Fix the file it points at directly.`);
   const read = readRegularFile(target);
   if (read.skip) return fail(`  ${red('✗')} cannot read ${rel}: ${read.skip}`);
   const { content } = read;

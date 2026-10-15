@@ -8,10 +8,10 @@ import { fileURLToPath } from 'node:url';
 import { guardHookTamper } from '../src/guard/self-protect.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
+const CLI = path.join(HERE, '..', 'nofly.mjs');
 
 function sandbox() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-install-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-install-'));
   const home = path.join(root, 'home');
   const repo = path.join(root, 'repo');
   fs.mkdirSync(home);
@@ -21,16 +21,16 @@ function sandbox() {
 
 function cli(box, args) {
   const env = { ...process.env, HOME: box.home, USERPROFILE: box.home, NO_COLOR: '1' };
-  for (const k of Object.keys(env)) if (k.startsWith('SHOMRA_')) delete env[k];
+  for (const k of Object.keys(env)) if (k.startsWith('NOFLY_')) delete env[k];
   return spawnSync(process.execPath, [CLI, ...args], { cwd: box.repo, env, encoding: 'utf8', timeout: 30000 });
 }
 
 const AGENT_FILES = [
   '.claude/settings.json', '.codex/hooks.json', '.gemini/settings.json', '.cursor/hooks.json',
-  '.windsurf/hooks.json', '.github/hooks/shomra.json', '.clinerules/hooks/PreToolUse', '.clinerules/hooks/PostToolUse', '.aider.conf.yml',
+  '.windsurf/hooks.json', '.github/hooks/nofly.json', '.clinerules/hooks/PreToolUse', '.clinerules/hooks/PostToolUse', '.aider.conf.yml',
 ];
 
-test('install then uninstall for every agent leaves no Shomra hook and no file it created', () => {
+test('install then uninstall for every agent leaves no NoFly hook and no file it created', () => {
   const box = sandbox();
   try {
     const install = cli(box, ['install-hook', '--agent', 'all']);
@@ -41,7 +41,7 @@ test('install then uninstall for every agent leaves no Shomra hook and no file i
     for (const f of AGENT_FILES) assert.equal(fs.existsSync(path.join(box.repo, f)), false, `${f} should be gone`);
     const again = cli(box, ['install-hook', '--uninstall']);
     assert.equal(again.status, 0);
-    assert.match(again.stdout, /No Shomra hooks found/);
+    assert.match(again.stdout, /No NoFly hooks found/);
   } finally {
     fs.rmSync(box.root, { recursive: true, force: true });
   }
@@ -121,7 +121,7 @@ test('an existing settings file keeps its permissions when the hook is installed
 });
 
 test('an agent that runs the uninstall itself is treated as switching the guard off', () => {
-  const hit = guardHookTamper('Bash', { command: 'npx -y @shomra/agent@0.3.39 install-hook --uninstall --global' });
+  const hit = guardHookTamper('Bash', { command: 'npx -y @nofly/agent@0.3.39 install-hook --uninstall --global' });
   assert.equal(hit?.why, 'uninstall');
-  assert.equal(guardHookTamper('Bash', { command: 'shomra install-hook --agent all' }), null);
+  assert.equal(guardHookTamper('Bash', { command: 'nofly install-hook --agent all' }), null);
 });

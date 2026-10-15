@@ -12,8 +12,8 @@ import { readRegularText } from '../core/safe-read.mjs';
 export async function cmdDesign(flags, positional) {
   const target = positional[0] || flags.path;
   if (!target) {
-    console.error(red('✗') + ' Usage: ' + bold('shomra design <file|dir|->') + dim('  (use - to read a ticket/RFC on stdin)'));
-    console.error(dim('  e.g. ') + 'gh issue view 42 --json body -q .body | shomra design -');
+    console.error(red('✗') + ' Usage: ' + bold('nofly design <file|dir|->') + dim('  (use - to read a ticket/RFC on stdin)'));
+    console.error(dim('  e.g. ') + 'gh issue view 42 --json body -q .body | nofly design -');
     process.exit(EXIT_USAGE);
   }
 
@@ -69,7 +69,7 @@ async function saveDesign(results, flags) {
   const m = /^(AGENT|PROJECT|DESIGN):(.+)$/i.exec(subject);
   if (!m) {
     console.error(red('✗') + ' --save needs ' + bold('--subject KIND:id') + dim('  (AGENT | PROJECT | DESIGN)'));
-    console.error(dim('  e.g. ') + 'shomra design docs/rfc.md --save --subject DESIGN:inbox-agent');
+    console.error(dim('  e.g. ') + 'nofly design docs/rfc.md --save --subject DESIGN:inbox-agent');
     process.exit(EXIT_USAGE);
   }
   if (results.length !== 1) {
@@ -128,7 +128,7 @@ function walkDesignDocs(root) {
 
 function printDesign(r) {
   const vColor = r.verdict === 'OPEN_PATH' ? red : yellow;
-  console.log(bold(cyan('\n  Shomra design')) + dim(` - ${r.name}`));
+  console.log(bold(cyan('\n  NoFly design')) + dim(` - ${r.name}`));
 
   if (r.verdict === 'NOT_DESCRIBED') {
     console.log(`\n  ${yellow('• Nothing recognised')} ${dim('- no untrusted input, sensitive data, or agent action was described here.')}`);
@@ -164,7 +164,7 @@ function printDesign(r) {
   for (const c of r.controls.slice(0, 8)) console.log(`    ${dim('☐')} ${c.text}`);
   if (r.controls.length > 8) console.log(dim(`    … and ${r.controls.length - 8} more`));
 
-  console.log(dim('\n  Paste these into the ticket: ') + bold(`shomra design ${r.name} --checklist`));
+  console.log(dim('\n  Paste these into the ticket: ') + bold(`nofly design ${r.name} --checklist`));
   console.log(dim('  It reads prose - it sees only what was written down. A capability nobody documented'));
   console.log(dim('  is not a capability you do not have.\n'));
 }

@@ -39,8 +39,8 @@ function cmdNewAgent(flags, positional) {
   for (const rel of Object.keys(files)) console.log(`    ${dim('+')} ${rel}`);
   console.log(`\n  ${bold('Next')}`);
   console.log(`    cd ${name} && cp .env.example .env && npm install`);
-  console.log(`    ${bold('shomra rules --write')} ${dim('- write the agent rules block into CLAUDE.md')}`);
-  console.log(`    ${bold('shomra check')}         ${dim('- confirm it starts clean')}`);
+  console.log(`    ${bold('nofly rules --write')} ${dim('- write the agent rules block into CLAUDE.md')}`);
+  console.log(`    ${bold('nofly check')}         ${dim('- confirm it starts clean')}`);
   console.log(dim('\n  Guard enforcing, egress allowlisted, secrets in env, gate in CI - from commit zero.\n'));
 }
 
@@ -50,7 +50,7 @@ export function cmdNew(flags, positional) {
   if (kind === 'agent') return cmdNewAgent(flags, positional.slice(1));
   const tmpl = NEW_TEMPLATES[kind];
   if (!tmpl) {
-    console.error(red('✗') + ` Usage: ${bold('shomra new ' + Object.keys(NEW_TEMPLATES).join('|') + '|agent [name]')}`);
+    console.error(red('✗') + ` Usage: ${bold('nofly new ' + Object.keys(NEW_TEMPLATES).join('|') + '|agent [name]')}`);
     process.exit(EXIT_USAGE);
   }
   const name = slugName(positional.slice(1), kind === 'rules' ? 'rules' : `my-${kind}`);
@@ -64,6 +64,6 @@ export function cmdNew(flags, positional) {
   const g = localGate(content, { kind: kind === 'agent-card' ? 'agent-card' : kind === 'mcp' ? 'mcp' : kind === 'rules' ? 'rules' : kind, path: file });
   if (flags.json) { console.log(JSON.stringify({ created: file, kind, verdict: g.verdict }, null, 2)); return; }
   console.log(`\n  ${green('✓ Created')} ${bold(file)} ${dim(`(${kind})`)}`);
-  if (g.verdict === 'ALLOW') console.log(`  ${green('✓ gate: clean')} ${dim('- secure-by-default template. Edit, then')} ${bold('shomra gate ' + file)}${dim('.')}\n`);
-  else console.log(`  ${yellow('gate: ' + g.verdict)} ${dim('- the template did not gate clean. See why with')} ${bold('shomra gate ' + file)}${dim('.')}\n`);
+  if (g.verdict === 'ALLOW') console.log(`  ${green('✓ gate: clean')} ${dim('- secure-by-default template. Edit, then')} ${bold('nofly gate ' + file)}${dim('.')}\n`);
+  else console.log(`  ${yellow('gate: ' + g.verdict)} ${dim('- the template did not gate clean. See why with')} ${bold('nofly gate ' + file)}${dim('.')}\n`);
 }

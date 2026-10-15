@@ -105,5 +105,5 @@ export async function mcpAdvisoryFindings(content, path = '', { fetchImpl = glob
 }
 
 export function advisoriesDisabled(flags = {}) {
-  return !!flags.offline || /^(1|true|yes)$/i.test(String(process.env.SHOMRA_OFFLINE ?? ''));
+  return !!flags.offline || /^(1|true|yes)$/i.test(String(process.env.NOFLY_OFFLINE ?? ''));
 }

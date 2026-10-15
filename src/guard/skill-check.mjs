@@ -224,7 +224,7 @@ export async function screenSkillInvocation({ agent, tool, input, normalized, ur
   if (!found.length) {
     const why = wanted ? `no SKILL.md found for "${shown}" in the project, ~/.claude/skills or an installed plugin` : 'the call names no skill';
     recordSelftest({ stage: 'skill-unresolved', tool, reason: why });
-    process.stderr.write(`[shomra] skill not checked: ${why}\n`);
+    process.stderr.write(`[nofly] skill not checked: ${why}\n`);
     return { unresolved: why };
   }
   if (!strict && breakerOpen()) return { unchecked: 'the guard is in its backoff window after an earlier failure' };
@@ -238,14 +238,14 @@ export async function screenSkillInvocation({ agent, tool, input, normalized, ur
 
   const blocked = results.find((r) => r.decision === 'BLOCK');
   if (blocked) {
-    const reason = `Blocked by Shomra: the skill "${shown}" (${clean(blocked.skill.path, 200)}) did not pass the gate check${blocked.reason ? ` - ${blocked.reason}` : ''}.`;
+    const reason = `Blocked by NoFly: the skill "${shown}" (${clean(blocked.skill.path, 200)}) did not pass the gate check${blocked.reason ? ` - ${blocked.reason}` : ''}.`;
     recordSelftest({ stage: 'skill-block', tool, reason, cached: !!blocked.cached });
     await reportGuardDecision(url, apiKey, agentId, buildGuardBody(normalized, agent, 'BLOCK', `Skill "${shown}" refused by the gate check`));
     emitGuardDeny(agent, reason);
   }
   const failed = results.find((r) => r.error);
   if (failed && strict) {
-    emitGuardDeny(agent, `Shomra could not check the skill "${shown}" (${failed.error}); blocked by fail-closed policy.`);
+    emitGuardDeny(agent, `NoFly could not check the skill "${shown}" (${failed.error}); blocked by fail-closed policy.`);
   }
   return { results };
 }

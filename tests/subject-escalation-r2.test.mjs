@@ -88,7 +88,7 @@ test('Cursor stdio MCP keeps the tool input; Windsurf edits[] become a MultiEdit
 test('installer matchers name PowerShell and Codex apply_patch, and an existing install is widened', () => {
   assert.match(TOOL_GUARD_MATCHERS.claude, /\bPowerShell\b/);
   assert.match(TOOL_GUARD_MATCHERS.codex, /\bapply_patch\b/);
-  const pre = [{ matcher: 'Bash|Write|Edit|MultiEdit|NotebookEdit|mcp__.*|MyTool', hooks: [{ type: 'command', command: 'npx -y @shomra/agent tool-guard --agent claude' }] }];
+  const pre = [{ matcher: 'Bash|Write|Edit|MultiEdit|NotebookEdit|mcp__.*|MyTool', hooks: [{ type: 'command', command: 'npx -y @nofly/agent tool-guard --agent claude' }] }];
   assert.equal(widenToolGuardMatcher(pre, TOOL_GUARD_MATCHERS.claude), true);
   assert.match(pre[0].matcher, /\bPowerShell\b/);
   assert.match(pre[0].matcher, /MyTool/, 'a user-added name is kept');
@@ -98,13 +98,13 @@ test('installer matchers name PowerShell and Codex apply_patch, and an existing 
 });
 
 test('an empty learned set expires in 60 s, a non-empty one in 10 min', () => {
-  const prev = process.env.SHOMRA_GUARD_SUBJECT_TTL_MS;
-  delete process.env.SHOMRA_GUARD_SUBJECT_TTL_MS;
+  const prev = process.env.NOFLY_GUARD_SUBJECT_TTL_MS;
+  delete process.env.NOFLY_GUARD_SUBJECT_TTL_MS;
   try {
     assert.equal(subjectTypesTtlMs([]), 60_000);
     assert.equal(subjectTypesTtlMs(['package']), 600_000);
   } finally {
-    if (prev !== undefined) process.env.SHOMRA_GUARD_SUBJECT_TTL_MS = prev;
+    if (prev !== undefined) process.env.NOFLY_GUARD_SUBJECT_TTL_MS = prev;
   }
 });
 
