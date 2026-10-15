@@ -77,6 +77,7 @@ function summaryLine({ blocked, flagged, total }) {
   if (flagged.length) {
     return yellow(`⚠ ${flagged.length} to review`) + dim(` · ${total - flagged.length} clean`);
   }
+  if (!total) return yellow('○ No documents were found to screen here, so nothing is covered.');
   return green(`✓ All ${total} screened documents clean.`);
 }
 

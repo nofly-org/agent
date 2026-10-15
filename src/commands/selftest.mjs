@@ -262,9 +262,15 @@ export async function cmdSelftest(flags = {}) {
   }
   if (failed.length) console.log(`  ${red('✗')} ${failed.length} agent${failed.length === 1 ? '' : 's'} escalated without getting an answer this test could verify.`);
   if (!porous.length && !failed.length) {
-    console.log(`  ${green('✓')} Every installed agent's tool calls pass through the hook, and every canary the org has a rule for reached the server.`);
+    console.log(session
+      ? `  ${green('✓')} Every installed agent's tool calls pass through the hook, and every canary the org has a rule for reached the server.`
+      : `  ${green('✓')} Every installed agent's tool calls pass through the hook. ${dim('No canary was sent, so whether the server screens them was not tested.')}`);
   }
-  if (session) console.log(dim(`  ${report.reported ? 'Reported to' : 'Could not report to'} ${url} - the org's fleet coverage now includes this machine.`));
+  if (session) {
+    console.log(dim(report.reported
+      ? `  Reported to ${url} - the org's fleet coverage now includes this machine.`
+      : `  Could not report to ${url}${report.reportError ? ` (${report.reportError})` : ''} - the org's fleet coverage does not include this run.`));
+  }
   console.log('');
 
   return code === 0 ? undefined : process.exit(code);

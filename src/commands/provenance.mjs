@@ -3,6 +3,7 @@ import { api } from '../core/api-client.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { changedSinceBase, diffNames, stagedNames } from '../core/git-changes.mjs';
+import { git } from '../core/git-exec.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 
 function gitChangedPaths(root, { staged, base }) {
@@ -23,7 +24,10 @@ export async function cmdProvenance(flags, positional) {
 
   const changed = gitChangedPaths(root, { staged, base });
   if (changed === null) {
-    console.error(red('✗') + ' Not a git repository (or no diff available). Run inside a repo, or pass --base <ref>.');
+    const inRepo = git(['rev-parse', '--is-inside-work-tree'], { cwd: root, timeout: 3000 })?.trim() === 'true';
+    console.error(red('✗') + (inRepo
+      ? ` There is no earlier commit in ${root} to compare with${base ? ` and no "${base}" branch` : ''} - pass ${bold('--base <ref>')} or ${bold('--staged')}.`
+      : ' Not a git repository. Run inside a repo, or pass --base <ref>.'));
     process.exit(EXIT_USAGE);
   }
   const paths = changed.files;

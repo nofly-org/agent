@@ -307,6 +307,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `add skill` or `mcp … --config` is now named and skipped; before, every hook
   and command could hang on it, and a repo linking `.shomraignore` to
   `/dev/zero` held `shomra check` until the CI job timed out.
+- **Nothing claims a result it did not measure.** A `selftest` that could not
+  send a canary no longer ends with "every canary ... reached the server", and
+  one that could not report no longer says the fleet coverage includes this
+  machine; `corpus` over a folder with no documents says nothing was covered
+  instead of "All 0 screened documents clean"; `provenance` in a repository
+  with no earlier commit says so instead of calling it "not a git repository".
 - **`doctor` no longer grades an empty machine A.** With no AI tooling found it
   says Not Graded (and `--json` gives `score: null`, `graded: false`) instead
   of 100/100 and "all protected" over nothing; an agent with no firewall caps

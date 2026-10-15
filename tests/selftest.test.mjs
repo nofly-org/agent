@@ -512,3 +512,25 @@ test('every vendor the installer supports has a row in the table', () => {
   }
   assert.equal(widenToolGuardMatcher([{ matcher: 'Bash', hooks: [{ command: 'npx -y @shomra/agent tool-guard --agent claude' }] }], TOOL_GUARD_MATCHERS.claude), true);
 });
+
+test('a self-test that sent no canary never says the server answered one', async () => {
+  const home = fakeHome();
+  try {
+    const install = await new Promise((done) => {
+      const child = spawn(process.execPath, [CLI, 'install-hook', '--agent', 'claude', '--global'], { cwd: home, env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, NO_COLOR: '1' } });
+      child.on('close', done);
+    });
+    assert.equal(install, 0);
+    const out = await new Promise((done) => {
+      let text = '';
+      const child = spawn(process.execPath, [CLI, 'selftest'], { cwd: home, env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, NO_COLOR: '1' } });
+      child.stdout.on('data', (d) => { text += d; });
+      child.on('close', () => done(text));
+    });
+    assert.match(out, /Live canaries\s+not run/);
+    assert.match(out, /No canary was sent/);
+    assert.doesNotMatch(out, /reached the server/);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
