@@ -16,6 +16,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the next time you install. Requests carry both the `X-NoFly-*` and
   `X-Shomra-*` headers, so a backend that has not been updated still accepts
   them.
+- **GitHub shows the new name too.** `nofly pr` posts its check as
+  `NoFly AI Security`, so a branch-protection rule that requires
+  `Shomra AI Security` has to name the new check. SARIF reports `NoFly` as the
+  tool with `nofly.` rule ids, so code scanning starts a fresh set of alerts and
+  lists the old Shomra one as stale until you delete it under Tool status.
 - **`nofly pr` with no base branch in the checkout now checks every AI
   artifact and trusts no waiver.** It used to fall back to the last commit, so a
   multi-commit pull request could hide a file in an earlier commit. In GitHub
