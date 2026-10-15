@@ -318,6 +318,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`--all-users` reports each user's own setup.** Other users are no longer
   credited with the guard, permissions or hook scripts of the project the scan
   was started from, and machine-wide MCP servers are listed once.
+- **A report never exceeds what the server accepts.** Each user home had its own
+  4 MB content budget, so `report --all-users` on a shared machine could pass the
+  server's 5 MB limit and be refused whole. The largest artifacts are now left
+  out until it fits and listed as skipped (`report-size`), never as clean.
 - **The folder you scan is always covered.** It is walked first with its own
   budget, large cache folders under your home are skipped, and a walk that
   ran out of budget is listed as skipped instead of ending silently.

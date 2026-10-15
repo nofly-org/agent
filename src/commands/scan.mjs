@@ -81,6 +81,28 @@ export async function cmdScan(flags) {
   }
 }
 
+const MAX_REPORT_BYTES = 5 * 1024 * 1024 - 256 * 1024;
+
+export function fitReport(body, limit = MAX_REPORT_BYTES) {
+  const size = (value) => Buffer.byteLength(JSON.stringify(value));
+  let total = size(body);
+  if (total <= limit) return { body, left: 0 };
+  const artifacts = body.artifacts ?? [];
+  const bySize = artifacts.map((artifact, index) => ({ index, bytes: size(artifact) })).sort((a, b) => b.bytes - a.bytes);
+  const left = new Set();
+  for (const { index, bytes } of bySize) {
+    if (total <= limit) break;
+    left.add(index);
+    total -= bytes;
+  }
+  const fitted = {
+    ...body,
+    artifacts: artifacts.filter((_, index) => !left.has(index)),
+    capped: [...(body.capped ?? []), ...[...left].map((index) => ({ reason: 'report-size', path: artifacts[index]?.path ?? artifacts[index]?.name ?? null }))],
+  };
+  return size(fitted) <= limit ? { body: fitted, left: left.size } : null;
+}
+
 async function sendReport(cfg, assets, flags, extra = {}) {
   const { apiKey, url } = resolveSettings(cfg);
   if (!apiKey) {
@@ -89,18 +111,22 @@ async function sendReport(cfg, assets, flags, extra = {}) {
   const artifacts = extra.artifacts ?? [];
   const capped = extra.capped ?? [];
   const available = extra.available ?? [];
+  const fitted = fitReport({
+    machine: { ...machineInfo(cfg), scope: flags['all-users'] ? 'all-users' : 'user' },
+    assets: maskDeep(assets),
+    artifacts: maskDeep(artifacts),
+    capped,
+    available,
+  });
+  if (!fitted) {
+    console.error(`  ${red('✗')} The inventory is larger than the server accepts in one report even without artifact contents - nothing was sent. Narrow it with --path <dir>.`);
+    process.exitCode = 1;
+    return;
+  }
+  if (fitted.left && !flags.json) console.log(yellow(`\n  ⚠ ${fitted.left} artifact(s) were left out to fit the server's size limit - they are listed as skipped, not as clean.`));
   if (!flags.json) process.stdout.write(dim('\n  Reporting to platform… '));
   try {
-    const res = await api(url, apiKey, '/agent/report', {
-      machine: { ...machineInfo(cfg), scope: flags['all-users'] ? 'all-users' : 'user' },
-      assets: maskDeep(assets),
-      artifacts: maskDeep(artifacts),
-
-      capped,
-
-      available,
-    }, {
-
+    const res = await api(url, apiKey, '/agent/report', fitted.body, {
       timeoutMs: clampInt(process.env.SHOMRA_API_TIMEOUT_MS, 180000, 1000, 600000),
     });
     if (flags.json) {

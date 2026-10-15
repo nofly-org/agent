@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describeFetchError } from '../src/core/keyed-fetch.mjs';
 import { okBody } from '../src/core/api-client.mjs';
+import { fitReport } from '../src/commands/scan.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(HERE, '..', 'shomra.mjs');
@@ -93,4 +94,16 @@ test('a memory scan whose uploads all failed says nothing was checked and exits 
   } finally {
     await down.close();
   }
+});
+
+test('an inventory report too big for the server drops whole artifacts and lists them as skipped', () => {
+  const skill = (n) => ({ kind: 'skill', name: `s${n}`, path: `skills/s${n}/SKILL.md`, content: 'x'.repeat(1_000_000), files: [], metadata: {} });
+  const body = { machine: {}, assets: [], artifacts: Array.from({ length: 8 }, (_, i) => skill(i)), capped: [{ reason: 'byte-budget', path: 'a' }], available: [] };
+  const { body: fitted, left } = fitReport(body);
+  assert.ok(Buffer.byteLength(JSON.stringify(fitted)) <= 5 * 1024 * 1024 - 256 * 1024);
+  assert.equal(left, 8 - fitted.artifacts.length);
+  assert.equal(fitted.capped.filter((c) => c.reason === 'report-size').length, left);
+  assert.equal(fitted.capped[0].reason, 'byte-budget', 'earlier caps are kept');
+  assert.equal(fitReport({ machine: {}, assets: [], artifacts: [skill(1)] }).left, 0);
+  assert.equal(fitReport({ machine: {}, assets: [{ name: 'x'.repeat(6 * 1024 * 1024) }], artifacts: [] }), null);
 });
