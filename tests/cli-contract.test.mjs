@@ -154,6 +154,31 @@ test('the ledger finds the pre-commit hook wherever git keeps hooks', () => {
   }
 });
 
+test('doctor never grades an empty machine, and an unguarded agent caps the grade', { skip: process.platform === 'win32' }, () => {
+  const s = sandbox();
+  try {
+    const empty = JSON.parse(s.run(['doctor', '--json']).stdout);
+    assert.equal(empty.graded, false);
+    assert.equal(empty.score, null);
+    assert.match(s.run(['doctor']).stdout, /Not Graded/);
+
+    const bin = path.join(s.dir, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\n', { mode: 0o755 });
+    fs.mkdirSync(path.join(s.dir, '.claude'));
+    const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}` };
+    const unguarded = JSON.parse(s.run(['doctor', '--json'], env).stdout);
+    assert.equal(unguarded.unguarded, 1);
+    assert.ok(unguarded.score <= 74, `an unguarded agent graded ${unguarded.score}`);
+    s.run(['install-hook', '--agent', 'claude', '--global'], env);
+    const guarded = JSON.parse(s.run(['doctor', '--json'], env).stdout);
+    assert.equal(guarded.unguarded, 0);
+    assert.equal(guarded.grade, 'A');
+  } finally {
+    s.done();
+  }
+});
+
 test('backend URLs are parsed, not pattern-replaced', () => {
   assert.deepEqual(parseBackendUrl('https://localhost.corp.example:8443/'), { url: 'https://localhost.corp.example:8443', cleartext: false });
   assert.deepEqual(parseBackendUrl('http://localhost-api.internal'), { url: 'http://localhost-api.internal', cleartext: true });

@@ -47,6 +47,10 @@ const CLINE_SCRIPT_MARK = /\/\/ shomra cline hook/;
 
 /** Every settings file a vendor's hook could be installed in - user scope first, then this repo. */
 export function agentHookFiles(agent) {
+  return [...new Set(hookFileCandidates(agent))];
+}
+
+function hookFileCandidates(agent) {
   const home = os.homedir();
   const cwd = process.cwd();
   switch (agent) {

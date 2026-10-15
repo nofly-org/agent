@@ -307,6 +307,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `add skill` or `mcp … --config` is now named and skipped; before, every hook
   and command could hang on it, and a repo linking `.shomraignore` to
   `/dev/zero` held `shomra check` until the CI job timed out.
+- **`doctor` no longer grades an empty machine A.** With no AI tooling found it
+  says Not Graded (and `--json` gives `score: null`, `graded: false`) instead
+  of 100/100 and "all protected" over nothing; an agent with no firewall caps
+  the grade at C and a blocking artifact at D. `status` lists a settings file
+  once when the project and the home folder are the same place.
 - **A backend that cannot be reached is named in plain words.** "fetch failed"
   now reads as a refused connection, a name that does not resolve, a closed
   connection, a timeout or a TLS certificate that could not be verified (with
