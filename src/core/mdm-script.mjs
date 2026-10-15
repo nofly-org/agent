@@ -122,11 +122,12 @@ if (-not (Test-Path $Entry)) {
 
 & $Node $Entry init --machine --url $Url
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$Status = 0
 & $Node $Entry schedule install --all-users --every ${hours}h
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-${guard ? "& $Node $Entry install-hook --managed\nif ($LASTEXITCODE -ne 0) { Write-Output 'the managed runtime firewall could not be installed for every agent - see the output above' }\n" : ''}& $Node $Entry report --all-users
+if ($LASTEXITCODE -ne 0) { Write-Output 'the report schedule could not be installed - see the output above'; $Status = 1 }
+${guard ? "& $Node $Entry install-hook --managed\nif ($LASTEXITCODE -ne 0) { Write-Output 'the managed runtime firewall could not be installed for every agent - see the output above'; $Status = 1 }\n" : ''}& $Node $Entry report --all-users
 if ($LASTEXITCODE -ne 0) { Write-Output 'first report finished with findings or errors - see the Shomra dashboard' }
-exit 0
+exit $Status
 `;
 }
 

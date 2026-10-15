@@ -176,7 +176,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   followed), says so before running anything when there is none
   (`SHOMRA_ALLOW_USER_NODE=1` accepts the risk), checks npm is there, runs every
   step, and exits non-zero when the schedule or the managed firewall could not
-  be installed so the MDM console shows it.
+  be installed so the MDM console shows it. The Windows bootstrap now does the
+  same instead of stopping at a failed schedule or passing a failed firewall.
 - **The root-owned check follows links.** A launcher reached through a link was
   judged by the link's folders only, so a link into a folder a user owns
   passed; the real file's folders are now checked too.
