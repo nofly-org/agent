@@ -5,6 +5,7 @@ import { isAiUsageScannable, scanAiUsage } from '../detect/ai-usage.mjs';
 import { localGate } from '../detect/guard-signals.mjs';
 import { isModelRefScannable, scanModelRefs } from '../detect/model-refs.mjs';
 import { RULES_BEGIN, RULES_TARGETS } from './sections.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 const MAX_RULES_ARTIFACTS = 200;
 
@@ -22,8 +23,7 @@ export function rulesContext(root) {
     if (managed.has(a.rel)) continue;
     let content;
     try {
-      if (fs.statSync(a.full).size > MAX_ARTIFACT_BYTES) continue;
-      content = fs.readFileSync(a.full, 'utf8');
+      content = readRegularText(a.full, MAX_ARTIFACT_BYTES);
     } catch { continue; }
     if (content.includes(RULES_BEGIN)) continue;
     considered.push({ ...a, content });
@@ -48,7 +48,7 @@ export function rulesContext(root) {
   let modelRefs = 0, aiUsage = 0;
   for (const f of walkSourceFiles(root, MAX_RULES_SOURCE_FILES)) {
     let text;
-    try { text = fs.readFileSync(f.full, 'utf8'); } catch { continue; }
+    try { text = readRegularText(f.full, MAX_ARTIFACT_BYTES); } catch { continue; }
     if (isModelRefScannable(f.rel)) { try { modelRefs += scanModelRefs(text, f.rel).length; } catch {  } }
     if (isAiUsageScannable(f.rel)) { try { aiUsage += scanAiUsage(text, f.rel).length; } catch {  } }
   }
@@ -56,7 +56,7 @@ export function rulesContext(root) {
   let mcpRegistered = false;
   for (const rel of ['.mcp.json', '.cursor/mcp.json', '.gemini/settings.json', '.windsurf/mcp_config.json']) {
     try {
-      const cfg = JSON.parse(fs.readFileSync(path.join(root, rel), 'utf8'));
+      const cfg = JSON.parse(readRegularText(path.join(root, rel), MAX_ARTIFACT_BYTES));
       if (cfg && cfg.mcpServers && cfg.mcpServers.shomra) { mcpRegistered = true; break; }
     } catch {  }
   }

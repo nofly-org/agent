@@ -11,6 +11,7 @@ import { isInstructionPath } from '../detect/signals/instruction-paths.mjs';
 import { MACHINE_MEMORY_ROOTS, SERVER_SIDE_MEMORY, classifyMemoryPath, sniffMemoryJsonl } from '../detect/signals/memory-locations.mjs';
 import { outOfBandChange, recordLedger, sha256 } from '../guard/memory-write.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
+import { readFailure, readRegularText } from '../core/safe-read.mjs';
 
 export function memoryLocation(p) {
   return classifyMemoryPath(String(p || '').split(path.sep).join('/'));
@@ -157,11 +158,10 @@ function readStore(file) {
   const loc = memoryLocation(file.full) ?? memoryLocation(file.rel);
   if (loc?.format === 'binary') return { content: '', unreadable: `${path.extname(file.full).slice(1) || 'binary'} store`, format: 'binary' };
   try {
-    const size = fs.statSync(file.full).size;
-    if (size > MAX_ARTIFACT_BYTES) return { content: '', unreadable: `larger than ${Math.round(MAX_ARTIFACT_BYTES / 1_000_000)} MB`, format: loc?.format ?? null };
-    return { content: fs.readFileSync(file.full, 'utf8'), unreadable: null, format: loc?.format ?? null };
+    return { content: readRegularText(file.full, MAX_ARTIFACT_BYTES), unreadable: null, format: loc?.format ?? null };
   } catch (error) {
-    return { content: '', unreadable: `could not be opened (${error.code || 'error'})`, format: loc?.format ?? null };
+    if (error.code === 'EFBIG') return { content: '', unreadable: `larger than ${Math.round(MAX_ARTIFACT_BYTES / 1_000_000)} MB`, format: loc?.format ?? null };
+    return { content: '', unreadable: `could not be opened (${readFailure(error)})`, format: loc?.format ?? null };
   }
 }
 

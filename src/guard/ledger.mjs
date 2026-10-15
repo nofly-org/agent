@@ -1,6 +1,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { readRegularText } from '../core/safe-read.mjs';
 
 export const MAX_GAPS = 50;
 
@@ -82,7 +83,7 @@ export function makeLedgerStore(configDir, { version } = {}) {
 
   const read = () => {
     try {
-      const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const raw = JSON.parse(readRegularText(file));
       return { open: openOf(raw?.open), pending: Array.isArray(raw?.pending) ? raw.pending.filter(isGap) : [] };
     } catch {
       return emptyLedger();

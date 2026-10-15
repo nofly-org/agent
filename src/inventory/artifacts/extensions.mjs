@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readText } from './file-read.mjs';
 import { userDirs } from '../discovery/platform.mjs';
+import { readRegularText } from '../../core/safe-read.mjs';
 
 const MAX_SOURCE_FILES = 20;
 const MAX_SOURCE_BYTES = 200_000;
@@ -65,7 +66,7 @@ export function bundleExtensionSource(artifact, absManifest, toRel, budget, capp
   const id = path.basename(root);
   try {
     const dataDir = path.dirname(path.dirname(root));
-    const settings = JSON.parse(fs.readFileSync(path.join(dataDir, 'Claude Extensions Settings', `${id}.json`), 'utf8'));
+    const settings = JSON.parse(readRegularText(path.join(dataDir, 'Claude Extensions Settings', `${id}.json`), 1024 * 1024));
     if (settings?.isEnabled === false) artifact.metadata.activation = 'disabled';
   } catch {  }
 }

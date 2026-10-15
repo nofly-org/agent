@@ -91,7 +91,7 @@ function failOpenNoticeDue(now = Date.now()) {
   const file = path.join(CONFIG_DIR, 'guard-notice.json');
   let last = 0;
   try {
-    last = Number(JSON.parse(fs.readFileSync(file, 'utf8')).at) || 0;
+    last = Number(JSON.parse(readRegularText(file)).at) || 0;
   } catch {
   }
   if (now - last < FAIL_OPEN_NOTICE_EVERY_MS) return false;

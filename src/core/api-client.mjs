@@ -26,7 +26,7 @@ export function gateMachine() {
   } catch {
 
   }
-  return { ...(machineId ? { machineId } : {}), hostname: os.hostname(), username: currentUsername() };
+  return { ...(typeof machineId === 'string' && machineId ? { machineId } : {}), hostname: os.hostname(), username: currentUsername() };
 }
 
 export function machineInfo(cfg) {

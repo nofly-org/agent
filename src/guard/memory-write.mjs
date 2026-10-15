@@ -475,7 +475,7 @@ function ledgerFile(p, dir) {
 
 export function readLedger(p, dir = MEMORY_LEDGER_DIR) {
   try {
-    const row = JSON.parse(fs.readFileSync(ledgerFile(p, dir), 'utf8'));
+    const row = JSON.parse(readRegularText(ledgerFile(p, dir)));
     return row && Array.isArray(row.hashes) ? row : null;
   } catch {
     return null;

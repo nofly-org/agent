@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { SHOMRA_ANY_HOOK_RE, shomraHookRe } from './hook-command.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 export const CLINE_EVENTS = { PreToolUse: 'tool-guard', PostToolUse: 'result-guard' };
 
@@ -64,7 +65,7 @@ export function agentHookFiles(agent) {
 export function agentHookInstalled(agent) {
   return agentHookFiles(agent).filter((f) => {
     try {
-      const text = fs.readFileSync(f, 'utf8');
+      const text = readRegularText(f);
       if (agent === 'aider') return /shomra llm guard/i.test(text);
       if (agent === 'cline') return CLINE_SCRIPT_MARK.test(text);
       return SHOMRA_ANY_HOOK_RE.test(text);

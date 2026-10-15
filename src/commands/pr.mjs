@@ -13,6 +13,7 @@ import { toSarif } from '../gate/sarif.mjs';
 import { touchedArtifacts } from '../gate/scope.mjs';
 import { trustedConfig } from '../gate/trusted.mjs';
 import { writeFileAtomic } from '../core/json-file.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 const PR_WORKFLOW = `name: Shomra AI Security
 on: pull_request
@@ -35,7 +36,7 @@ jobs:
 `;
 
 function readGithubEvent() {
-  try { return JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')); } catch { return {}; }
+  try { return JSON.parse(readRegularText(process.env.GITHUB_EVENT_PATH)); } catch { return {}; }
 }
 
 function githubApiBase() {

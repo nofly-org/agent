@@ -7,6 +7,7 @@ import { SEV_COLOR, bold, cyan, dim, green, red, yellow } from '../core/terminal
 import { localGate } from '../detect/guard-signals.mjs';
 import { kindFlag } from '../gate/environment.mjs';
 import { maskSecrets } from '../detect/secret-mask.mjs';
+import { readInputFile } from '../cli/read-input.mjs';
 
 export async function cmdWhy(flags, positional) {
   const file = positional[0];
@@ -27,7 +28,7 @@ export async function cmdWhy(flags, positional) {
     console.error(red('✗') + ` File not found: ${file}`);
     process.exit(EXIT_USAGE);
   }
-  const content = fs.readFileSync(target, 'utf8');
+  const content = readInputFile(target, String(file));
   const rel = path.relative(process.cwd(), target).split(path.sep).join('/');
   const kind = kindFlag(flags);
 

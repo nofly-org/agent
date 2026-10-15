@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { grade } from '../detect/guard-signals.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 const IGNORE_MARK = /(?:\/\/|#|<!--|;)\s*shomra-ignore(-file|-next-line)?\b[:\s]?(.*)$/i;
 
@@ -12,7 +13,7 @@ export function globToRe(glob) {
 
 export function loadIgnoreRules(root) {
   let raw = '';
-  try { raw = fs.readFileSync(path.join(root, '.shomraignore'), 'utf8'); } catch {  }
+  try { raw = readRegularText(path.join(root, '.shomraignore'), 1024 * 1024); } catch {  }
   return parseIgnoreRules(raw);
 }
 
@@ -29,7 +30,7 @@ export function parseIgnoreRules(raw) {
 }
 
 export function loadBaseline(root) {
-  try { return parseBaseline(fs.readFileSync(path.join(root, '.shomra', 'baseline.json'), 'utf8')); } catch { return null; }
+  try { return parseBaseline(readRegularText(path.join(root, '.shomra', 'baseline.json'))); } catch { return null; }
 }
 
 export function parseBaseline(raw) {

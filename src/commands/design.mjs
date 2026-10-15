@@ -6,6 +6,8 @@ import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE, exitNotConfigured } from '../core/exit-codes.mjs';
 import { SEV_COLOR, bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { CAP_LABEL, analyzeDesign, designChecklist } from '../detect/design.mjs';
+import { readInputFile } from '../cli/read-input.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 export async function cmdDesign(flags, positional) {
   const target = positional[0] || flags.path;
@@ -26,14 +28,14 @@ export async function cmdDesign(flags, positional) {
     }
     if (fs.statSync(abs).isDirectory()) {
       for (const f of walkDesignDocs(abs)) {
-        try { if (fs.statSync(f.full).size <= MAX_ARTIFACT_BYTES) docs.push({ name: f.rel, text: fs.readFileSync(f.full, 'utf8') }); } catch {  }
+        try { docs.push({ name: f.rel, text: readRegularText(f.full, MAX_ARTIFACT_BYTES) }); } catch {  }
       }
       if (!docs.length) {
         console.error(red('✗') + ` No design documents (.md / .txt / .rst) found under ${target}.`);
         process.exit(EXIT_USAGE);
       }
     } else {
-      docs.push({ name: path.relative(process.cwd(), abs).split(path.sep).join('/'), text: fs.readFileSync(abs, 'utf8') });
+      docs.push({ name: path.relative(process.cwd(), abs).split(path.sep).join('/'), text: readInputFile(abs, String(target)) });
     }
   }
 

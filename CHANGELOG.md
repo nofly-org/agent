@@ -296,6 +296,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`ledger` finds the pre-commit hook where git keeps it**, including
   `core.hooksPath` and worktrees, and never stalls on a config that is not a
   regular file.
+- **No command or hook waits on a file that is not a regular file.** A named
+  pipe, a folder or a link to a device in place of `~/.shomra/config.json`, a
+  repo's `.shomraignore`, `.shomra/policy.yml`, `.shomra/baseline.json`, an
+  agent settings file, a git hook or a file passed to `plan`, `why`, `design`,
+  `add skill` or `mcp … --config` is now named and skipped; before, every hook
+  and command could hang on it, and a repo linking `.shomraignore` to
+  `/dev/zero` held `shomra check` until the CI job timed out.
+- **A config that cannot be read is reported, never read as empty.** `mcp list`
+  says a config is broken instead of listing no servers, reads comments, and
+  skips entries that are not servers; `mcp guard` no longer claims servers were
+  guarded when no config could be read; `rules --write` never replaces an
+  instructions file it failed to read; a `config.json` with a non-text key no
+  longer crashes `status`, and one that cannot be written says so in words.
 
 
 ### Agent identity registration

@@ -3,6 +3,9 @@ import path from 'node:path';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { git, gitHooksPath } from '../core/git-exec.mjs';
 import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
+import { readFailure, readRegularText } from '../core/safe-read.mjs';
+
+const MAX_HOOK_BYTES = 1024 * 1024;
 
 export async function cmdInstallPrecommit(flags, positional) {
 
@@ -39,10 +42,7 @@ export async function cmdInstallPrecommit(flags, positional) {
     '',
   ].join('\n');
 
-  let existing = null;
-  try {
-    existing = fs.readFileSync(hookPath, 'utf8');
-  } catch {}
+  const existing = readExistingHook(hookPath);
 
   if (existing && existing.includes(marker) && !flags.force) {
     console.log(green('  ✓') + ' Shomra pre-commit hook already installed ' + dim('→ ' + hookPath));
@@ -130,8 +130,7 @@ function installPreReceive(flags, positional) {
     '',
   ].join('\n');
 
-  let existing = null;
-  try { existing = fs.readFileSync(hookPath, 'utf8'); } catch {  }
+  const existing = readExistingHook(hookPath);
   const ours = existing !== null && (existing.includes(ownedBy) || existing.includes('shomra gate --all'));
   if (existing === managed) {
     console.log(green('  ✓') + ' Shomra pre-receive hook already installed ' + dim('→ ' + hookPath));
@@ -165,6 +164,16 @@ function installPreReceive(flags, positional) {
   console.log(dim('  Every push is now gated server-side - no --no-verify, and no per-developer install.'));
   console.log(dim('  This hook FAILS CLOSED: if shomra is missing on the server, pushes are refused.'));
   console.log(dim('  GitHub.com has no server-side hooks - there, use the Action as a required status check.\n'));
+}
+
+function readExistingHook(hookPath) {
+  try {
+    return readRegularText(hookPath, MAX_HOOK_BYTES);
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    console.error(red('✗') + ` ${hookPath} could not be read (${readFailure(error)}) - nothing was changed.`);
+    return process.exit(1);
+  }
 }
 
 function keepHookBackup(hookPath, text) {

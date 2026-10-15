@@ -10,6 +10,7 @@ import { emitGuardAsk } from '../guard/emit.mjs';
 import { envFlag, resolveAgentFlag } from '../guard/options.mjs';
 import { reportGuardDecision } from '../guard/report.mjs';
 import { readHookPayload } from '../guard/payload.mjs';
+import { readInputFile } from '../cli/read-input.mjs';
 
 function planAdvice(r, { maxControls = 5 } = {}) {
   if (r.verdict !== 'OPEN_PATH') return null;
@@ -35,7 +36,7 @@ export async function cmdPlan(flags, positional) {
   else {
     const abs = path.resolve(String(target));
     if (!fs.existsSync(abs)) { console.error(red('✗') + ` Not found: ${target}`); process.exit(EXIT_USAGE); }
-    text = fs.readFileSync(abs, 'utf8');
+    text = readInputFile(abs, String(target));
   }
 
   const r = analyzeDesign(text, { name: typeof target === 'string' ? String(target) : 'plan' });

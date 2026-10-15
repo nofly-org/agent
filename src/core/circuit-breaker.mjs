@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG_DIR } from './config.mjs';
 import { clampInt } from './numbers.mjs';
+import { readRegularText } from './safe-read.mjs';
 
 const BREAKER_FILE = path.join(CONFIG_DIR, 'guard-breaker.json');
 
@@ -25,7 +26,7 @@ export function breakerThreshold() {
 
 function readBreaker() {
   try {
-    const state = JSON.parse(fs.readFileSync(BREAKER_FILE, 'utf8'));
+    const state = JSON.parse(readRegularText(BREAKER_FILE));
     if (!state || typeof state !== 'object' || typeof state.at !== 'number') return null;
     return { at: state.at, failures: Number.isInteger(state.failures) && state.failures > 0 ? state.failures : 1 };
   } catch {

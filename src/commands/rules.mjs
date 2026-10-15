@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { api, gateMachine } from '../core/api-client.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
@@ -10,6 +9,7 @@ import { rulesContext } from '../rules/context.mjs';
 import { generateRules, mergeRulesBlock, resolveRulesTargets, rulesBlock, rulesBlockDamage } from '../rules/generate.mjs';
 import { RULES_BEGIN, RULES_TARGETS } from '../rules/sections.mjs';
 import { writeFileAtomic } from '../core/json-file.mjs';
+import { readFailure, readRegularText } from '../core/safe-read.mjs';
 
 const ORG_POLICY_TIMEOUT_MS = 5000;
 const MAX_ORG_DIRECTIVES = 20;
@@ -50,9 +50,9 @@ function planTarget(root, key, block) {
 
   let existing = '';
   try {
-    existing = fs.readFileSync(absolutePath, 'utf8');
-  } catch {
-    existing = '';
+    existing = readRegularText(absolutePath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') return { key, label: target.label, file: target.file, abs: absolutePath, next: null, worsens: false, state: 'unreadable', damage: readFailure(error) };
   }
 
   const damage = rulesBlockDamage(existing);
@@ -98,13 +98,17 @@ function printDriftReport(plan, drifted) {
   }
   console.log(`\n  ${red(`✗ Shomra rules out of date in ${drifted.length} ${plural(drifted.length, 'file')}:`)}`);
   for (const target of drifted) {
-    const state = target.state === 'absent' ? red('absent') : target.state === 'damaged' ? red('damaged') : yellow('stale ');
+    const state = target.state === 'absent' ? red('absent') : target.state === 'damaged' ? red('damaged') : target.state === 'unreadable' ? red('unreadable') : yellow('stale ');
     console.log(`    ${state} ${bold(target.file)} ${dim(`· ${target.label}`)}`);
   }
   console.log(dim('\n  Run ') + bold('shomra rules --write') + dim(' and commit the result.\n'));
 }
 
 function writeTarget(target, flags) {
+  if (target.state === 'unreadable') {
+    if (!flags.json) console.log(`  ${red('✗')} ${target.file} ${dim(`- could not be read (${target.damage}); nothing was changed.`)}`);
+    return { wrote: false, failed: true };
+  }
   if (target.state === 'damaged') {
     if (!flags.json) console.log(`  ${red('✗')} ${target.file} ${dim(`- its Shomra block is damaged (${target.damage}). Fix or remove the block by hand; nothing was changed.`)}`);
     return { wrote: false, failed: true };

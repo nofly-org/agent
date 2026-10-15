@@ -1,6 +1,8 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { DEC_RANK } from './sast.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
+
+const MAX_REPO_FILE_BYTES = 1024 * 1024;
 
 const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -34,7 +36,7 @@ export const REPO_POLICY_FILES = ['policy.yml', 'policy.yaml', 'policy.json'];
 export function loadRepoPolicy(root) {
   for (const f of REPO_POLICY_FILES) {
     let text;
-    try { text = fs.readFileSync(path.join(root, '.shomra', f), 'utf8'); } catch { continue; }
+    try { text = readRegularText(path.join(root, '.shomra', f), MAX_REPO_FILE_BYTES); } catch { continue; }
     return parseRepoPolicy(text, f);
   }
   return null;

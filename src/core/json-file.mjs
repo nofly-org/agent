@@ -1,5 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { readFailure, readRegularText } from './safe-read.mjs';
+
+const MAX_SETTINGS_BYTES = 256 * 1024 * 1024;
 
 export class SettingsFileError extends Error {}
 
@@ -7,9 +10,9 @@ export function readJsonFile(file) {
   if (!fs.existsSync(file)) return {};
   let raw;
   try {
-    raw = fs.readFileSync(file, 'utf8');
+    raw = readRegularText(file, MAX_SETTINGS_BYTES);
   } catch (error) {
-    throw new SettingsFileError(`${file} could not be read (${error.code ?? error.message}) - nothing was changed.`);
+    throw new SettingsFileError(`${file} could not be read (${readFailure(error)}) - nothing was changed.`);
   }
   if (!raw.trim()) return {};
   let parsed;

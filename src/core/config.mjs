@@ -3,6 +3,11 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { readFailure, readRegularText } from './safe-read.mjs';
+
+const MAX_CONFIG_BYTES = 4 * 1024 * 1024;
+const isText = (value) => typeof value === 'string' && value.trim() !== '';
+const readConfigJson = (file) => JSON.parse(readRegularText(file, MAX_CONFIG_BYTES));
 
 export const CONFIG_DIR = path.join(os.homedir(), '.shomra');
 
@@ -28,7 +33,7 @@ export function markMachineConfig(cfg) {
 
 export function loadMachineConfig(file = MACHINE_CONFIG_FILE) {
   try {
-    const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const cfg = readConfigJson(file);
     return cfg && typeof cfg === 'object' && !Array.isArray(cfg) ? cfg : null;
   } catch {
     return null;
@@ -37,7 +42,7 @@ export function loadMachineConfig(file = MACHINE_CONFIG_FILE) {
 
 export function loadUserConfig(file = CONFIG_FILE) {
   try {
-    const user = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const user = readConfigJson(file);
     return user && typeof user === 'object' && !Array.isArray(user) ? user : {};
   } catch {
     return {};
@@ -58,9 +63,9 @@ function warnUnreadable(reason) {
 export function loadConfig() {
   let user;
   try {
-    user = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    user = readConfigJson(CONFIG_FILE);
   } catch (e) {
-    if (e?.code !== 'ENOENT') warnUnreadable(e?.code ?? 'not valid JSON');
+    if (e?.code !== 'ENOENT') warnUnreadable(e instanceof SyntaxError ? 'not valid JSON' : readFailure(e));
     const machine = loadMachineConfig();
     return machine ? markMachineConfig(machine) : {};
   }
@@ -69,13 +74,34 @@ export function loadConfig() {
     const machine = loadMachineConfig();
     return machine ? markMachineConfig(machine) : {};
   }
+  for (const k of ['apiKey', 'url']) {
+    if (user[k] === undefined || isText(user[k])) continue;
+    warnUnreadable(`"${k}" is not text`);
+    delete user[k];
+  }
   if (!user.apiKey || !user.url) {
     const machine = loadMachineConfig();
     for (const k of ['apiKey', 'url']) {
-      if (!user[k] && machine?.[k]) Object.defineProperty(user, k, { value: machine[k], enumerable: false, writable: true, configurable: true });
+      if (!user[k] && isText(machine?.[k])) Object.defineProperty(user, k, { value: machine[k], enumerable: false, writable: true, configurable: true });
     }
   }
   return user;
+}
+
+function writePrivateJson(file, value) {
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(value, null, 2), { mode: 0o600 });
+    try {
+      fs.chmodSync(tmp, 0o600);
+    } catch {}
+    fs.renameSync(tmp, file);
+  } catch (error) {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {}
+    throw new Error(`${file} could not be written (${readFailure(error)}) - fix or move it, then run the command again.`);
+  }
 }
 
 function restrictWindowsDir(dir, env = process.env) {
@@ -88,10 +114,7 @@ export function saveMachineConfig(cfg, file = MACHINE_CONFIG_FILE) {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   if (process.platform === 'win32') restrictWindowsDir(dir);
   else fs.chmodSync(dir, 0o700);
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify({ ...cfg }, null, 2), { mode: 0o600 });
-  if (process.platform !== 'win32') fs.chmodSync(tmp, 0o600);
-  fs.renameSync(tmp, file);
+  writePrivateJson(file, { ...cfg });
 }
 
 export function saveConfig(cfg) {
@@ -100,21 +123,16 @@ export function saveConfig(cfg) {
   try {
     fs.chmodSync(CONFIG_DIR, 0o700);
   } catch {}
-  const tmp = `${CONFIG_FILE}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2), { mode: 0o600 });
-  try {
-    fs.chmodSync(tmp, 0o600);
-  } catch {}
-  fs.renameSync(tmp, CONFIG_FILE);
+  writePrivateJson(CONFIG_FILE, cfg);
 }
 
 export function inheritedMachineId(cfg, machine) {
-  if (cfg?.machineId || isMachineConfig(cfg)) return null;
+  if (isText(cfg?.machineId) || isMachineConfig(cfg)) return null;
   return typeof machine?.machineId === 'string' && machine.machineId ? machine.machineId : null;
 }
 
 export function getMachineId(cfg, machine = loadMachineConfig()) {
-  if (cfg.machineId) return cfg.machineId;
+  if (isText(cfg.machineId)) return cfg.machineId;
   const inherited = inheritedMachineId(cfg, machine);
   if (inherited) {
     cfg.machineId = inherited;
@@ -129,7 +147,7 @@ export function getMachineId(cfg, machine = loadMachineConfig()) {
 }
 
 export function getMachineSerial(cfg, read) {
-  if (cfg.serial) return cfg.serial;
+  if (isText(cfg.serial)) return cfg.serial;
   const serial = read();
   if (!serial) return null;
   cfg.serial = serial;
@@ -161,9 +179,10 @@ export function normalizeBackendUrl(raw) {
 }
 
 export function resolveSettings(cfg) {
-  const raw = process.env.SHOMRA_URL || cfg.url || '';
+  const pick = (...values) => values.find(isText)?.trim();
+  const raw = pick(process.env.SHOMRA_URL, cfg?.url);
   return {
-    apiKey: process.env.SHOMRA_API_KEY || cfg.apiKey,
+    apiKey: pick(process.env.SHOMRA_API_KEY, cfg?.apiKey),
     url: raw ? normalizeBackendUrl(raw) : null,
   };
 }
@@ -183,7 +202,7 @@ export function storedAgentCredential(cfg, vendor, url) {
 export function saveAgentCredential(target, entry, file = CONFIG_FILE) {
   let cfg = {};
   try {
-    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const raw = readConfigJson(file);
     if (raw && typeof raw === 'object' && !Array.isArray(raw)) cfg = raw;
   } catch {}
   const all = cfg.agentCredentials && typeof cfg.agentCredentials === 'object' && !Array.isArray(cfg.agentCredentials) ? cfg.agentCredentials : {};
@@ -193,11 +212,6 @@ export function saveAgentCredential(target, entry, file = CONFIG_FILE) {
   try {
     fs.chmodSync(dir, 0o700);
   } catch {}
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2), { mode: 0o600 });
-  try {
-    fs.chmodSync(tmp, 0o600);
-  } catch {}
-  fs.renameSync(tmp, file);
+  writePrivateJson(file, cfg);
   return file;
 }

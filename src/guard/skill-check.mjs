@@ -146,7 +146,7 @@ export function skillCacheKey({ url, apiKey, path: rel, content, siblings = [] }
 
 function readVerdicts(file) {
   try {
-    const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const doc = JSON.parse(readRegularText(file));
     return doc && typeof doc === 'object' && !Array.isArray(doc) ? doc : {};
   } catch {
     return {};
