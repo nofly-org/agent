@@ -14,7 +14,7 @@ import { mcpAdvisoryFindings } from '../src/detect/signals/mcp-advisories.mjs';
 import { readClaudeExtensions, readJetbrainsMcpServers, readSqliteMcpServers } from '../src/inventory/discovery/mcp-stores.mjs';
 
 const require = createRequire(import.meta.url);
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-mcpstores-'));
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-mcpstores-'));
 let sqlite = null;
 try { sqlite = require('node:sqlite'); } catch { /* Node < 22.5 */ }
 

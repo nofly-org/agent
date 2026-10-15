@@ -14,7 +14,7 @@ import { boundedLocalScan, MAX_SCREEN_CHARS, UNREAD_LABEL } from '../src/detect/
 import { readRegularHead, readRegularText } from '../src/core/safe-read.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
+const CLI = path.join(HERE, '..', 'nofly.mjs');
 const WINDOWS = process.platform === 'win32';
 const STORE = '/proj/.clinerules/notes.md';
 const TOKEN = 'ghp_Q7rT2mX9vB4nK8wL1pZ6sD3fH5jC0yA2uE4i';
@@ -46,7 +46,7 @@ function runHook(payload, env, home) {
     const started = Date.now();
     const child = spawn(process.execPath, [CLI, 'tool-guard', '--agent', 'claude'], {
       cwd: home,
-      env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, NO_COLOR: '1', SHOMRA_GUARD_TIMEOUT_MS: '8000', ...env },
+      env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, NO_COLOR: '1', NOFLY_GUARD_TIMEOUT_MS: '8000', ...env },
     });
     let stdout = '';
     const timer = setTimeout(() => child.kill('SIGKILL'), 30000);
@@ -85,7 +85,7 @@ test('a block left open is never guessed at, and a flood of markers stays fast',
 });
 
 test('the safe reader refuses pipes and devices and never blocks on them', { skip: WINDOWS }, () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-safe-read-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-safe-read-'));
   try {
     const fifo = path.join(dir, 'pipe');
     spawnSync('mkfifo', [fifo]);
@@ -101,14 +101,14 @@ test('the safe reader refuses pipes and devices and never blocks on them', { ski
 });
 
 test('an edit aimed at a named pipe is screened instead of hanging the hook', { skip: WINDOWS }, async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-fifo-edit-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-fifo-edit-'));
   const server = await stub(() => [200, { decision: 'ALLOW', reason: '' }]);
   try {
     const fifo = path.join(home, 'pipe.txt');
     spawnSync('mkfifo', [fifo]);
     const out = await runHook(
       { tool_name: 'mcp__files__edit_file', tool_input: { path: fifo, old_string: 'a', new_string: 'b' }, cwd: home, session_id: 's' },
-      { SHOMRA_API_KEY: 'shm_test_key_0000000000000000', SHOMRA_URL: server.url },
+      { NOFLY_API_KEY: 'shm_test_key_0000000000000000', NOFLY_URL: server.url },
       home,
     );
     assert.equal(out.signal, null, 'the hook finished on its own');
@@ -157,13 +157,13 @@ test('the guard body drops reconstructed files before it gives up, and gives up 
 });
 
 test('a call the server cannot read asks the person and never opens the outage window', async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-too-large-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-too-large-'));
   const server = await stub(() => [413, { message: 'request entity too large' }]);
   try {
-    const env = { SHOMRA_API_KEY: 'shm_test_key_0000000000000000', SHOMRA_URL: server.url, SHOMRA_GUARD_ALWAYS_ESCALATE: '1' };
+    const env = { NOFLY_API_KEY: 'shm_test_key_0000000000000000', NOFLY_URL: server.url, NOFLY_GUARD_ALWAYS_ESCALATE: '1' };
     const answered = await runHook({ tool_name: 'Bash', tool_input: { command: 'echo hello' }, cwd: home, session_id: 's' }, env, home);
     assert.match(answered.stdout, /"permissionDecision":"ask"/);
-    assert.equal(fs.existsSync(path.join(home, '.shomra', 'guard-breaker.json')), false, 'a too-large answer is not an outage');
+    assert.equal(fs.existsSync(path.join(home, '.nofly', 'guard-breaker.json')), false, 'a too-large answer is not an outage');
 
     const huge = await runHook({ tool_name: 'Write', tool_input: { file_path: path.join(home, 'big.txt'), content: 'a'.repeat(6 * 1024 * 1024) }, cwd: home, session_id: 's' }, env, home);
     assert.equal(huge.code, 0, 'the hook does not crash on a very large write');

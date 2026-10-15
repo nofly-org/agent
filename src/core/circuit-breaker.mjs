@@ -7,11 +7,11 @@ import { readRegularText } from './safe-read.mjs';
 const BREAKER_FILE = path.join(CONFIG_DIR, 'guard-breaker.json');
 
 export function guardTimeoutMs() {
-  return clampInt(process.env.SHOMRA_GUARD_TIMEOUT_MS, 2000, 200, 30000);
+  return clampInt(process.env.NOFLY_GUARD_TIMEOUT_MS, 2000, 200, 30000);
 }
 
 export function breakerCooldownMs() {
-  return clampInt(process.env.SHOMRA_GUARD_BREAKER_MS, 30000, 0, 600000);
+  return clampInt(process.env.NOFLY_GUARD_BREAKER_MS, 30000, 0, 600000);
 }
 
 export function breakerWindowOpen(at, now, cooldown) {
@@ -21,7 +21,7 @@ export function breakerWindowOpen(at, now, cooldown) {
 }
 
 export function breakerThreshold() {
-  return clampInt(process.env.SHOMRA_GUARD_BREAKER_FAILURES, 3, 1, 20);
+  return clampInt(process.env.NOFLY_GUARD_BREAKER_FAILURES, 3, 1, 20);
 }
 
 function readBreaker() {

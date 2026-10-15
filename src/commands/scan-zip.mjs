@@ -13,7 +13,7 @@ const MAX_POLICY_HITS_SHOWN = 3;
 function resolveArchive(positional) {
   const file = positional[0];
   if (!file) {
-    console.error(`${red('✗')} Usage: ${bold('shomra scan-zip <workspace.zip> [--project <id>] [--json]')}`);
+    console.error(`${red('✗')} Usage: ${bold('nofly scan-zip <workspace.zip> [--project <id>] [--json]')}`);
     process.exit(EXIT_USAGE);
   }
   const target = path.resolve(String(file));
@@ -57,13 +57,13 @@ async function readResponse(response, url) {
 
 async function uploadArchive({ url, apiKey, target, flags }) {
   if (!flags.json) process.stdout.write(dim('\n  Uploading to Workspace Scan… '));
-  const timeoutMs = clampInt(process.env.SHOMRA_API_TIMEOUT_MS, 300000, 1000, 1800000);
+  const timeoutMs = clampInt(process.env.NOFLY_API_TIMEOUT_MS, 300000, 1000, 1800000);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const response = await keyedFetch(`${url}/bundle/agent-scan`, {
       method: 'POST',
-      headers: { 'X-Shomra-Key': apiKey, Connection: 'close' },
+      headers: { 'X-NoFly-Key': apiKey, Connection: 'close' },
       body: await buildUploadForm(target, flags),
       signal: ctrl.signal,
     });
@@ -72,7 +72,7 @@ async function uploadArchive({ url, apiKey, target, flags }) {
     return report;
   } catch (error) {
     if (!flags.json) console.log(red('failed'));
-    const message = error?.name === 'AbortError' ? `no answer after ${Math.round(timeoutMs / 1000)}s (raise SHOMRA_API_TIMEOUT_MS or check the backend)` : describeFetchError(error, url);
+    const message = error?.name === 'AbortError' ? `no answer after ${Math.round(timeoutMs / 1000)}s (raise NOFLY_API_TIMEOUT_MS or check the backend)` : describeFetchError(error, url);
     console.error(`  ${red('✗')} ${message}\n`);
     return process.exit(1);
   } finally {
@@ -115,7 +115,7 @@ function printReport(report) {
 
   printPolicyDecision(report);
   printArtifactGroups(report);
-  console.log(`\n  ${summaryLine(report.verdict)}${dim(' Full report in the Shomra dashboard → Workspace Scan.\n')}`);
+  console.log(`\n  ${summaryLine(report.verdict)}${dim(' Full report in the NoFly dashboard → Workspace Scan.\n')}`);
 }
 
 export async function cmdScanZip(flags, positional) {

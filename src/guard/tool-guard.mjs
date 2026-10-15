@@ -38,7 +38,7 @@ const ALLOW_VERDICT = { verdict: 'ALLOW', top: null, findings: [] };
 
 
 function failOpenOnSevere() {
-  return envFlag('SHOMRA_GUARD_FAILOPEN_SEVERE');
+  return envFlag('NOFLY_GUARD_FAILOPEN_SEVERE');
 }
 
 function unscreenedSevere(normalized, tool, input) {
@@ -114,10 +114,10 @@ function failOpenNoticeDue(now = Date.now()) {
 function askUnscreened(agent, why, flagged = null) {
   emitGuardAsk(
     agent,
-    `Shomra could not screen this call (${why}), and it is a high-consequence one - a delete, a force push, `
+    `NoFly could not screen this call (${why}), and it is a high-consequence one - a delete, a force push, `
     + 'or a call that touches credentials or a file that survives the session. Nothing has judged it: approve it only if you meant it. '
     + (flagged ? `The on-machine rules also matched: ${flagged}. ` : '')
-    + 'Set SHOMRA_GUARD_FAILOPEN_SEVERE=1 to let these through unscreened.',
+    + 'Set NOFLY_GUARD_FAILOPEN_SEVERE=1 to let these through unscreened.',
   );
 }
 
@@ -126,8 +126,8 @@ function readHookPayload() {
 }
 
 function localTierDisabled() {
-  return process.env.SHOMRA_GUARD_LOCAL === '0'
-    || String(process.env.SHOMRA_GUARD_LOCAL).toLowerCase() === 'false';
+  return process.env.NOFLY_GUARD_LOCAL === '0'
+    || String(process.env.NOFLY_GUARD_LOCAL).toLowerCase() === 'false';
 }
 
 function screenLocally(normalized, tool, input) {
@@ -144,7 +144,7 @@ function screenLocally(normalized, tool, input) {
 }
 
 function localFlagMode() {
-  const mode = String(process.env.SHOMRA_GUARD_LOCAL_FLAG ?? '').trim().toLowerCase();
+  const mode = String(process.env.NOFLY_GUARD_LOCAL_FLAG ?? '').trim().toLowerCase();
   if (mode === 'allow' || mode === 'deny' || mode === 'ask') return mode;
   return failOpenOnSevere() ? 'allow' : 'ask';
 }
@@ -153,11 +153,11 @@ function settleTooLarge(agent, flagged) {
   const mode = localFlagMode();
   if (mode === 'allow') return;
   const matched = flagged ? ` The on-machine rules also matched: ${flagged}.` : '';
-  if (mode === 'deny') emitGuardDeny(agent, `Blocked on-machine by Shomra: ${TOO_LARGE_TO_SCREEN}, and SHOMRA_GUARD_LOCAL_FLAG=deny refuses what nothing judged.${matched}`);
+  if (mode === 'deny') emitGuardDeny(agent, `Blocked on-machine by NoFly: ${TOO_LARGE_TO_SCREEN}, and NOFLY_GUARD_LOCAL_FLAG=deny refuses what nothing judged.${matched}`);
   emitGuardAsk(
     agent,
-    `Shomra could not screen this call: ${TOO_LARGE_TO_SCREEN}, so nothing has judged it - approve it only if you meant it.${matched} `
-    + 'Set SHOMRA_GUARD_LOCAL_FLAG=allow to let such calls through.',
+    `NoFly could not screen this call: ${TOO_LARGE_TO_SCREEN}, so nothing has judged it - approve it only if you meant it.${matched} `
+    + 'Set NOFLY_GUARD_LOCAL_FLAG=allow to let such calls through.',
   );
 }
 
@@ -174,11 +174,11 @@ function settleFlagged(agent, label, why) {
   if (!label) return;
   const mode = localFlagMode();
   if (mode === 'allow') return;
-  if (mode === 'deny') emitGuardDeny(agent, `Blocked on-machine by Shomra: ${label}. ${why}, and SHOMRA_GUARD_LOCAL_FLAG=deny refuses what the local tier flags.`);
+  if (mode === 'deny') emitGuardDeny(agent, `Blocked on-machine by NoFly: ${label}. ${why}, and NOFLY_GUARD_LOCAL_FLAG=deny refuses what the local tier flags.`);
   emitGuardAsk(
     agent,
-    `Shomra flagged this call on-machine: ${label}. ${why}, so nothing else has judged it - approve it only if you meant it. `
-    + 'Set SHOMRA_GUARD_LOCAL_FLAG=allow to let flagged calls through.',
+    `NoFly flagged this call on-machine: ${label}. ${why}, so nothing else has judged it - approve it only if you meant it. `
+    + 'Set NOFLY_GUARD_LOCAL_FLAG=allow to let flagged calls through.',
   );
 }
 
@@ -231,8 +231,8 @@ export function unauthenticatedNote(status, { reason = null, agentCredential = f
   const who = agentCredential ? 'this agent’s credential' : 'this API key';
   const fix = agentCredential
     ? 'Check the agent in the dashboard (suspended, revoked or awaiting approval), or issue it a new credential.'
-    : 'Re-enroll with `shomra init --key <key>`.';
-  return `[shomra] guard NOT enforced: the backend rejected ${who} (HTTP ${status}${reason ? `: ${reason}` : ''}). `
+    : 'Re-enroll with `nofly init --key <key>`.';
+  return `[nofly] guard NOT enforced: the backend rejected ${who} (HTTP ${status}${reason ? `: ${reason}` : ''}). `
     + 'Local Tier-0 screening still ran; org policy, agent identity and flow control did not. '
     + `${fix}\n`;
 }
@@ -240,7 +240,7 @@ export function unauthenticatedNote(status, { reason = null, agentCredential = f
 function reportUnauthenticated(agent, status, strict, detail = {}) {
   process.stderr.write(unauthenticatedNote(status, detail));
   if (strict) {
-    emitGuardDeny(agent, `Shomra guard could not authenticate (HTTP ${status}); blocked by fail-closed policy.`);
+    emitGuardDeny(agent, `NoFly guard could not authenticate (HTTP ${status}); blocked by fail-closed policy.`);
   }
 }
 
@@ -262,7 +262,7 @@ export function fitGuardBody(body) {
 }
 
 function refuseTooLarge(agent, strict, onUnreachable) {
-  if (strict) emitGuardDeny(agent, `Shomra guard could not screen this call: ${TOO_LARGE_TO_SCREEN}; blocked by fail-closed policy.`);
+  if (strict) emitGuardDeny(agent, `NoFly guard could not screen this call: ${TOO_LARGE_TO_SCREEN}; blocked by fail-closed policy.`);
   return onUnreachable(TOO_LARGE_TO_SCREEN, { breaker: false, tooLarge: true });
 }
 
@@ -276,8 +276,8 @@ async function requestServerDecision({ url, apiKey, agentId, body, agent, strict
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Shomra-Key': apiKey,
-        ...(agentId ? { 'X-Shomra-Agent': agentId } : {}),
+        'X-NoFly-Key': apiKey,
+        ...(agentId ? { 'X-NoFly-Agent': agentId } : {}),
         Connection: 'close',
       },
       body: raw,
@@ -319,7 +319,7 @@ async function requestServerDecision({ url, apiKey, agentId, body, agent, strict
     clearTimeout(timer);
     breakerTrip();
     const why = describeFetchError(error, url);
-    if (strict) emitGuardDeny(agent, `Shomra guard could not be reached (${why}); blocked by fail-closed policy.`);
+    if (strict) emitGuardDeny(agent, `NoFly guard could not be reached (${why}); blocked by fail-closed policy.`);
     return onUnreachable(why, { breaker: true });
   }
 }
@@ -343,10 +343,10 @@ const sleep = (ms) => new Promise((done) => { setTimeout(done, ms); });
 
 function enforceServerDecision(agent, decision) {
   if (decision?.hold) {
-    emitGuardAsk(agent, decision.reason || 'Held for approval by Shomra - waiting on a reviewer. Retry once it’s approved.');
+    emitGuardAsk(agent, decision.reason || 'Held for approval by NoFly - waiting on a reviewer. Retry once it’s approved.');
   }
   if (decision?.decision === 'BLOCK') {
-    emitGuardDeny(agent, decision.reason || 'Blocked by Shomra security policy.', confirmationNote(decision.confirmation), stoppedNote(decision.stopped));
+    emitGuardDeny(agent, decision.reason || 'Blocked by NoFly security policy.', confirmationNote(decision.confirmation), stoppedNote(decision.stopped));
   }
 }
 
@@ -393,15 +393,15 @@ export function runTargetsOf(tool, input, normalized, read) {
 
 export async function cmdToolGuard(flags) {
   const agent = resolveAgentFlag(flags);
-  const strict = envFlag('SHOMRA_GUARD_STRICT');
-  const alwaysEscalate = envFlag('SHOMRA_GUARD_ALWAYS_ESCALATE');
+  const strict = envFlag('NOFLY_GUARD_STRICT');
+  const alwaysEscalate = envFlag('NOFLY_GUARD_ALWAYS_ESCALATE');
   const cfg = loadConfig();
   const settings = resolveSettings(cfg);
   const { url } = settings;
   const presented = resolveAgentIdentityHandle(flags);
   const fromWorkload = presented
     ? null
-    : await workloadCredential({ url, onError: (e) => process.stderr.write(`shomra: keyless sign-in failed - ${e?.message ?? e}\n`) });
+    : await workloadCredential({ url, onError: (e) => process.stderr.write(`nofly: keyless sign-in failed - ${e?.message ?? e}\n`) });
   const agentId = presented ?? fromWorkload ?? storedAgentCredential(cfg, agent, url);
   const onRejected = fromWorkload ? () => clearCachedCredential() : undefined;
   const apiKey = settings.apiKey || (agentId?.startsWith('shm_agt_') ? agentId : undefined);
@@ -414,22 +414,22 @@ export async function cmdToolGuard(flags) {
   if (local.verdict === 'BLOCK') {
     recordSelftest({ stage: 'local-block', tool, reason: local.top?.label ?? 'dangerous tool call' });
     await reportGuardDecision(url, apiKey, agentId, buildGuardBody(normalized, agent, 'BLOCK', local.top?.label));
-    emitGuardDeny(agent, `Blocked on-machine by Shomra: ${local.top?.label || 'dangerous tool call'}.`);
+    emitGuardDeny(agent, `Blocked on-machine by NoFly: ${local.top?.label || 'dangerous tool call'}.`);
   }
 
   const tamper = guardStateTamper(tool, input, { cwd: normalized.cwd });
   if (tamper) {
     const reason = tamperReason(tamper);
-    await reportGuardDecision(url, apiKey, agentId, buildGuardBody(normalized, agent, 'FLAG', 'Edits the Shomra guard’s own state'));
-    if (refuseOrAsk(agent, strict) === 'deny') emitGuardDeny(agent, `Blocked on-machine by Shomra: ${reason}`);
+    await reportGuardDecision(url, apiKey, agentId, buildGuardBody(normalized, agent, 'FLAG', 'Edits the NoFly guard’s own state'));
+    if (refuseOrAsk(agent, strict) === 'deny') emitGuardDeny(agent, `Blocked on-machine by NoFly: ${reason}`);
     emitGuardAsk(agent, reason);
   }
 
   const hookTamper = guardHookTamper(tool, input, { cwd: normalized.cwd });
   if (hookTamper) {
     const reason = hookTamperReason(hookTamper);
-    await reportGuardDecision(url, apiKey, agentId, buildGuardBody(normalized, agent, 'FLAG', 'Switches off the Shomra guard hook'));
-    if (refuseOrAsk(agent, strict) === 'deny') emitGuardDeny(agent, `Blocked on-machine by Shomra: ${reason}`);
+    await reportGuardDecision(url, apiKey, agentId, buildGuardBody(normalized, agent, 'FLAG', 'Switches off the NoFly guard hook'));
+    if (refuseOrAsk(agent, strict) === 'deny') emitGuardDeny(agent, `Blocked on-machine by NoFly: ${reason}`);
     emitGuardAsk(agent, reason);
   }
 
@@ -442,10 +442,10 @@ export async function cmdToolGuard(flags) {
   if (!apiKey) {
     recordSelftest({ stage: 'not-configured', tool });
     if (strict) {
-      emitGuardDeny(agent, 'Shomra is not configured on this machine (SHOMRA_GUARD_STRICT). Run: shomra init --key shm_…');
+      emitGuardDeny(agent, 'NoFly is not configured on this machine (NOFLY_GUARD_STRICT). Run: nofly init --key shm_…');
     }
-    if (unscreenedSevere(normalized, tool, input)) askUnscreened(agent, 'Shomra is not configured on this machine', flaggedBy);
-    settleFlagged(agent, flaggedBy, 'No Shomra server is configured on this machine to confirm it');
+    if (unscreenedSevere(normalized, tool, input)) askUnscreened(agent, 'NoFly is not configured on this machine', flaggedBy);
+    settleFlagged(agent, flaggedBy, 'No NoFly server is configured on this machine to confirm it');
     process.exit(0);
   }
 
@@ -470,7 +470,7 @@ export async function cmdToolGuard(flags) {
 
   /**
    * ⚠ A SUBJECT CALL FOLLOWS THE MACHINE'S FAIL MODE, and says so. There is no
-   * org-level fail mode: `SHOMRA_GUARD_STRICT` is the setting. Strict skips the
+   * org-level fail mode: `NOFLY_GUARD_STRICT` is the setting. Strict skips the
    * breaker and DENIES when the server cannot answer (`requestServerDecision`);
    * the default fails open - and the ledger records that an org subject rule
    * was NOT evaluated, distinct from an ordinary unscreened call, so a breaker
@@ -481,8 +481,8 @@ export async function cmdToolGuard(flags) {
     countUnscreened(subjectCall ? `${why} - org subject rules NOT evaluated` : supplyCall ? `${why} - package and image checks NOT run` : why);
     if (tooLarge) settleTooLarge(agent, flaggedBy);
     if (severe) askUnscreened(agent, why, flaggedBy);
-    settleFlagged(agent, flaggedBy, `No Shomra verdict arrived (${why})`);
-    if (failOpenNoticeDue()) emitGuardNotice(agent, `Shomra could not reach its server (${why}), so tool calls are screened on this machine only and org policy is not applied until it answers again. Set SHOMRA_GUARD_STRICT=1 to refuse calls instead.`);
+    settleFlagged(agent, flaggedBy, `No NoFly verdict arrived (${why})`);
+    if (failOpenNoticeDue()) emitGuardNotice(agent, `NoFly could not reach its server (${why}), so tool calls are screened on this machine only and org policy is not applied until it answers again. Set NOFLY_GUARD_STRICT=1 to refuse calls instead.`);
     return process.exit(0);
   };
 

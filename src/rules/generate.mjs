@@ -10,10 +10,10 @@ import { RULES_BEGIN, RULES_END, RULES_FOOTER, RULES_NOTE, RULES_TARGETS, RULES_
 
 export function generateRules(ctx, { orgLines = [], includeObserved = true } = {}) {
   const parts = [];
-  parts.push('## Security rules (Shomra)');
+  parts.push('## Security rules (NoFly)');
   parts.push('');
   parts.push(
-    'Shomra enforces these on this machine: a tool call that breaks one is refused ' +
+    'NoFly enforces these on this machine: a tool call that breaks one is refused ' +
       'before it runs. Following them is not extra caution - it is the difference ' +
       'between a step that lands and a step that gets blocked and has to be redone.',
   );

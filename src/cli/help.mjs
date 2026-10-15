@@ -28,7 +28,7 @@ function findLines(name, sub) {
 
 function printCommand(name, lines) {
   const detail = HELP_DETAILS[name];
-  console.log(`\n${lines.join('\n')}\n${detail ? `\n${detail()}` : ''}\n  ${dim('Every command and option:')} ${bold('shomra help')}\n`);
+  console.log(`\n${lines.join('\n')}\n${detail ? `\n${detail()}` : ''}\n  ${dim('Every command and option:')} ${bold('nofly help')}\n`);
 }
 
 export function cmdHelp(command, sub) {
@@ -39,7 +39,7 @@ export function cmdHelp(command, sub) {
   if (name && !COMMANDS[command] && !['help', 'version'].includes(command)) {
     const near = didYouMean(command, [...Object.keys(COMMANDS), 'help', 'version', 'admin']);
     console.error(red(`✗ Unknown command: ${command}`) + (near ? `  did you mean ${bold(near)}?` : ''));
-    console.error(dim('Run `shomra help` for the full command list.'));
+    console.error(dim('Run `nofly help` for the full command list.'));
     process.exitCode = EXIT_USAGE;
     return;
   }
@@ -48,13 +48,13 @@ export function cmdHelp(command, sub) {
 
 function adminHelpText() {
   return `
-${bold(cyan('shomra admin'))} ${dim('- governance & advanced security operations')}
+${bold(cyan('nofly admin'))} ${dim('- governance & advanced security operations')}
 
   ${dim('Deep scans (backend + key)')}
   ${cyan('scan-zip')}      Static-scan a workspace ZIP            ${dim('<file.zip> [--project <id>] [--json]')}
   ${cyan('model-scan')}    SAST-scan a public AI model            ${dim('<hf-url | owner/model | github-url> [--project <id>] [--json]')}
   ${cyan('memory-scan')}   Scan memory + rules files for poisoning ${dim('[path] [--machine] [--scope …] [--writer …] [--json]')}
-  ${cyan('memory-restore')} Write back memory files an operator rolled back in Shomra
+  ${cyan('memory-restore')} Write back memory files an operator rolled back in NoFly
 
   ${dim('Offense & runtime identity')}
   ${cyan('redteam')}       Continuously red-team your guardrails  ${dim('[--target llm-guard|model] [--evolve] [--min 80] [--fail-on-regression] [--json]')}
@@ -65,10 +65,10 @@ ${bold(cyan('shomra admin'))} ${dim('- governance & advanced security operations
 
   ${dim('Fleet rollout')}
   ${cyan('mdm-script')}    Print a Jamf/Intune/Kandji bootstrap script ${dim('--os macos|windows|linux [--url <url>] [--key <key>] [--every 6h] [--guard]')}
-                ${dim('Without --key the script reads SHOMRA_API_KEY from the MDM secret variables.')}
+                ${dim('Without --key the script reads NOFLY_API_KEY from the MDM secret variables.')}
 
-  ${dim('Each also runs as a bare top-level verb (e.g.')} ${dim(bold('shomra redteam'))}${dim(') for back-compat.')}
-  ${dim('Details for one command:')} ${bold('shomra admin <command> --help')}${dim(' · every command:')} ${bold('shomra help')}
+  ${dim('Each also runs as a bare top-level verb (e.g.')} ${dim(bold('nofly redteam'))}${dim(') for back-compat.')}
+  ${dim('Details for one command:')} ${bold('nofly admin <command> --help')}${dim(' · every command:')} ${bold('nofly help')}
 `;
 }
 

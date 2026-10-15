@@ -13,19 +13,19 @@ export function cmdStatus() {
   const cfg = loadConfig();
   const { apiKey, url } = resolveSettings(cfg);
   const enrolled = !!apiKey;
-  console.log(bold(cyan('\n  Shomra agent')) + dim(` v${VERSION}`));
+  console.log(bold(cyan('\n  NoFly agent')) + dim(` v${VERSION}`));
 
   if (enrolled) {
     console.log(`  ${dim('Mode     ')} ${green('● Enrolled')} ${dim(`(${keyScope(apiKey)} key)`)} - org policy, platform AI & dashboard telemetry active`);
   } else {
-    const offline = /^(1|true|yes)$/i.test(String(process.env.SHOMRA_OFFLINE ?? ''));
-    console.log(`  ${dim('Mode     ')} ${cyan('● Local')} ${dim(offline ? '- on-machine analysis only; nothing leaves this machine' : '- on-machine analysis; only pinned MCP package names are looked up on osv.dev (SHOMRA_OFFLINE=1 stops that)')}`);
-    console.log(`  ${dim('         ')} ${dim('Run')} ${bold('shomra init --key shm_…')} ${dim('to add org policy, AI fixes, deep scans & the dashboard.')}`);
+    const offline = /^(1|true|yes)$/i.test(String(process.env.NOFLY_OFFLINE ?? ''));
+    console.log(`  ${dim('Mode     ')} ${cyan('● Local')} ${dim(offline ? '- on-machine analysis only; nothing leaves this machine' : '- on-machine analysis; only pinned MCP package names are looked up on osv.dev (NOFLY_OFFLINE=1 stops that)')}`);
+    console.log(`  ${dim('         ')} ${dim('Run')} ${bold('nofly init --key shm_…')} ${dim('to add org policy, AI fixes, deep scans & the dashboard.')}`);
   }
-  console.log(`  ${dim('Backend  ')} ${url || dim('none (local mode - set with shomra init --url)')}`);
+  console.log(`  ${dim('Backend  ')} ${url || dim('none (local mode - set with nofly init --url)')}`);
   console.log(`  ${dim('API key  ')} ${apiKey ? green(apiKey.slice(0, 14) + '…') : dim('none (local mode)')}`);
   const identity = identityStatus(cfg, url);
-  console.log(`  ${dim('Agent ID ')} ${identity ? green(identity) : dim('none - calls carry no agent identity (shomra agent-identity register)')}`);
+  console.log(`  ${dim('Agent ID ')} ${identity ? green(identity) : dim('none - calls carry no agent identity (nofly agent-identity register)')}`);
   console.log(`  ${dim('Machine  ')} ${os.hostname()} ${dim('(' + (cfg.machineId || 'unenrolled') + ')')}`);
   console.log(`  ${dim('Config   ')} ${CONFIG_FILE}`);
 
@@ -33,8 +33,8 @@ export function cmdStatus() {
   console.log(`  ${green('✓')} ${dim('check · gate · doctor · protect · secrets · models · new · mcp add · why (offline)')}`);
   console.log(`  ${enrolled ? green('✓') : gray('○')} ${(enrolled ? dim : gray)('fix (AI) · deep scans (scan-zip/model-scan/memory-scan) · org policy · dashboard telemetry')}`);
 
-  const localOff = process.env.SHOMRA_GUARD_LOCAL === '0' || String(process.env.SHOMRA_GUARD_LOCAL).toLowerCase() === 'false';
-  const strict = envFlag('SHOMRA_GUARD_STRICT');
+  const localOff = process.env.NOFLY_GUARD_LOCAL === '0' || String(process.env.NOFLY_GUARD_LOCAL).toLowerCase() === 'false';
+  const strict = envFlag('NOFLY_GUARD_STRICT');
   console.log(bold('\n  Runtime firewall'));
   const installedAgents = AGENT_KEYS.map((a) => ({ agent: a, files: agentHookInstalled(a) })).filter((x) => x.files.length);
   if (installedAgents.length) {
@@ -46,7 +46,7 @@ export function cmdStatus() {
     const missing = AGENT_KEYS.filter((a) => !installedAgents.some((i) => i.agent === a));
     if (missing.length) console.log(`  ${dim('         ')} ${dim('not installed: ' + missing.map((m) => AGENT_LABELS[m]).join(', '))}`);
   } else {
-    console.log(`  ${dim('Hooks    ')} ${yellow('not installed for any agent')}${dim('  (run: shomra install-hook --agent all  or  shomra protect)')}`);
+    console.log(`  ${dim('Hooks    ')} ${yellow('not installed for any agent')}${dim('  (run: nofly install-hook --agent all  or  nofly protect)')}`);
   }
   console.log(`  ${dim('Tier 0   ')} ${localOff ? yellow('off') + dim(' (server-only)') : green('on') + dim(' - dangerous calls blocked on-machine, zero network')}`);
   console.log(`  ${dim('Mode     ')} ${strict ? 'fail-closed (strict)' : 'fail-open'}${dim(` · server timeout ${guardTimeoutMs()}ms · breaker ${breakerCooldownMs()}ms`)}`);

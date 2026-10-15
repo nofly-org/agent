@@ -31,7 +31,7 @@ export function stateDbAvailable() {
 }
 
 function openCopy(file) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-state-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-state-'));
   const copy = path.join(dir, 'state.vscdb');
   fs.copyFileSync(file, copy);
   for (const suffix of ['-wal', '-shm']) {

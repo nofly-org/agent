@@ -7,7 +7,7 @@ const SARIF_LEVEL = { CRITICAL: 'error', HIGH: 'error', MEDIUM: 'warning', LOW: 
 const SARIF_SEC = { CRITICAL: '9.0', HIGH: '7.5', MEDIUM: '5.0', LOW: '3.0', INFO: '1.0' };
 
 function sarifRuleId(f) {
-  return f.ruleId || 'shomra.' + String(f.title || 'finding').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+  return f.ruleId || 'nofly.' + String(f.title || 'finding').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
 }
 
 function artifactLocation(r, f, base) {
@@ -36,7 +36,7 @@ export function toSarif(results, { base = locationBase() } = {}) {
     $schema: 'https://json.schemastore.org/sarif-2.1.0.json',
     version: '2.1.0',
     runs: [{
-      tool: { driver: { name: 'Shomra', informationUri: 'https://shomra.dev', version: VERSION, rules: [...rules.values()] } },
+      tool: { driver: { name: 'NoFly', informationUri: 'https://shomra.dev', version: VERSION, rules: [...rules.values()] } },
       originalUriBaseIds: { SRCROOT: { uri: pathToFileURL(base.endsWith('/') ? base : `${base}/`).href } },
       results: sarifResults,
     }],

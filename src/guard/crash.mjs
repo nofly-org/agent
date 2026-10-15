@@ -5,9 +5,9 @@ export function strictOnCrash(run, refuse, what) {
     try {
       return await run(flags);
     } catch (error) {
-      if (envFlag('SHOMRA_GUARD_STRICT')) {
+      if (envFlag('NOFLY_GUARD_STRICT')) {
         const message = error instanceof Error ? error.message : String(error);
-        refuse(resolveAgentFlag(flags), `Shomra ${what} failed (${message.slice(0, 200)}); blocked by fail-closed policy.`);
+        refuse(resolveAgentFlag(flags), `NoFly ${what} failed (${message.slice(0, 200)}); blocked by fail-closed policy.`);
       }
       throw error;
     }

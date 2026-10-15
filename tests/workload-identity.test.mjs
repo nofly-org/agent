@@ -7,7 +7,7 @@ import { EXCHANGE_PATH, readCachedCredential, workloadCredential, workloadSource
 
 const URL_ = 'https://api.example';
 const AUD = 'shomra:org:o1';
-const tmp = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-wl-')), 'workload-credential.json');
+const tmp = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-wl-')), 'workload-credential.json');
 const soon = (min) => new Date(Date.now() + min * 60_000).toISOString();
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
@@ -22,8 +22,8 @@ function stubFetch(responder) {
 }
 
 test('only a named platform turns keyless sign-in on', () => {
-  assert.equal(workloadSource({ SHOMRA_WORKLOAD: 'GitHub' }), 'github');
-  assert.equal(workloadSource({ SHOMRA_WORKLOAD: 'jenkins' }), null);
+  assert.equal(workloadSource({ NOFLY_WORKLOAD: 'GitHub' }), 'github');
+  assert.equal(workloadSource({ NOFLY_WORKLOAD: 'jenkins' }), null);
   assert.equal(workloadSource({}), null);
 });
 
@@ -47,7 +47,7 @@ test('the cache file is readable by its owner only', { skip: process.platform ==
 
 test('a GitHub job asks for its token with the audience, exchanges it once, then reads the cache', async () => {
   const file = tmp();
-  const env = { SHOMRA_WORKLOAD: 'github', SHOMRA_AUDIENCE: AUD, ACTIONS_ID_TOKEN_REQUEST_URL: 'https://gh.example/token?v=2', ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'runner' };
+  const env = { NOFLY_WORKLOAD: 'github', NOFLY_AUDIENCE: AUD, ACTIONS_ID_TOKEN_REQUEST_URL: 'https://gh.example/token?v=2', ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'runner' };
   const { calls, restore } = stubFetch((url) => (url.startsWith('https://gh.example') ? json(200, { value: 'gh-oidc' }) : json(200, { credential: 'shm_agt_minted', expiresAt: soon(60) })));
   try {
     assert.equal(await workloadCredential({ url: URL_, env, file }), 'shm_agt_minted');
@@ -55,7 +55,7 @@ test('a GitHub job asks for its token with the audience, exchanges it once, then
     assert.equal(calls[0].init.headers.Authorization, 'bearer runner');
     assert.equal(calls[1].url, `${URL_}${EXCHANGE_PATH}`);
     assert.deepEqual(JSON.parse(calls[1].init.body), { token: 'gh-oidc' });
-    assert.equal(calls[1].init.headers['X-Shomra-Key'], undefined);
+    assert.equal(calls[1].init.headers['X-NoFly-Key'], undefined);
     assert.equal(await workloadCredential({ url: URL_, env, file }), 'shm_agt_minted');
     assert.equal(calls.length, 2);
   } finally {
@@ -69,7 +69,7 @@ test('a cluster reads its projected token from the file it names', async () => {
   fs.writeFileSync(tokenFile, 'k8s-oidc\n');
   const { calls, restore } = stubFetch(() => json(200, { credential: 'shm_agt_k8s', expiresAt: soon(60) }));
   try {
-    const env = { SHOMRA_WORKLOAD: 'kubernetes', SHOMRA_AUDIENCE: AUD, SHOMRA_TOKEN_FILE: tokenFile };
+    const env = { NOFLY_WORKLOAD: 'kubernetes', NOFLY_AUDIENCE: AUD, NOFLY_TOKEN_FILE: tokenFile };
     assert.equal(await workloadCredential({ url: URL_, env, file }), 'shm_agt_k8s');
     assert.deepEqual(JSON.parse(calls[0].init.body), { token: 'k8s-oidc' });
   } finally {
@@ -82,7 +82,7 @@ test('a refused sign-in reports why and yields no credential, so the hook falls 
   const errors = [];
   const { restore } = stubFetch(() => json(401, { message: 'This token is not accepted for any agent.' }));
   try {
-    const env = { SHOMRA_WORKLOAD: 'gitlab', SHOMRA_AUDIENCE: AUD, SHOMRA_ID_TOKEN: 'gl-oidc' };
+    const env = { NOFLY_WORKLOAD: 'gitlab', NOFLY_AUDIENCE: AUD, NOFLY_ID_TOKEN: 'gl-oidc' };
     assert.equal(await workloadCredential({ url: URL_, env, file, onError: (e) => errors.push(e.message) }), null);
     assert.match(errors[0], /not accepted/);
     assert.equal(fs.existsSync(file), false);
@@ -94,8 +94,8 @@ test('a refused sign-in reports why and yields no credential, so the hook falls 
 test('without a platform, an audience or a backend nothing is fetched', async () => {
   const { calls, restore } = stubFetch(() => json(200, {}));
   try {
-    assert.equal(await workloadCredential({ url: URL_, env: { SHOMRA_WORKLOAD: 'github' }, file: tmp() }), null);
-    assert.equal(await workloadCredential({ url: null, env: { SHOMRA_WORKLOAD: 'github', SHOMRA_AUDIENCE: AUD }, file: tmp() }), null);
+    assert.equal(await workloadCredential({ url: URL_, env: { NOFLY_WORKLOAD: 'github' }, file: tmp() }), null);
+    assert.equal(await workloadCredential({ url: null, env: { NOFLY_WORKLOAD: 'github', NOFLY_AUDIENCE: AUD }, file: tmp() }), null);
     assert.equal(calls.length, 0);
   } finally {
     restore();
@@ -103,8 +103,8 @@ test('without a platform, an audience or a backend nothing is fetched', async ()
 });
 
 test('Entra and Okta are named platforms too', () => {
-  assert.equal(workloadSource({ SHOMRA_WORKLOAD: 'Entra' }), 'entra');
-  assert.equal(workloadSource({ SHOMRA_WORKLOAD: 'okta' }), 'okta');
+  assert.equal(workloadSource({ NOFLY_WORKLOAD: 'Entra' }), 'entra');
+  assert.equal(workloadSource({ NOFLY_WORKLOAD: 'okta' }), 'okta');
 });
 
 const ENTRA_AUD = 'api://shomra';
@@ -114,7 +114,7 @@ test('on AKS, the pod’s federated token buys an Entra token for the binding’
   const file = tmp();
   const saToken = path.join(path.dirname(file), 'azure-identity-token');
   fs.writeFileSync(saToken, 'k8s-sa-token\n');
-  const env = { SHOMRA_WORKLOAD: 'entra', SHOMRA_AUDIENCE: ENTRA_AUD, AZURE_TENANT_ID: TID, AZURE_CLIENT_ID: 'app-1', AZURE_FEDERATED_TOKEN_FILE: saToken, AZURE_AUTHORITY_HOST: 'https://login.microsoftonline.com/' };
+  const env = { NOFLY_WORKLOAD: 'entra', NOFLY_AUDIENCE: ENTRA_AUD, AZURE_TENANT_ID: TID, AZURE_CLIENT_ID: 'app-1', AZURE_FEDERATED_TOKEN_FILE: saToken, AZURE_AUTHORITY_HOST: 'https://login.microsoftonline.com/' };
   const { calls, restore } = stubFetch((url) => (url.includes('login.microsoftonline.com') ? json(200, { access_token: 'entra-at' }) : json(200, { credential: 'shm_agt_entra', expiresAt: soon(60) })));
   try {
     assert.equal(await workloadCredential({ url: URL_, env, file }), 'shm_agt_entra');
@@ -136,7 +136,7 @@ test('the federated token is never sent to an authority that is not https', asyn
   const errors = [];
   const { calls, restore } = stubFetch(() => json(200, { access_token: 'x' }));
   try {
-    const env = { SHOMRA_WORKLOAD: 'entra', SHOMRA_AUDIENCE: ENTRA_AUD, AZURE_TENANT_ID: TID, AZURE_CLIENT_ID: 'app-1', AZURE_FEDERATED_TOKEN_FILE: saToken, AZURE_AUTHORITY_HOST: 'http://login.example/' };
+    const env = { NOFLY_WORKLOAD: 'entra', NOFLY_AUDIENCE: ENTRA_AUD, AZURE_TENANT_ID: TID, AZURE_CLIENT_ID: 'app-1', AZURE_FEDERATED_TOKEN_FILE: saToken, AZURE_AUTHORITY_HOST: 'http://login.example/' };
     assert.equal(await workloadCredential({ url: URL_, env, file, onError: (e) => errors.push(e.message) }), null);
     assert.equal(calls.length, 0);
     assert.match(errors[0], /must be an https URL/);
@@ -149,7 +149,7 @@ test('on an Azure VM, the instance metadata service is asked for the audience', 
   const file = tmp();
   const { calls, restore } = stubFetch((url) => (url.startsWith('http://169.254.169.254') ? json(200, { access_token: 'mi-at' }) : json(200, { credential: 'shm_agt_vm', expiresAt: soon(60) })));
   try {
-    assert.equal(await workloadCredential({ url: URL_, env: { SHOMRA_WORKLOAD: 'entra', SHOMRA_AUDIENCE: ENTRA_AUD }, file }), 'shm_agt_vm');
+    assert.equal(await workloadCredential({ url: URL_, env: { NOFLY_WORKLOAD: 'entra', NOFLY_AUDIENCE: ENTRA_AUD }, file }), 'shm_agt_vm');
     const asked = new URL(calls[0].url);
     assert.equal(asked.origin + asked.pathname, 'http://169.254.169.254/metadata/identity/oauth2/token');
     assert.equal(asked.searchParams.get('resource'), ENTRA_AUD);
@@ -162,7 +162,7 @@ test('on an Azure VM, the instance metadata service is asked for the audience', 
 
 test('on App Service or Container Apps, the local identity endpoint is asked with its header', async () => {
   const file = tmp();
-  const env = { SHOMRA_WORKLOAD: 'entra', SHOMRA_AUDIENCE: ENTRA_AUD, IDENTITY_ENDPOINT: 'http://localhost:4141/msi/token', IDENTITY_HEADER: 'local-secret', AZURE_CLIENT_ID: 'uami-1' };
+  const env = { NOFLY_WORKLOAD: 'entra', NOFLY_AUDIENCE: ENTRA_AUD, IDENTITY_ENDPOINT: 'http://localhost:4141/msi/token', IDENTITY_HEADER: 'local-secret', AZURE_CLIENT_ID: 'uami-1' };
   const { calls, restore } = stubFetch((url) => (url.startsWith('http://localhost:4141') ? json(200, { access_token: 'app-at' }) : json(200, { credential: 'shm_agt_app', expiresAt: soon(60) })));
   try {
     assert.equal(await workloadCredential({ url: URL_, env, file }), 'shm_agt_app');
@@ -179,7 +179,7 @@ test('a token the environment already holds is exchanged as it is', async () => 
   const file = tmp();
   const { calls, restore } = stubFetch(() => json(200, { credential: 'shm_agt_given', expiresAt: soon(60) }));
   try {
-    assert.equal(await workloadCredential({ url: URL_, env: { SHOMRA_WORKLOAD: 'entra', SHOMRA_AUDIENCE: ENTRA_AUD, SHOMRA_ID_TOKEN: 'held-at' }, file }), 'shm_agt_given');
+    assert.equal(await workloadCredential({ url: URL_, env: { NOFLY_WORKLOAD: 'entra', NOFLY_AUDIENCE: ENTRA_AUD, NOFLY_ID_TOKEN: 'held-at' }, file }), 'shm_agt_given');
     assert.equal(calls.length, 1);
     assert.deepEqual(JSON.parse(calls[0].init.body), { token: 'held-at' });
   } finally {
@@ -193,10 +193,10 @@ test('an Okta agent reads its token from the file it keeps, and says so when the
   fs.writeFileSync(oktaFile, 'okta-at\n');
   const { calls, restore } = stubFetch(() => json(200, { credential: 'shm_agt_okta', expiresAt: soon(60) }));
   try {
-    assert.equal(await workloadCredential({ url: URL_, env: { SHOMRA_WORKLOAD: 'okta', SHOMRA_AUDIENCE: ENTRA_AUD, SHOMRA_TOKEN_FILE: oktaFile }, file }), 'shm_agt_okta');
+    assert.equal(await workloadCredential({ url: URL_, env: { NOFLY_WORKLOAD: 'okta', NOFLY_AUDIENCE: ENTRA_AUD, NOFLY_TOKEN_FILE: oktaFile }, file }), 'shm_agt_okta');
     assert.deepEqual(JSON.parse(calls[0].init.body), { token: 'okta-at' });
     const errors = [];
-    assert.equal(await workloadCredential({ url: URL_, env: { SHOMRA_WORKLOAD: 'okta', SHOMRA_AUDIENCE: 'api://other' }, file: tmp(), onError: (e) => errors.push(e.message) }), null);
+    assert.equal(await workloadCredential({ url: URL_, env: { NOFLY_WORKLOAD: 'okta', NOFLY_AUDIENCE: 'api://other' }, file: tmp(), onError: (e) => errors.push(e.message) }), null);
     assert.match(errors[0], /no Okta token/);
     assert.equal(calls.length, 1);
   } finally {

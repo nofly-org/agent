@@ -97,7 +97,7 @@ test('an install reaches the server whatever the org rules say, because the serv
 });
 
 test('the learned type set round-trips, expires, and is cleared by an answer without one', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-st-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-st-'));
   const file = path.join(dir, 'types.json');
   rememberSubjectTypes(['package', 'image'], { file, url: 'u' });
   assert.deepEqual(readSubjectTypes({ file, url: 'u' }), ['package', 'image']);

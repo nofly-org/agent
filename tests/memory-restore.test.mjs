@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { restoreVerdict } from '../src/guard/memory-restore.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
+const CLI = path.join(HERE, '..', 'nofly.mjs');
 const sha = (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex');
 
 const CLEAN = '# Notes\n- deploy with make release\n';
@@ -64,7 +64,7 @@ async function serve(handler) {
 
 function runCli(args, home, env) {
   const base = { ...process.env, USERPROFILE: home, HOME: home, NO_COLOR: '1' };
-  for (const k of Object.keys(base)) if (k.startsWith('SHOMRA_')) delete base[k];
+  for (const k of Object.keys(base)) if (k.startsWith('NOFLY_')) delete base[k];
   return new Promise((done) => {
     const child = spawn(process.execPath, [CLI, ...args], { env: { ...base, ...env }, cwd: home });
     let out = '';
@@ -76,14 +76,14 @@ function runCli(args, home, env) {
 }
 
 test('end to end: the hook writes the restored version back and tells the server what it read back', async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-restore-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-restore-'));
   const file = path.join(home, 'work', 'CLAUDE.md');
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, POISON);
-  fs.mkdirSync(path.join(home, '.shomra', 'memory-ledger'), { recursive: true });
-  fs.writeFileSync(path.join(home, '.shomra', 'config.json'), JSON.stringify({ machineId: 'abcd1234ffff', apiKey: 'shm_test_key_0000000000000000' }));
+  fs.mkdirSync(path.join(home, '.nofly', 'memory-ledger'), { recursive: true });
+  fs.writeFileSync(path.join(home, '.nofly', 'config.json'), JSON.stringify({ machineId: 'abcd1234ffff', apiKey: 'shm_test_key_0000000000000000' }));
   const key = crypto.createHash('sha1').update(path.resolve(file).toLowerCase()).digest('hex');
-  fs.writeFileSync(path.join(home, '.shomra', 'memory-ledger', `${key}.json`), JSON.stringify({ path: file, hashes: [sha(POISON)] }));
+  fs.writeFileSync(path.join(home, '.nofly', 'memory-ledger', `${key}.json`), JSON.stringify({ path: file, hashes: [sha(POISON)] }));
 
   const acks = [];
   let asked = null;
@@ -100,7 +100,7 @@ test('end to end: the hook writes the restored version back and tells the server
     return res.end('{}');
   });
   try {
-    const out = await runCli(['memory-restore'], home, { SHOMRA_URL: s.url });
+    const out = await runCli(['memory-restore'], home, { NOFLY_URL: s.url });
     assert.equal(fs.readFileSync(file, 'utf8'), CLEAN, out.out);
     assert.equal(asked?.get('machineId'), 'abcd1234ffff');
     const first = acks.find((a) => a.url.includes('/s1/ack'));
@@ -109,7 +109,7 @@ test('end to end: the hook writes the restored version back and tells the server
     const second = acks.find((a) => a.url.includes('/s2/ack'));
     assert.equal(second?.body.applied, false);
     assert.equal(fs.existsSync(path.join(home, '.bashrc')), false);
-    const ledger = JSON.parse(fs.readFileSync(path.join(home, '.shomra', 'memory-ledger', `${key}.json`), 'utf8'));
+    const ledger = JSON.parse(fs.readFileSync(path.join(home, '.nofly', 'memory-ledger', `${key}.json`), 'utf8'));
     assert.ok(ledger.hashes.includes(sha(CLEAN)), 'the restored version is remembered, so the next session does not report it as an out-of-band change');
   } finally {
     await s.close();

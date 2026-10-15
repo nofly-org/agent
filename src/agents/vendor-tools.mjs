@@ -5,7 +5,7 @@
  * is never screened - not locally, not by the server (see `installers.mjs`).
  * The matcher strings, the names `classify.mjs` treats as shell / write / patch,
  * and the payload shapes `normalize.mjs` unwraps were three separate lists that
- * agreed by hand; `shomra selftest` needs the same list a fourth time to say
+ * agreed by hand; `nofly selftest` needs the same list a fourth time to say
  * which names a settings file is MISSING. So it lives here once, and
  * `tests/selftest.test.mjs` pins it against classify/normalize.
  *
@@ -18,7 +18,7 @@
  */
 
 /** `mcp__.*` is a PATTERN in a matcher, so coverage is checked against a real call name. */
-export const MCP_SAMPLE = 'mcp__shomra_selftest__execute_command';
+export const MCP_SAMPLE = 'mcp__nofly_selftest__execute_command';
 
 const mcp = { name: 'mcp__.*', kind: 'mcp', sample: MCP_SAMPLE };
 
@@ -134,7 +134,7 @@ export const VENDOR_TOOLS = {
 
   copilot: {
     label: 'GitHub Copilot CLI',
-    settings: { file: 'shomra.json', dirs: ['~/.copilot/hooks', './.github/hooks'], shape: 'copilot' },
+    settings: { file: 'nofly.json', dirs: ['~/.copilot/hooks', './.github/hooks'], shape: 'copilot' },
     /** ⚠ `{ version: 1, hooks: { preToolUse: [...] } }` - a file without both is rejected whole by Copilot CLI. */
     probes: ['~/.copilot'],
     matcher: null,

@@ -35,7 +35,7 @@ export async function main() {
       const near = didYouMean(u, [...KNOWN_FLAGS]);
       console.error(red(`✗ Unknown flag: --${u}`) + (near ? dim(`  (did you mean --${near}?)`) : ''));
     }
-    console.error(dim('Run `shomra help` for the full option list.'));
+    console.error(dim('Run `nofly help` for the full option list.'));
     process.exit(EXIT_USAGE);
   }
   if (invalid.length && !guardCmd) {
@@ -50,7 +50,7 @@ export async function main() {
     if (!fn || !ADMIN_VERBS.has(sub)) {
       const near = didYouMean(sub, [...ADMIN_VERBS]);
       console.error(red(`✗ Unknown admin command: ${sub ?? ''}`) + (near ? `  did you mean ${bold(near)}?` : ''));
-      console.error(dim('Run `shomra admin` for the list.'));
+      console.error(dim('Run `nofly admin` for the list.'));
       process.exit(EXIT_USAGE);
     }
     return fn(flags, positional.slice(1));
@@ -60,7 +60,7 @@ export async function main() {
   if (!fn) {
     const near = didYouMean(command, [...Object.keys(COMMANDS), 'help', 'version', 'admin']);
     console.error(red(`✗ Unknown command: ${command}`) + (near ? `  did you mean ${bold(near)}?` : ''));
-    console.error(dim('Run `shomra help` for the full command list.'));
+    console.error(dim('Run `nofly help` for the full command list.'));
     process.exit(EXIT_USAGE);
   }
   return fn(flags, positional);

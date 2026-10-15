@@ -13,13 +13,13 @@ import path from 'node:path';
  *
  * ⚠ INERT BY CONSTRUCTION. Nothing here is ever executed - the hook only reads
  * stdin and answers. The commands name a package that does not exist
- * (`shomra-selftest-canary-…`), the writes land in a throwaway directory, and
+ * (`nofly-selftest-canary-…`), the writes land in a throwaway directory, and
  * the whole directory is removed afterwards. The marker is NONCE-BOUND and
  * appears in the command, path or content of every canary: it is what lets the
  * server tell a self-test apart from a real `npm install evil`.
  */
 
-export const CANARY_PREFIX = 'shomra-selftest-canary';
+export const CANARY_PREFIX = 'nofly-selftest-canary';
 
 export const canaryPackage = (marker) => marker;
 

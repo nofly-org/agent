@@ -12,7 +12,7 @@ import { loadMachineConfig, machineConfigFile, markMachineConfig, isMachineConfi
 import { userWritablePaths } from '../src/commands/schedule.mjs';
 
 const KEY = 'shm_live_SUPERSECRETKEY123';
-const ctx = { node: '/usr/local/bin/node', entry: '/usr/local/shomra/lib/node_modules/@shomra/agent/shomra.mjs', args: reportArgs({ allUsers: true }), hours: 6 };
+const ctx = { node: '/usr/local/bin/node', entry: '/usr/local/nofly/lib/node_modules/@nofly/agent/nofly.mjs', args: reportArgs({ allUsers: true }), hours: 6 };
 
 test('--every accepts 1h..168h and days, rejects everything else', () => {
   assert.equal(parseEvery(undefined), 6);
@@ -29,34 +29,34 @@ test('the report command line carries --all-users only when asked', () => {
 });
 
 test('launchd plist runs node + entry on the interval and lands in the right domain', () => {
-  const xml = launchdPlist({ ...ctx, logFile: '/Library/Logs/Shomra/report.log' });
-  assert.match(xml, /<string>io\.shomra\.report<\/string>/);
-  assert.match(xml, /<string>\/usr\/local\/bin\/node<\/string>\s*<string>[^<]*shomra\.mjs<\/string>\s*<string>report<\/string>\s*<string>--all-users<\/string>/);
+  const xml = launchdPlist({ ...ctx, logFile: '/Library/Logs/NoFly/report.log' });
+  assert.match(xml, /<string>io\.nofly\.report<\/string>/);
+  assert.match(xml, /<string>\/usr\/local\/bin\/node<\/string>\s*<string>[^<]*nofly\.mjs<\/string>\s*<string>report<\/string>\s*<string>--all-users<\/string>/);
   assert.match(xml, /<key>StartInterval<\/key>\s*<integer>21600<\/integer>/);
-  assert.equal(launchdPlistPath({ system: true }), '/Library/LaunchDaemons/io.shomra.report.plist');
-  assert.equal(launchdPlistPath({ system: false, home: '/Users/a' }), '/Users/a/Library/LaunchAgents/io.shomra.report.plist');
+  assert.equal(launchdPlistPath({ system: true }), '/Library/LaunchDaemons/io.nofly.report.plist');
+  assert.equal(launchdPlistPath({ system: false, home: '/Users/a' }), '/Users/a/Library/LaunchAgents/io.nofly.report.plist');
   assert.match(launchdPlist({ ...ctx, entry: '/a&b/<x>.mjs', logFile: '/l' }), /\/a&amp;b\/&lt;x&gt;\.mjs/);
 });
 
 test('Windows task XML runs as SYSTEM on battery and quotes spaced paths', () => {
-  const xml = windowsTaskXml({ node: 'C:\\Program Files\\nodejs\\node.exe', entry: 'C:\\Program Files\\Shomra\\node_modules\\@shomra\\agent\\shomra.mjs', args: reportArgs({ allUsers: true }), hours: 12, system: true });
+  const xml = windowsTaskXml({ node: 'C:\\Program Files\\nodejs\\node.exe', entry: 'C:\\Program Files\\NoFly\\node_modules\\@nofly\\agent\\nofly.mjs', args: reportArgs({ allUsers: true }), hours: 12, system: true });
   assert.match(xml, /<UserId>S-1-5-18<\/UserId>/);
   assert.match(xml, /<Interval>PT12H<\/Interval>/);
   assert.match(xml, /<DisallowStartIfOnBatteries>false<\/DisallowStartIfOnBatteries>/);
   assert.match(xml, /<Command>C:\\Program Files\\nodejs\\node\.exe<\/Command>/);
-  assert.match(xml, /<Arguments>&quot;C:\\Program Files\\Shomra\\node_modules\\@shomra\\agent\\shomra\.mjs&quot; report --all-users<\/Arguments>/);
+  assert.match(xml, /<Arguments>&quot;C:\\Program Files\\NoFly\\node_modules\\@nofly\\agent\\nofly\.mjs&quot; report --all-users<\/Arguments>/);
   const user = windowsTaskXml({ ...ctx, system: false, userId: 'CORP\\dana' });
   assert.match(user, /<UserId>CORP\\dana<\/UserId>\s*<LogonType>InteractiveToken<\/LogonType>/);
-  assert.deepEqual(schtasksCreateArgs('C:\\t\\task.xml'), ['/Create', '/TN', 'ShomraReport', '/XML', 'C:\\t\\task.xml', '/F']);
+  assert.deepEqual(schtasksCreateArgs('C:\\t\\task.xml'), ['/Create', '/TN', 'NoFlyReport', '/XML', 'C:\\t\\task.xml', '/F']);
   assert.equal(windowsQuote('plain'), 'plain');
   assert.equal(windowsQuote('C:\\a b\\'), '"C:\\a b\\\\"');
   assert.equal(windowsQuote('say "hi"'), '"say \\"hi\\""');
 });
 
 test('systemd units: oneshot service + timer, system vs user scope', () => {
-  const svc = systemdService({ ...ctx, entry: '/opt/x y/shomra.mjs' });
+  const svc = systemdService({ ...ctx, entry: '/opt/x y/nofly.mjs' });
   assert.match(svc, /Type=oneshot/);
-  assert.match(svc, /ExecStart="\/usr\/local\/bin\/node" "\/opt\/x y\/shomra\.mjs" "report" "--all-users"/);
+  assert.match(svc, /ExecStart="\/usr\/local\/bin\/node" "\/opt\/x y\/nofly\.mjs" "report" "--all-users"/);
   assert.match(systemdTimer({ hours: 6, system: true }), /OnUnitActiveSec=6h[\s\S]*WantedBy=timers\.target/);
   assert.match(systemdTimer({ hours: 6, system: false }), /WantedBy=default\.target/);
   assert.equal(systemdUnitDir({ system: true }), '/etc/systemd/system');
@@ -67,17 +67,17 @@ test('cron fallback schedules, quotes and replaces only its own line', () => {
   assert.equal(cronSchedule(6), '17 */6 * * *');
   assert.equal(cronSchedule(48), '17 3 */2 * *');
   assert.throws(() => cronSchedule(30), /cron/);
-  const line = cronLine({ ...ctx, entry: "/opt/it's/100%/shomra.mjs" });
+  const line = cronLine({ ...ctx, entry: "/opt/it's/100%/nofly.mjs" });
   assert.ok(line.endsWith(CRON_MARKER));
-  assert.match(line, /'\/opt\/it'\\''s\/100\\%\/shomra\.mjs'/);
+  assert.match(line, /'\/opt\/it'\\''s\/100\\%\/nofly\.mjs'/);
   const merged = mergeCrontab(`MAILTO=x\n0 1 * * * backup\n5 */2 * * * old ${CRON_MARKER}\n`, line);
   assert.equal(merged, `MAILTO=x\n0 1 * * * backup\n${line}\n`);
   assert.equal(mergeCrontab(merged, null), 'MAILTO=x\n0 1 * * * backup\n');
 });
 
 test('no scheduled artifact ever embeds the API key', () => {
-  const prev = process.env.SHOMRA_API_KEY;
-  process.env.SHOMRA_API_KEY = KEY;
+  const prev = process.env.NOFLY_API_KEY;
+  process.env.NOFLY_API_KEY = KEY;
   try {
     const outputs = [
       launchdPlist({ ...ctx, logFile: '/l' }),
@@ -92,32 +92,32 @@ test('no scheduled artifact ever embeds the API key', () => {
       assert.ok(!/--key|shm_/.test(out), out);
     }
   } finally {
-    if (prev === undefined) delete process.env.SHOMRA_API_KEY;
-    else process.env.SHOMRA_API_KEY = prev;
+    if (prev === undefined) delete process.env.NOFLY_API_KEY;
+    else process.env.NOFLY_API_KEY = prev;
   }
 });
 
 test('mdm-script reads the key from the MDM secret variable when --key is omitted', () => {
   const mac = mdmScript({ os: 'macos', url: 'https://api.example.com/' });
   assert.match(mac, /^#!\/bin\/bash/);
-  assert.match(mac, /SHOMRA_API_KEY="\$\{SHOMRA_API_KEY:-\$\{4:-\}\}"/);
-  assert.match(mac, /SHOMRA_URL=\x27https:\/\/api\.example\.com\x27/);
-  assert.match(mac, /init --machine --url "\$SHOMRA_URL"/);
+  assert.match(mac, /NOFLY_API_KEY="\$\{NOFLY_API_KEY:-\$\{4:-\}\}"/);
+  assert.match(mac, /NOFLY_URL=\x27https:\/\/api\.example\.com\x27/);
+  assert.match(mac, /init --machine --url "\$NOFLY_URL"/);
   assert.match(mac, /schedule install --all-users --every 6h/);
   assert.match(mac, /report --all-users/);
   assert.ok(!/--key/.test(mac));
   const win = mdmScript({ os: 'windows', every: '12h' });
-  assert.match(win, /\$ApiKey = \$env:SHOMRA_API_KEY/);
+  assert.match(win, /\$ApiKey = \$env:NOFLY_API_KEY/);
   assert.match(win, /--every 12h/);
-  assert.match(win, /node_modules\\@shomra\\agent\\shomra\.mjs/);
+  assert.match(win, /node_modules\\@nofly\\agent\\nofly\.mjs/);
   assert.ok(!/shm_/.test(win));
   const linux = mdmScript({ os: 'linux', url: 'https://x' });
-  assert.match(linux, /SHOMRA_API_KEY="\$\{SHOMRA_API_KEY:-\}"/);
+  assert.match(linux, /NOFLY_API_KEY="\$\{NOFLY_API_KEY:-\}"/);
 });
 
 test('mdm-script embeds an explicit key safely quoted and never on a command line', () => {
   const mac = mdmScript({ os: 'macos', key: "shm_live_a'b", url: 'https://x' });
-  assert.match(mac, /SHOMRA_API_KEY='shm_live_a'\\''b'/);
+  assert.match(mac, /NOFLY_API_KEY='shm_live_a'\\''b'/);
   assert.ok(!/--key/.test(mac));
   const win = mdmScript({ os: 'windows', key: "shm_live_a'b", url: 'https://x' });
   assert.match(win, /\$ApiKey = 'shm_live_a''b'/);
@@ -126,10 +126,10 @@ test('mdm-script embeds an explicit key safely quoted and never on a command lin
 });
 
 test('machine-wide config lives in a root-only location and is read as a fallback', () => {
-  assert.equal(machineConfigFile('linux', {}), '/etc/shomra/config.json');
-  assert.equal(machineConfigFile('darwin', {}), '/etc/shomra/config.json');
-  assert.equal(machineConfigFile('win32', { ProgramData: 'D:\\PD' }), 'D:\\PD\\Shomra\\config.json');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-mcfg-'));
+  assert.equal(machineConfigFile('linux', {}), '/etc/nofly/config.json');
+  assert.equal(machineConfigFile('darwin', {}), '/etc/nofly/config.json');
+  assert.equal(machineConfigFile('win32', { ProgramData: 'D:\\PD' }), 'D:\\PD\\NoFly\\config.json');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-mcfg-'));
   try {
     const file = path.join(dir, 'config.json');
     assert.equal(loadMachineConfig(file), null);
@@ -144,21 +144,21 @@ test('machine-wide config lives in a root-only location and is read as a fallbac
 });
 
 test('privileged schedules flag a node or entry a non-admin could swap', () => {
-  const win = userWritablePaths(['C:\\Users\\dana\\AppData\\Roaming\\npm\\node_modules\\@shomra\\agent\\shomra.mjs', 'C:\\Program Files\\nodejs\\node.exe'], { platform: 'win32', env: { SystemDrive: 'C:' } });
+  const win = userWritablePaths(['C:\\Users\\dana\\AppData\\Roaming\\npm\\node_modules\\@nofly\\agent\\nofly.mjs', 'C:\\Program Files\\nodejs\\node.exe'], { platform: 'win32', env: { SystemDrive: 'C:' } });
   assert.equal(win.length, 1);
-  const stats = { '/usr/local/bin/node': { uid: 501, mode: 0o755 }, '/opt/s/shomra.mjs': { uid: 0, mode: 0o644 }, '/opt/s': { uid: 0, mode: 0o777 }, '/opt': { uid: 0, mode: 0o755 }, '/': { uid: 0, mode: 0o755 } };
+  const stats = { '/usr/local/bin/node': { uid: 501, mode: 0o755 }, '/opt/s/nofly.mjs': { uid: 0, mode: 0o644 }, '/opt/s': { uid: 0, mode: 0o777 }, '/opt': { uid: 0, mode: 0o755 }, '/': { uid: 0, mode: 0o755 } };
   const stat = (p) => {
     if (!stats[p]) throw new Error('ENOENT');
     return stats[p];
   };
-  assert.deepEqual(userWritablePaths(['/usr/local/bin/node', '/opt/s/shomra.mjs'], { platform: 'linux', stat }), ['/usr/local/bin/node', '/opt/s/shomra.mjs']);
+  assert.deepEqual(userWritablePaths(['/usr/local/bin/node', '/opt/s/nofly.mjs'], { platform: 'linux', stat }), ['/usr/local/bin/node', '/opt/s/nofly.mjs']);
   stats['/opt/s'].mode = 0o755;
-  assert.deepEqual(userWritablePaths(['/opt/s/shomra.mjs'], { platform: 'linux', stat }), []);
+  assert.deepEqual(userWritablePaths(['/opt/s/nofly.mjs'], { platform: 'linux', stat }), []);
 });
 
 test('a launcher reached through a link is judged by the folder it really lives in', { skip: process.platform === 'win32' || process.getuid?.() !== 0 }, async () => {
   const { userWritableLauncher } = await import('../src/agents/managed.mjs');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-launcher-link-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-launcher-link-'));
   try {
     fs.chmodSync(dir, 0o755);
     fs.mkdirSync(path.join(dir, 'userdir'));
@@ -175,7 +175,7 @@ test('a launcher reached through a link is judged by the folder it really lives 
 test('the bash bootstrap only runs a root-owned Node unless told otherwise, and reports a failed step', () => {
   const linux = mdmScript({ os: 'linux', url: 'https://x', guard: true });
   assert.match(linux, /root_owned "\$candidate"/);
-  assert.match(linux, /SHOMRA_ALLOW_USER_NODE/);
+  assert.match(linux, /NOFLY_ALLOW_USER_NODE/);
   assert.match(linux, /status=1/);
   assert.match(linux, /exit "\$status"/);
   assert.ok(linux.indexOf('root_owned "$candidate"') < linux.indexOf('"$NPM" install'), 'Node is checked before anything runs as root');

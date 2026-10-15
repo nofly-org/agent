@@ -6,7 +6,7 @@ import { CONFIG_FILE, MACHINE_CONFIG_FILE, loadMachineConfig } from '../core/con
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { CLI_ENTRY_PATH } from '../core/package-root.mjs';
 import {
-  CRON_MARKER, SCHEDULE_LABEL, SYSTEMD_UNIT, TASK_NAME, cronLine, isCronEntry, launchdLogPath, launchdPlist, launchdPlistPath, mergeCrontab,
+  CRON_MARKER, LEGACY_SCHEDULE, SCHEDULE_LABEL, SYSTEMD_UNIT, TASK_NAME, cronLine, isCronEntry, launchdLogPath, launchdPlist, launchdPlistPath, mergeCrontab,
   parseEvery, reportArgs, schtasksCreateArgs, systemdService, systemdTimer, systemdUnitDir, windowsTaskXml,
 } from '../core/schedule-plan.mjs';
 import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
@@ -50,14 +50,14 @@ function writeFile(file, text, mode) {
 
 function configHint(system) {
   if (!system) {
-    if (!fs.existsSync(CONFIG_FILE) && !loadMachineConfig()) console.log(`  ${yellow('⚠')} ${dim('No config yet - run')} ${bold('shomra init --key … --url …')} ${dim('or the task will fail to report.')}`);
+    if (!fs.existsSync(CONFIG_FILE) && !loadMachineConfig()) console.log(`  ${yellow('⚠')} ${dim('No config yet - run')} ${bold('nofly init --key … --url …')} ${dim('or the task will fail to report.')}`);
     return;
   }
-  if (!loadMachineConfig()) console.log(`  ${yellow('⚠')} ${dim(`No machine config at ${MACHINE_CONFIG_FILE} - run`)} ${bold('shomra init --machine --key … --url …')} ${dim('so the scheduled report can authenticate.')}`);
+  if (!loadMachineConfig()) console.log(`  ${yellow('⚠')} ${dim(`No machine config at ${MACHINE_CONFIG_FILE} - run`)} ${bold('nofly init --machine --key … --url …')} ${dim('so the scheduled report can authenticate.')}`);
 }
 
 export function acceptsUserWritable(flags = {}, env = process.env) {
-  return !!flags['allow-user-writable'] || env.SHOMRA_ALLOW_USER_NODE === '1';
+  return !!flags['allow-user-writable'] || env.NOFLY_ALLOW_USER_NODE === '1';
 }
 
 export function userWritablePaths(files, { platform = process.platform, env = process.env, stat = fs.statSync, realpath = stat === fs.statSync ? fs.realpathSync : (p) => p } = {}) {
@@ -115,10 +115,10 @@ function installDarwin(ctx) {
   return `${ctx.system ? 'LaunchDaemon' : 'LaunchAgent'} ${plist}`;
 }
 
-function removeDarwin(ctx) {
-  const plist = launchdPlistPath(ctx);
+function removeDarwin(ctx, label = SCHEDULE_LABEL) {
+  const plist = launchdPlistPath(ctx, label);
   const domain = ctx.system ? 'system' : `gui/${process.getuid()}`;
-  tryRun(LAUNCHCTL, ['bootout', `${domain}/${SCHEDULE_LABEL}`]);
+  tryRun(LAUNCHCTL, ['bootout', `${domain}/${label}`]);
   const existed = fs.existsSync(plist);
   fs.rmSync(plist, { force: true });
   return existed ? plist : null;
@@ -132,7 +132,7 @@ function statusDarwin(ctx) {
 }
 
 function installWin32(ctx) {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-task-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-task-'));
   const xmlFile = path.join(tmpDir, 'task.xml');
   const userId = ctx.system ? null : [process.env.USERDOMAIN, process.env.USERNAME].filter(Boolean).join('\\') || null;
   const body = windowsTaskXml({ ...ctx, userId });
@@ -146,8 +146,8 @@ function installWin32(ctx) {
   return `scheduled task ${TASK_NAME}${ctx.system ? ' (SYSTEM)' : ''}`;
 }
 
-function removeWin32() {
-  return tryRun(schtasksPath(), ['/Delete', '/TN', TASK_NAME, '/F']).ok ? TASK_NAME : null;
+function removeWin32(_ctx, task = TASK_NAME) {
+  return tryRun(schtasksPath(), ['/Delete', '/TN', task, '/F']).ok ? task : null;
 }
 
 function statusWin32() {
@@ -177,16 +177,16 @@ function installLinux(ctx) {
   return `crontab entry ${CRON_MARKER}`;
 }
 
-function removeLinux(ctx) {
+function removeLinux(ctx, unit = SYSTEMD_UNIT) {
   const removed = [];
   const systemctl = systemctlPath();
   const dir = systemdUnitDir(ctx);
-  if (fs.existsSync(path.join(dir, `${SYSTEMD_UNIT}.timer`))) {
+  if (fs.existsSync(path.join(dir, `${unit}.timer`))) {
     const scope = ctx.system ? [] : ['--user'];
-    if (systemctl) tryRun(systemctl, [...scope, 'disable', '--now', `${SYSTEMD_UNIT}.timer`]);
-    for (const ext of ['service', 'timer']) fs.rmSync(path.join(dir, `${SYSTEMD_UNIT}.${ext}`), { force: true });
+    if (systemctl) tryRun(systemctl, [...scope, 'disable', '--now', `${unit}.timer`]);
+    for (const ext of ['service', 'timer']) fs.rmSync(path.join(dir, `${unit}.${ext}`), { force: true });
     if (systemctl) tryRun(systemctl, [...scope, 'daemon-reload']);
-    removed.push(`${SYSTEMD_UNIT}.timer`);
+    removed.push(`${unit}.timer`);
   }
   if (fs.existsSync(CRONTAB)) {
     const current = tryRun(CRONTAB, ['-l']);
@@ -216,9 +216,9 @@ function statusLinux(ctx) {
 }
 
 const PLATFORM = {
-  darwin: { install: installDarwin, remove: removeDarwin, status: statusDarwin },
-  win32: { install: installWin32, remove: removeWin32, status: statusWin32 },
-  linux: { install: installLinux, remove: removeLinux, status: statusLinux },
+  darwin: { install: installDarwin, remove: removeDarwin, removeLegacy: (ctx) => removeDarwin(ctx, LEGACY_SCHEDULE.label), status: statusDarwin },
+  win32: { install: installWin32, remove: removeWin32, removeLegacy: (ctx) => removeWin32(ctx, LEGACY_SCHEDULE.task), status: statusWin32 },
+  linux: { install: installLinux, remove: removeLinux, removeLegacy: (ctx) => fs.existsSync(path.join(systemdUnitDir(ctx), `${LEGACY_SCHEDULE.unit}.timer`)) ? removeLinux(ctx, LEGACY_SCHEDULE.unit) : null, status: statusLinux },
 };
 
 function context(flags) {
@@ -229,7 +229,7 @@ function context(flags) {
 export async function cmdSchedule(flags, positional = []) {
   const sub = positional[0] ?? 'status';
   const impl = PLATFORM[process.platform] ?? PLATFORM.linux;
-  if (!['install', 'remove', 'status'].includes(sub)) fail(`Unknown schedule command: ${sub}. Use ${bold('shomra schedule install|remove|status')}`);
+  if (!['install', 'remove', 'status'].includes(sub)) fail(`Unknown schedule command: ${sub}. Use ${bold('nofly schedule install|remove|status')}`);
   const ctx = context(flags);
   if (sub === 'install') {
     let hours;
@@ -241,26 +241,27 @@ export async function cmdSchedule(flags, positional = []) {
     const risky = ctx.system ? userWritablePaths([ctx.node, ctx.entry]) : [];
     if (risky.length && !acceptsUserWritable(flags)) {
       for (const f of risky) console.error(`${red('✗')} ${f} can be changed by a non-root user, and the schedule would run it with root/SYSTEM rights - nothing was installed.`);
-      console.error(dim('  Install Node and @shomra/agent to an admin-owned prefix (see shomra admin mdm-script), or accept the risk with --allow-user-writable (SHOMRA_ALLOW_USER_NODE=1).'));
+      console.error(dim('  Install Node and @nofly/agent to an admin-owned prefix (see nofly admin mdm-script), or accept the risk with --allow-user-writable (NOFLY_ALLOW_USER_NODE=1).'));
       process.exit(1);
     }
     let where;
     try {
+      impl.removeLegacy(ctx);
       where = impl.install({ ...ctx, hours });
     } catch (e) {
       console.error(`${red('✗')} ${e.message}`);
       process.exit(1);
     }
-    console.log(`  ${green('✓')} Installed ${bold(where)} ${dim(`- runs \`shomra ${ctx.args.join(' ')}\` every ${hours}h`)}`);
+    console.log(`  ${green('✓')} Installed ${bold(where)} ${dim(`- runs \`nofly ${ctx.args.join(' ')}\` every ${hours}h`)}`);
     configHint(ctx.system);
     if (ctx.system) {
-      for (const f of userWritablePaths([ctx.node, ctx.entry])) console.log(`  ${yellow('⚠')} ${dim(`${f} is not exclusively root/Administrator-writable, yet runs with root/SYSTEM rights - install Node and @shomra/agent to an admin-owned prefix (see shomra admin mdm-script).`)}`);
+      for (const f of userWritablePaths([ctx.node, ctx.entry])) console.log(`  ${yellow('⚠')} ${dim(`${f} is not exclusively root/Administrator-writable, yet runs with root/SYSTEM rights - install Node and @nofly/agent to an admin-owned prefix (see nofly admin mdm-script).`)}`);
     }
     return;
   }
   if (sub === 'remove') {
-    const removed = impl.remove(ctx);
-    console.log(removed ? `  ${green('✓')} Removed ${bold(removed)}` : `  ${dim('No Shomra schedule was installed.')}`);
+    const removed = [impl.remove(ctx), impl.removeLegacy(ctx)].filter(Boolean).join(', ');
+    console.log(removed ? `  ${green('✓')} Removed ${bold(removed)}` : `  ${dim('No NoFly schedule was installed.')}`);
     return;
   }
   const st = impl.status(ctx);
@@ -269,7 +270,7 @@ export async function cmdSchedule(flags, positional = []) {
     return;
   }
   if (!st.installed) {
-    console.log(`  ${dim('Not scheduled')} ${dim(`(${st.where})`)} - ${bold('shomra schedule install')}`);
+    console.log(`  ${dim('Not scheduled')} ${dim(`(${st.where})`)} - ${bold('nofly schedule install')}`);
     return;
   }
   console.log(`  ${green('●')} Scheduled ${bold(st.where)}${st.loaded === false ? yellow(' (not loaded)') : ''}`);

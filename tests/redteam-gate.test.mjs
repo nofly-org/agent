@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
+const CLI = path.join(HERE, '..', 'nofly.mjs');
 
 const RUN = { label: 'Run', targetKind: 'llm-guard', status: 'COMPLETED', resilience: 92, scenarioCount: 10, attemptCount: 30, breachedCount: 0, blockedCount: 30, regressedCount: 0, results: [{ title: 'a', breached: false }] };
 
@@ -28,9 +28,9 @@ async function backend(answer) {
 }
 
 function run(args, url) {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-redteam-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-redteam-'));
   return new Promise((done) => {
-    const child = spawn(process.execPath, [CLI, ...args], { cwd: home, env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, NO_COLOR: '1', SHOMRA_URL: url, SHOMRA_API_KEY: 'shm_ci_test000000000000000000000000' } });
+    const child = spawn(process.execPath, [CLI, ...args], { cwd: home, env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, NO_COLOR: '1', NOFLY_URL: url, NOFLY_API_KEY: 'shm_ci_test000000000000000000000000' } });
     let out = '';
     child.stdout.on('data', (d) => { out += d; });
     child.stderr.on('data', (d) => { out += d; });

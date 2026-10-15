@@ -47,7 +47,7 @@ function notAnalyzedResult(artifact, why) {
     riskScore: 40,
     findingCount: 1,
     notAnalyzed: why,
-    findings: [{ severity: 'HIGH', title: `Not analyzed: ${why}`, remediationText: 'Shomra could not check this artifact, so it is not known to be safe. Make it readable, or remove it.' }],
+    findings: [{ severity: 'HIGH', title: `Not analyzed: ${why}`, remediationText: 'NoFly could not check this artifact, so it is not known to be safe. Make it readable, or remove it.' }],
   };
 }
 
@@ -78,7 +78,7 @@ async function requestServerVerdicts(prepared, { apiKey, url, env, flags, quiet 
   let authFailed = false;
   if (!apiKey) return { verdicts, rejected, backendDown, authFailed };
 
-  const concurrency = clampInt(process.env.SHOMRA_GATE_CONCURRENCY, DEFAULT_CONCURRENCY, MIN_CONCURRENCY, MAX_CONCURRENCY);
+  const concurrency = clampInt(process.env.NOFLY_GATE_CONCURRENCY, DEFAULT_CONCURRENCY, MIN_CONCURRENCY, MAX_CONCURRENCY);
   let nextIndex = 0;
 
   const worker = async () => {
@@ -100,7 +100,7 @@ async function requestServerVerdicts(prepared, { apiKey, url, env, flags, quiet 
           env,
           ...(flags.project ? { projectId: String(flags.project) } : {}),
         });
-        if (!isGateVerdict(verdict)) throw new Error('the backend answered without a gate verdict - is SHOMRA_URL pointing at the Shomra API?');
+        if (!isGateVerdict(verdict)) throw new Error('the backend answered without a gate verdict - is NOFLY_URL pointing at the NoFly API?');
         verdicts[index] = verdict;
       } catch (error) {
         if (error?.rejected && !error.auth) {

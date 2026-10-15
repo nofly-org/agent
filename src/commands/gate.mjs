@@ -17,7 +17,7 @@ import { maskSecrets } from '../detect/secret-mask.mjs';
 import { listZipEntries, normalizeZipName, readZipText } from '../core/zip-lite.mjs';
 import { readFailure, readRegularBuffer } from '../core/safe-read.mjs';
 
-const GATE_USAGE = 'shomra gate <file> [--kind mcp|skill|command|subagent|hook|rules|agent-card|memory|plugin|tool-manifest|extension|workflow|guardrail|framework] [--name x] [--strict] [--json]';
+const GATE_USAGE = 'nofly gate <file> [--kind mcp|skill|command|subagent|hook|rules|agent-card|memory|plugin|tool-manifest|extension|workflow|guardrail|framework] [--name x] [--strict] [--json]';
 
 function resolveGateFile(file) {
   let target = path.resolve(String(file));
@@ -131,7 +131,7 @@ function readGateTarget(flags, positional) {
 }
 
 async function requestGateVerdict({ url, apiKey, flags, kind, relPath, content, fullTarget }) {
-  if (!flags.json) process.stdout.write(dim('  Checking with Shomra gate… '));
+  if (!flags.json) process.stdout.write(dim('  Checking with NoFly gate… '));
   try {
     const siblings = collectSiblings(fullTarget, relPath);
     const sent = maskSecrets(content);
@@ -145,7 +145,7 @@ async function requestGateVerdict({ url, apiKey, flags, kind, relPath, content, 
       env: detectEnv(),
       ...(flags.project ? { projectId: String(flags.project) } : {}),
     });
-    if (!isGateVerdict(verdict)) throw new Error('the backend answered without a gate verdict - is SHOMRA_URL pointing at the Shomra API?');
+    if (!isGateVerdict(verdict)) throw new Error('the backend answered without a gate verdict - is NOFLY_URL pointing at the NoFly API?');
     if (!flags.json) console.log('');
     return { verdict, sent };
   } catch (error) {
@@ -183,7 +183,7 @@ export async function cmdGate(rawFlags, positional) {
       return;
     }
   } else if (!flags.json) {
-    console.error(`  ${dim('Not enrolled - on-machine analysis only. Run')} ${bold('shomra init')} ${dim('to also apply org policy.')}`);
+    console.error(`  ${dim('Not enrolled - on-machine analysis only. Run')} ${bold('nofly init')} ${dim('to also apply org policy.')}`);
   }
 
   let shownLocal = local;
@@ -220,7 +220,7 @@ async function cmdGateAll(flags, positional, { apiKey, url }) {
     return;
   }
 
-  if (!flags.json && !flags.sarif) console.log(bold(cyan('\n  Shomra gate')) + dim(` - batch (${artifacts.length} artifact${artifacts.length > 1 ? 's' : ''} · ${env.environment}${env.ciProvider ? ' · ' + env.ciProvider : ''})`));
+  if (!flags.json && !flags.sarif) console.log(bold(cyan('\n  NoFly gate')) + dim(` - batch (${artifacts.length} artifact${artifacts.length > 1 ? 's' : ''} · ${env.environment}${env.ciProvider ? ' · ' + env.ciProvider : ''})`));
 
   const outcome = await gateArtifactList(artifacts, { apiKey, url, env, flags, root });
   const { results, blocked, flagged, suppressed, backendDown, rejected } = outcome;
@@ -243,7 +243,7 @@ async function cmdGateAll(flags, positional, { apiKey, url }) {
             ? yellow(`⚠ ${flagged} flagged`) + dim(` · ${results.length - flagged} allowed`)
             : green(`✓ All ${results.length} artifacts allowed.`)) +
         (suppressed ? dim(` · ${suppressed} suppressed`) : '') +
-        (backendDown || !apiKey ? yellow('  (on-machine analysis - org policy not applied)') : dim(' - full activity in the Shomra dashboard → Gate Activity')) +
+        (backendDown || !apiKey ? yellow('  (on-machine analysis - org policy not applied)') : dim(' - full activity in the NoFly dashboard → Gate Activity')) +
         '\n',
     );
     for (const entry of rejected) console.log(`  ${yellow('!')} ${dim(`${entry.path} (${entry.kind}) - the backend refused it, org policy not applied: ${entry.reason}`)}`);

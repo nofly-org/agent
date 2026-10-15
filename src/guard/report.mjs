@@ -30,7 +30,7 @@ async function postReport(url, apiKey, agentId, body) {
   try {
     const res = await keyedFetch(`${url}/gate/tool-call`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Shomra-Key': apiKey, ...(agentId ? { 'X-Shomra-Agent': agentId } : {}), Connection: 'close' },
+      headers: { 'Content-Type': 'application/json', 'X-NoFly-Key': apiKey, ...(agentId ? { 'X-NoFly-Agent': agentId } : {}), Connection: 'close' },
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });

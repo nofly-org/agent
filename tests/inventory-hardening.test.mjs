@@ -16,14 +16,14 @@ import { boundedJson, TOO_DEEP } from '../src/core/wire-limits.mjs';
 import { maskServerSecrets } from '../src/detect/signals/mcp-config.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
+const CLI = path.join(HERE, '..', 'nofly.mjs');
 const GH_TOKEN = 'ghp_Q7rT2mX9vB4nK8wL1pZ6sD3fH5jC0yA2uE4i';
 const OPENAI_KEY = 'sk-proj-Wq3Lr8Tz1Xv6Nb4Mk9Pj2Hs7Gd5Fa0Ce3Ry8Ut1Io6';
 const URL_PASS = 'Zr8!vQ2pLx';
 const WINDOWS = process.platform === 'win32';
 
 function tree() {
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-inventory-')));
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-inventory-')));
   const write = (rel, text) => {
     const full = path.join(dir, rel);
     fs.mkdirSync(path.dirname(full), { recursive: true });
@@ -41,7 +41,7 @@ function tree() {
 function runCli(cwd, home, args, env = {}) {
   return spawnSync(process.execPath, [CLI, ...args], {
     cwd,
-    env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, NO_COLOR: '1', SHOMRA_URL: 'http://127.0.0.1:1', ...env },
+    env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, NO_COLOR: '1', NOFLY_URL: 'http://127.0.0.1:1', ...env },
     encoding: 'utf8',
     timeout: 20000,
   });
@@ -199,7 +199,7 @@ test('scan --report sends masked assets and artifacts', { skip: WINDOWS }, async
     const result = await new Promise((resolve) => {
       const child = spawn(process.execPath, [CLI, 'scan', '--report', '--json'], {
         cwd: proj,
-        env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, NO_COLOR: '1', SHOMRA_URL: `http://127.0.0.1:${server.address().port}`, SHOMRA_API_KEY: 'shomra_test_key_inventory' },
+        env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, NO_COLOR: '1', NOFLY_URL: `http://127.0.0.1:${server.address().port}`, NOFLY_API_KEY: 'nofly_test_key_inventory' },
       });
       let stderr = '';
       child.stderr.on('data', (d) => { stderr += d; });
@@ -221,7 +221,7 @@ test('another user is not credited with the project the scan was started from', 
   const prev = process.cwd();
   try {
     const proj = path.join(t.dir, 'proj');
-    t.write('proj/.claude/settings.json', JSON.stringify({ permissions: { allow: ['Bash(rm:*)'] }, hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'shomra guard' }] }] } }));
+    t.write('proj/.claude/settings.json', JSON.stringify({ permissions: { allow: ['Bash(rm:*)'] }, hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'nofly guard' }] }] } }));
     t.write('proj/.claude/hooks/run.sh', 'echo project script\n');
     t.write('bob/.claude.json', '{}');
     t.write('bob/.claude/settings.json', JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: 'bash $CLAUDE_PROJECT_DIR/.claude/hooks/run.sh' }] }] } }));

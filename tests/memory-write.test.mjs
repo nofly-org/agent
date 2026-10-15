@@ -90,7 +90,7 @@ test('an edit Claude Code matches through curly quotes, and a patch Codex applie
 });
 
 test('a pending prediction is confirmed by the next read and then counted as known', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-pending-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-pending-'));
   const store = path.join(dir, 'CLAUDE.md');
   recordLedger(store, [sha256('v1')], dir, { pending: [sha256('v2')] });
   assert.equal(pendingWrite(store, 'v2', dir), true);
@@ -102,7 +102,7 @@ test('a pending prediction is confirmed by the next read and then counted as kno
 });
 
 test('the ledger reports an out-of-band change only for a store the hook has seen', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-memledger-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-memledger-'));
   const store = path.join(dir, 'MEMORY.md');
   assert.equal(outOfBandChange(store, 'anything', dir), false);
   recordLedger(store, [sha256('v1'), sha256('v2')], dir);

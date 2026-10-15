@@ -75,7 +75,7 @@ async function call(url, apiKey, route, init = {}) {
   try {
     const res = await keyedFetch(`${url}${route}`, {
       ...init,
-      headers: { 'Content-Type': 'application/json', 'X-Shomra-Key': apiKey, Connection: 'close', ...(init.headers ?? {}) },
+      headers: { 'Content-Type': 'application/json', 'X-NoFly-Key': apiKey, Connection: 'close', ...(init.headers ?? {}) },
       signal: ctrl.signal,
     });
     if (!res.ok) return null;
@@ -139,7 +139,7 @@ export async function cmdMemoryRestore() {
   const { loadConfig, resolveSettings } = await import('../core/config.mjs');
   const settings = resolveSettings(loadConfig());
   if (!settings.apiKey) {
-    console.error('Shomra is not configured on this machine. Run: shomra init --key shm_…');
+    console.error('NoFly is not configured on this machine. Run: nofly init --key shm_…');
     process.exit(1);
   }
   const result = await applyPendingRestores({ url: settings.url, apiKey: settings.apiKey });

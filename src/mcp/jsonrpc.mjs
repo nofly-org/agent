@@ -1,4 +1,4 @@
-export const SHOMRA_REFUSED = -32001;
+export const NOFLY_REFUSED = -32001;
 
 export function safeJson(value) {
   if (value == null) return '';
@@ -63,14 +63,14 @@ export function writeMessage(message) {
 }
 
 export function refusal(id, message, data) {
-  return { jsonrpc: '2.0', id, error: { code: SHOMRA_REFUSED, message, data } };
+  return { jsonrpc: '2.0', id, error: { code: NOFLY_REFUSED, message, data } };
 }
 
 const BLOCKED_INIT_WAIT_MS = 3000;
 
 export function sendBlockedInitialize(reason, server, verdict) {
   const data = {
-    source: 'shomra-mcp-shim',
+    source: 'nofly-mcp-shim',
     server,
     refusedBy: 'policy',
     ...(verdict?.state ? { state: verdict.state } : {}),

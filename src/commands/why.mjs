@@ -12,7 +12,7 @@ import { readInputFile } from '../cli/read-input.mjs';
 export async function cmdWhy(flags, positional) {
   const file = positional[0];
   if (!file) {
-    console.error(red('✗') + ' Usage: ' + bold('shomra why <file> [--kind mcp|skill|command|subagent|hook|rules] [--json]'));
+    console.error(red('✗') + ' Usage: ' + bold('nofly why <file> [--kind mcp|skill|command|subagent|hook|rules] [--json]'));
     process.exit(EXIT_USAGE);
   }
   let target = path.resolve(String(file));
@@ -57,7 +57,7 @@ function whyLocal(content, kind, rel, flags) {
     console.log(JSON.stringify({ path: rel, source: 'local', ...local }, null, 2));
     return;
   }
-  console.log(bold(cyan('\n  Shomra why')) + dim(` - ${rel} · on-machine`));
+  console.log(bold(cyan('\n  NoFly why')) + dim(` - ${rel} · on-machine`));
   if (!local.findings.length) {
     console.log(green('\n  ✓ No findings - nothing to explain.\n'));
     return;
@@ -67,11 +67,11 @@ function whyLocal(content, kind, rel, flags) {
     console.log(`\n  ${SEV_COLOR[f.severity]('●')} ${SEV_COLOR[f.severity](f.severity)}  ${bold(f.title)}${at}`);
     if (f.remediationText) console.log(`     ${dim('fix: ' + f.remediationText)}`);
   }
-  console.log(dim('\n  Enroll (') + bold('shomra init') + dim(') for an AI-distilled why + false-positive read.\n'));
+  console.log(dim('\n  Enroll (') + bold('nofly init') + dim(') for an AI-distilled why + false-positive read.\n'));
 }
 
 function printWhy(res) {
-  console.log(bold(cyan('\n  Shomra why')) + dim(` - ${res.path}${res.aiEnabled ? '' : ' · rule rationale (AI off)'}`));
+  console.log(bold(cyan('\n  NoFly why')) + dim(` - ${res.path}${res.aiEnabled ? '' : ' · rule rationale (AI off)'}`));
   if (res.summary) console.log('  ' + res.summary);
   if (!res.findings || !res.findings.length) {
     console.log(green('\n  ✓ Nothing to explain.\n'));

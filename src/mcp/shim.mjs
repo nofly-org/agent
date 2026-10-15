@@ -17,10 +17,10 @@ import { SCREENED_SERVER_METHODS, screenServerRequest } from './server-requests.
 export { mcpConfigCandidates, unwrapMcpConfig, wrapMcpConfig } from './config-wrapping.mjs';
 
 const MAX_PENDING_REQUESTS = 1000;
-const USAGE = 'shomra mcp-guard --name <server> -- <command> [args…]';
+const USAGE = 'nofly mcp-guard --name <server> -- <command> [args…]';
 
 function note(message) {
-  process.stderr.write(`[shomra] ${message}\n`);
+  process.stderr.write(`[nofly] ${message}\n`);
 }
 
 function readLaunchTarget(flags, positional) {
@@ -37,7 +37,7 @@ async function resolveConnectVerdict({ name, command, args, flags, settings, str
   if (!apiKey || !url) {
     if (strict) {
       await sendBlockedInitialize(
-        'Shomra is not configured on this machine (SHOMRA_GUARD_STRICT). Run: shomra init --key shm_…',
+        'NoFly is not configured on this machine (NOFLY_GUARD_STRICT). Run: nofly init --key shm_…',
         name,
       );
       process.exit(0);
@@ -56,7 +56,7 @@ async function resolveConnectVerdict({ name, command, args, flags, settings, str
   if (!error) return verdict;
 
   if (strict) {
-    await sendBlockedInitialize(`Shomra could not verify "${name}" (${error.message}); refused by fail-closed policy.`, name);
+    await sendBlockedInitialize(`NoFly could not verify "${name}" (${error.message}); refused by fail-closed policy.`, name);
     process.exit(0);
   }
   note(`mcp-guard: could not reach the backend (${error.message}); "${name}" started unverified.`);
@@ -81,7 +81,7 @@ async function launchServer(name, command, args) {
   try {
     return spawnGuardedServer(command, args);
   } catch (error) {
-    await sendBlockedInitialize(`Shomra refused to launch "${name}": ${error.message}`, name);
+    await sendBlockedInitialize(`NoFly refused to launch "${name}": ${error.message}`, name);
     note(error.message);
     return process.exit(0);
   }
@@ -139,7 +139,7 @@ function serial(handler, onError) {
 function refuseUnscreenedClient(server, child) {
   return (message, line) => {
     if (isObject(message) && 'id' in message && typeof message.method === 'string') {
-      writeMessage(refusal(message.id, 'Shomra could not screen this message, so it was not passed on.', { source: 'shomra-mcp-shim', server, refusedBy: 'error' }));
+      writeMessage(refusal(message.id, 'NoFly could not screen this message, so it was not passed on.', { source: 'nofly-mcp-shim', server, refusedBy: 'error' }));
     } else {
       child.stdin.write(`${line}\n`);
     }
@@ -152,7 +152,7 @@ function refuseUnscreenedServer(server, child) {
       process.stdout.write(`${line}\n`);
       return;
     }
-    const error = refusal(message.id, 'Shomra could not screen this message, so it was not passed on.', { source: 'shomra-mcp-shim', server, refusedBy: 'error' });
+    const error = refusal(message.id, 'NoFly could not screen this message, so it was not passed on.', { source: 'nofly-mcp-shim', server, refusedBy: 'error' });
     if (typeof message.method === 'string') child.stdin.write(`${JSON.stringify(error)}\n`);
     else writeMessage(error);
   };
@@ -169,7 +169,7 @@ async function judgeItem({ ctx, remote, local }) {
       const label = d.held ? `held for approval${d.approvalId ? ` (${d.approvalId})` : ''}` : d.reason || 'refused by org policy';
       return { blocked: d.blocked, label, via: 'backend' };
     }
-    if (ctx.strict) return { blocked: true, label: `Shomra could not be reached (${d.unreachable}); refused by fail-closed policy`, via: 'strict' };
+    if (ctx.strict) return { blocked: true, label: `NoFly could not be reached (${d.unreachable}); refused by fail-closed policy`, via: 'strict' };
     note(`mcp-guard: backend unreachable (${d.unreachable}) - judged by local rules only.`);
   }
   const screen = local();
@@ -184,15 +184,15 @@ function overflowNote(server, direction, refuse) {
   };
 }
 
-const BATCH_REFUSAL = 'Shomra does not pass JSON-RPC batches, so nothing in this batch was screened or sent - send each request on its own.';
+const BATCH_REFUSAL = 'NoFly does not pass JSON-RPC batches, so nothing in this batch was screened or sent - send each request on its own.';
 
 const batchIds = (batch) => batch.filter((m) => isObject(m) && (typeof m.id === 'number' || typeof m.id === 'string')).map((m) => m.id);
 
 function createClientFilter({ child, pending, server, ctx, queue }) {
-  const onOverflow = overflowNote(server, 'client', (id) => writeMessage(refusal(id, 'Shomra refused this request: it was too large to screen.', { source: 'shomra-mcp-shim', server, refusedBy: 'size' })));
+  const onOverflow = overflowNote(server, 'client', (id) => writeMessage(refusal(id, 'NoFly refused this request: it was too large to screen.', { source: 'nofly-mcp-shim', server, refusedBy: 'size' })));
   return createLineFramer(queue(async (message, line) => {
     if (Array.isArray(message)) {
-      for (const id of batchIds(message.filter((m) => isObject(m) && typeof m.method === 'string'))) writeMessage(refusal(id, BATCH_REFUSAL, { source: 'shomra-mcp-shim', server, refusedBy: 'batch' }));
+      for (const id of batchIds(message.filter((m) => isObject(m) && typeof m.method === 'string'))) writeMessage(refusal(id, BATCH_REFUSAL, { source: 'nofly-mcp-shim', server, refusedBy: 'batch' }));
       note(`mcp-guard: refused a JSON-RPC batch of ${message.length} message(s) from the client for "${server}".`);
       return;
     }
@@ -211,8 +211,8 @@ function createClientFilter({ child, pending, server, ctx, queue }) {
       });
       if (verdict.blocked) {
         pending.delete(JSON.stringify(message.id));
-        writeMessage(refusal(message.id, `Refused by Shomra (${verdict.via}): ${verdict.label}.`, {
-          source: 'shomra-mcp-shim',
+        writeMessage(refusal(message.id, `Refused by NoFly (${verdict.via}): ${verdict.label}.`, {
+          source: 'nofly-mcp-shim',
           server,
           tool,
           refusedBy: 'policy',
@@ -233,7 +233,7 @@ function listingTelemetry({ settings, server, agent, withheld, total }) {
     machine: gateMachine(),
     env: detectEnv(),
     agent,
-    sessionId: process.env.SHOMRA_SESSION_ID || undefined,
+    sessionId: process.env.NOFLY_SESSION_ID || undefined,
   });
 }
 
@@ -255,8 +255,8 @@ async function forwardResultMethod({ message, line, entry, server, ctx }) {
   note(`withheld a ${method} result from "${server}" (${verdict.via}): ${verdict.label}`);
   writeMessage(refusal(
     message.id,
-    `Shomra withheld this ${method} result: ${verdict.label}. The content was not read into context - do not act on it.`,
-    { source: 'shomra-mcp-shim', server, method, refusedBy: 'content', screenedBy: verdict.via },
+    `NoFly withheld this ${method} result: ${verdict.label}. The content was not read into context - do not act on it.`,
+    { source: 'nofly-mcp-shim', server, method, refusedBy: 'content', screenedBy: verdict.via },
   ));
 }
 
@@ -269,8 +269,8 @@ function forwardError({ message, line, entry, server }) {
   note(`withheld a ${entry.method} error from "${server}": ${verdict.label}`);
   writeMessage(refusal(
     message.id,
-    `Shomra withheld this ${entry.method} error: ${verdict.label}. Its text was not read into context - do not act on it.`,
-    { source: 'shomra-mcp-shim', server, method: entry.method, refusedBy: 'content', screenedBy: 'local' },
+    `NoFly withheld this ${entry.method} error: ${verdict.label}. Its text was not read into context - do not act on it.`,
+    { source: 'nofly-mcp-shim', server, method: entry.method, refusedBy: 'content', screenedBy: 'local' },
   ));
 }
 
@@ -303,20 +303,20 @@ function createServerFilter({ child, pending, server, deniedTools, settings, age
     const key = JSON.stringify(id);
     if (!pending.has(key)) return;
     pending.delete(key);
-    writeMessage(refusal(id, 'Shomra withheld this response: it was too large to screen. The content was not read into context.', { source: 'shomra-mcp-shim', server, refusedBy: 'size' }));
+    writeMessage(refusal(id, 'NoFly withheld this response: it was too large to screen. The content was not read into context.', { source: 'nofly-mcp-shim', server, refusedBy: 'size' }));
   });
   return createLineFramer(queue(async (message, line) => {
     if (Array.isArray(message)) {
       for (const m of message) {
         if (!isObject(m) || !(typeof m.id === 'number' || typeof m.id === 'string')) continue;
         if (typeof m.method === 'string') {
-          child.stdin.write(`${JSON.stringify(refusal(m.id, BATCH_REFUSAL, { source: 'shomra-mcp-guard', relayed: false }))}\n`);
+          child.stdin.write(`${JSON.stringify(refusal(m.id, BATCH_REFUSAL, { source: 'nofly-mcp-guard', relayed: false }))}\n`);
           continue;
         }
         const key = JSON.stringify(m.id);
         if (!pending.has(key)) continue;
         pending.delete(key);
-        writeMessage(refusal(m.id, 'Shomra withheld this response: the server sent it inside a JSON-RPC batch, which is not screened. The content was not read into context.', { source: 'shomra-mcp-shim', server, refusedBy: 'batch' }));
+        writeMessage(refusal(m.id, 'NoFly withheld this response: the server sent it inside a JSON-RPC batch, which is not screened. The content was not read into context.', { source: 'nofly-mcp-shim', server, refusedBy: 'batch' }));
       }
       note(`mcp-guard: dropped a JSON-RPC batch of ${message.length} message(s) from "${server}".`);
       return;
@@ -333,7 +333,7 @@ function createServerFilter({ child, pending, server, deniedTools, settings, age
     if (!answers) {
       const verdict = 'id' in message && SCREENED_SERVER_METHODS.has(message.method) ? screenServerRequest(message) : null;
       if (verdict?.refused) {
-        child.stdin.write(`${JSON.stringify(refusal(message.id, `Refused by Shomra: ${verdict.reason}.`, { source: 'shomra-mcp-guard', method: message.method, relayed: false }))}\n`);
+        child.stdin.write(`${JSON.stringify(refusal(message.id, `Refused by NoFly: ${verdict.reason}.`, { source: 'nofly-mcp-guard', method: message.method, relayed: false }))}\n`);
         note(`mcp-guard: refused ${message.method} from "${server}": ${verdict.reason}.`);
         return;
       }
@@ -369,26 +369,26 @@ export async function runMcpShim(flags, positional) {
     process.exit(EXIT_USAGE);
   }
 
-  const strict = envFlag('SHOMRA_GUARD_STRICT');
+  const strict = envFlag('NOFLY_GUARD_STRICT');
   const config = loadConfig();
   const settings = resolveSettings(config);
   const agent = flags.agent ? String(flags.agent) : undefined;
 
   const screening = resolveScreenMode({
     flag: flags.screen,
-    env: process.env.SHOMRA_MCP_SCREEN,
+    env: process.env.NOFLY_MCP_SCREEN,
     config: config?.mcpScreen,
     enrolled: !!(settings.apiKey && settings.url),
   });
   if (screening.error) {
-    await sendBlockedInitialize(`Shomra refused to start "${name}": ${screening.error}`, name);
+    await sendBlockedInitialize(`NoFly refused to start "${name}": ${screening.error}`, name);
     note(screening.error);
     process.exit(0);
   }
   if (screening.mode === 'backend' && !(settings.apiKey && settings.url)) {
-    const why = 'screening mode "backend" needs this machine enrolled - run: shomra init --key shm_… --url <backend>';
+    const why = 'screening mode "backend" needs this machine enrolled - run: nofly init --key shm_… --url <backend>';
     if (strict) {
-      await sendBlockedInitialize(`Shomra refused to start "${name}": ${why}`, name);
+      await sendBlockedInitialize(`NoFly refused to start "${name}": ${why}`, name);
       process.exit(0);
     }
     note(`mcp-guard: ${why}; judging "${name}" by local rules only.`);
@@ -401,7 +401,7 @@ export async function runMcpShim(flags, positional) {
     sessionId: shimSessionId(name),
     agentId: resolveAgentIdentityHandle(flags) ?? storedAgentCredential(config, agent ?? null, settings.url),
   };
-  if (process.env.SHOMRA_DEBUG) note(`mcp-guard: "${name}" screening=${ctx.mode} (from ${screening.source})`);
+  if (process.env.NOFLY_DEBUG) note(`mcp-guard: "${name}" screening=${ctx.mode} (from ${screening.source})`);
 
   const verdict = await resolveConnectVerdict({ name, command, args, flags, settings, strict });
   await enforceConnectVerdict(verdict, name);

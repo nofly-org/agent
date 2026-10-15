@@ -12,7 +12,7 @@ import { guardWait } from '../guard/options.mjs';
  *             the same screens the HTTP MCP gateway and the coding-agent hooks use:
  *             the agent's tool policy, taint, steering, the org's own policies, and
  *             findings that land in the org. The local rules still run if the backend
- *             cannot be reached (and SHOMRA_GUARD_STRICT refuses instead).
+ *             cannot be reached (and NOFLY_GUARD_STRICT refuses instead).
  *   local     The built-in on-machine rules only. Nothing about the call leaves the
  *             machine - for a user who does not want tool arguments or results sent.
  *
@@ -24,14 +24,14 @@ export const SCREEN_MODES = ['backend', 'local'];
 
 /**
  * Precedence: the `--screen` flag written into the wrapped launch line, then
- * SHOMRA_MCP_SCREEN, then `mcpScreen` in ~/.shomra/config.json, then the default.
+ * NOFLY_MCP_SCREEN, then `mcpScreen` in ~/.nofly/config.json, then the default.
  *
- * ⚠ THE DEFAULT FOLLOWS ENROLMENT: `backend` when this machine has a Shomra key and
+ * ⚠ THE DEFAULT FOLLOWS ENROLMENT: `backend` when this machine has a NoFly key and
  * URL, `local` when it has neither - there is nothing to send to. An unrecognised
  * value is refused loudly rather than read as either mode.
  */
 export function resolveScreenMode({ flag, env, config, enrolled }) {
-  for (const [source, raw] of [['--screen', flag], ['SHOMRA_MCP_SCREEN', env], ['mcpScreen', config]]) {
+  for (const [source, raw] of [['--screen', flag], ['NOFLY_MCP_SCREEN', env], ['mcpScreen', config]]) {
     if (raw === undefined || raw === null || raw === '') continue;
     const value = String(raw).trim().toLowerCase();
     if (!SCREEN_MODES.includes(value)) {
@@ -45,11 +45,11 @@ export function resolveScreenMode({ flag, env, config, enrolled }) {
 /**
  * One id per shim process. ⚠ A client starts a stdio server once per session, so the
  * process lifetime IS the conversation - which is what taint needs: the secret read
- * on the third call and the upload on the fifth share it. SHOMRA_SESSION_ID wins when
+ * on the third call and the upload on the fifth share it. NOFLY_SESSION_ID wins when
  * the launcher knows the real one.
  */
 export function shimSessionId(server) {
-  return process.env.SHOMRA_SESSION_ID || `mcp-shim:${String(server).slice(0, 60)}:${randomUUID()}`;
+  return process.env.NOFLY_SESSION_ID || `mcp-shim:${String(server).slice(0, 60)}:${randomUUID()}`;
 }
 
 /** The server segment is sanitised so `__` in a server name cannot split the tool id wrongly. */
@@ -66,8 +66,8 @@ async function post(settings, route, body, agentId) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Shomra-Key': settings.apiKey,
-        ...(agentId ? { 'X-Shomra-Agent': agentId } : {}),
+        'X-NoFly-Key': settings.apiKey,
+        ...(agentId ? { 'X-NoFly-Agent': agentId } : {}),
         Connection: 'close',
       },
       body: JSON.stringify(body),

@@ -5,7 +5,7 @@ import { EXIT_USAGE, exitNotConfigured } from '../core/exit-codes.mjs';
 import { SEV_COLOR, VERDICT_COLOR, bold, dim, gray, green, red, yellow } from '../core/terminal.mjs';
 import { modelLookup, printAlternatives } from '../models/lookup.mjs';
 
-const USAGE = 'shomra model-scan <hf-url | owner/model | github-url> [--project <id>] [--json]';
+const USAGE = 'nofly model-scan <hf-url | owner/model | github-url> [--project <id>] [--json]';
 
 async function requestModelScan({ url, apiKey, target, flags }) {
   if (!flags.json) process.stdout.write(dim(`\n  Scanning ${target}… `));
@@ -83,7 +83,7 @@ export async function cmdModelScan(flags, positional) {
 
     printAssetVulnerabilities(report);
     await printSaferAlternatives(url, report, target);
-    console.log(`\n  ${summaryLine(report.verdict)}${dim(' Full report in the Shomra dashboard → Projects.\n')}`);
+    console.log(`\n  ${summaryLine(report.verdict)}${dim(' Full report in the NoFly dashboard → Projects.\n')}`);
   }
 
   if (report.verdict === 'FAIL') process.exitCode = 1;

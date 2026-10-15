@@ -6,7 +6,7 @@ import { outOfBandChange, pendingWrite, readLedger, recordLedger, sha256 } from 
 import { gateMachine } from '../core/api-client.mjs';
 import { readRegularText } from '../core/safe-read.mjs';
 
-export const OUT_OF_BAND = 'changed outside any agent write the Shomra hook observed';
+export const OUT_OF_BAND = 'changed outside any agent write the NoFly hook observed';
 export const FIRST_SIGHT = 'first observation of this store - baseline only, no write attributed';
 export const SESSION_START = 'loaded into session context at start - baseline only, no write attributed';
 

@@ -9,15 +9,15 @@ import { fileURLToPath } from 'node:url';
 import { stoppedNote } from '../src/guard/emit.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-stop-'));
+const CLI = path.join(HERE, '..', 'nofly.mjs');
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-stop-'));
 const KEY = 'shm_test_key_0000000000000000';
 const STOPPED = { id: 's1', kind: 'SESSION', by: 'ana@example.com', at: '2026-09-25T10:00:00.000Z', reason: null, sentence: 'This session was stopped by ana@example.com. Every call in it is refused until the stop is lifted, and an approval cannot release it.' };
 
 function run(command, payload, env) {
   const base = { ...process.env, USERPROFILE: home, HOME: home, NO_COLOR: '1' };
-  for (const k of Object.keys(base)) if (k.startsWith('SHOMRA_')) delete base[k];
-  fs.rmSync(path.join(home, '.shomra', 'guard-breaker.json'), { force: true });
+  for (const k of Object.keys(base)) if (k.startsWith('NOFLY_')) delete base[k];
+  fs.rmSync(path.join(home, '.nofly', 'guard-breaker.json'), { force: true });
   return new Promise((done) => {
     const child = spawn(process.execPath, [CLI, command, '--agent', 'claude'], { env: { ...base, ...env }, cwd: home });
     let stdout = '';
@@ -50,7 +50,7 @@ const PROMPT = { prompt: 'keep going', cwd: home, session_id: 'sess-1' };
 test('a refusal in a stopped session ends the agent’s turn, not just the one call', async () => {
   const s = await serve({ decision: 'BLOCK', reason: STOPPED.sentence, stopped: STOPPED });
   try {
-    const out = await run('tool-guard', CALL, { SHOMRA_API_KEY: KEY, SHOMRA_URL: s.url, SHOMRA_GUARD_TIMEOUT_MS: '4000' });
+    const out = await run('tool-guard', CALL, { NOFLY_API_KEY: KEY, NOFLY_URL: s.url, NOFLY_GUARD_TIMEOUT_MS: '4000' });
     assert.equal(out?.hookSpecificOutput?.permissionDecision, 'deny');
     assert.equal(out?.continue, false, `expected the turn to end; got ${JSON.stringify(out)}`);
     assert.match(out?.stopReason ?? '', /stopped this session/);
@@ -62,7 +62,7 @@ test('a refusal in a stopped session ends the agent’s turn, not just the one c
 test('an ordinary refusal still leaves the agent free to try something else', async () => {
   const s = await serve({ decision: 'BLOCK', reason: 'Blocked by org policy.' });
   try {
-    const out = await run('tool-guard', CALL, { SHOMRA_API_KEY: KEY, SHOMRA_URL: s.url, SHOMRA_GUARD_TIMEOUT_MS: '4000' });
+    const out = await run('tool-guard', CALL, { NOFLY_API_KEY: KEY, NOFLY_URL: s.url, NOFLY_GUARD_TIMEOUT_MS: '4000' });
     assert.equal(out?.hookSpecificOutput?.permissionDecision, 'deny');
     assert.equal(out?.continue, undefined);
   } finally {
@@ -73,7 +73,7 @@ test('an ordinary refusal still leaves the agent free to try something else', as
 test('a prompt in a stopped session ends the turn before the model sees it', async () => {
   const s = await serve({ decision: 'BLOCK', reason: STOPPED.sentence, stopped: STOPPED });
   try {
-    const out = await run('prompt-guard', PROMPT, { SHOMRA_API_KEY: KEY, SHOMRA_URL: s.url, SHOMRA_GUARD_TIMEOUT_MS: '4000' });
+    const out = await run('prompt-guard', PROMPT, { NOFLY_API_KEY: KEY, NOFLY_URL: s.url, NOFLY_GUARD_TIMEOUT_MS: '4000' });
     assert.equal(out?.continue, false, `expected the turn to end; got ${JSON.stringify(out)}`);
     assert.equal(out?.decision, 'block');
   } finally {

@@ -1,20 +1,29 @@
 # Changelog
 
-All notable changes to `@shomra/agent` are documented here. The format is based
+All notable changes to `@nofly/agent` are documented here. The format is based
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ### Worth knowing before you upgrade
-- **`shomra pr` with no base branch in the checkout now checks every AI
+- **Shomra is now NoFly.** The package is `@nofly/agent` and the command is
+  `nofly`. The old names keep working: `shomra` still runs the CLI, every
+  `SHOMRA_*` variable is read when its `NOFLY_*` twin is not set, `~/.shomra`
+  is used until `~/.nofly` exists, `.shomraignore`, `.shomra/` and
+  `shomra-ignore` marks are honoured, and hooks, MCP guards, rules blocks and
+  scheduled reports installed under the old name are recognised and replaced
+  the next time you install. Requests carry both the `X-NoFly-*` and
+  `X-Shomra-*` headers, so a backend that has not been updated still accepts
+  them.
+- **`nofly pr` with no base branch in the checkout now checks every AI
   artifact and trusts no waiver.** It used to fall back to the last commit, so a
   multi-commit pull request could hide a file in an earlier commit. In GitHub
   Actions it first fetches the base commit itself; elsewhere use
   `fetch-depth: 0`.
-- **A pull request can no longer excuse its own findings.** `.shomraignore`,
-  `.shomra/baseline.json`, `.shomra/policy.yml` and `shomra-ignore` marks are
-  read from the base branch in `shomra pr`; a mark the pull request adds applies
+- **A pull request can no longer excuse its own findings.** `.noflyignore`,
+  `.nofly/baseline.json`, `.nofly/policy.yml` and `nofly-ignore` marks are
+  read from the base branch in `nofly pr`; a mark the pull request adds applies
   once it is merged, and the check run says so on the finding.
 - **Flags are stricter.** `--apply=false` now means off (it meant on), a value
   flag given no value (`init --key --url …`) is refused with exit 3, words after
@@ -23,14 +32,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **The baseline counts, line by line.** A new copy of an accepted finding now
   fails, including a second copy of a problem in a file that was already
   accepted once; the baseline records the lines it accepted, so moving them
-  does not matter. Run `shomra baseline` again to accept a new copy, and re-run
+  does not matter. Run `nofly baseline` again to accept a new copy, and re-run
   it once to upgrade a baseline written by an older version.
 - **The pre-receive hook reads pushed commits straight from git** with the new
-  `shomra check --rev <sha> [--base-rev <sha>]`. It checks what a push changes,
+  `nofly check --rev <sha> [--base-rev <sha>]`. It checks what a push changes,
   takes waivers only from before the push, and cannot be blinded by a pushed
-  `.gitattributes`. Re-run `shomra install-precommit --pre-receive` to upgrade an
+  `.gitattributes`. Re-run `nofly install-precommit --pre-receive` to upgrade an
   existing hook (a backup is kept).
-- **A `shomra-ignore` mark covers only the line it governs.** In a pull request
+- **A `nofly-ignore` mark covers only the line it governs.** In a pull request
   it counts only together with the line it covered on the base branch, a file
   mark only if the base branch had it in the first five lines, and the same
   problem on another line of the file is still reported.
@@ -49,28 +58,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   notes that merely mention "delete" or "drop" no longer asks; the on-machine
   rules still read every write's content as before.
 - **Every hook starts faster.** On Node 22.8 and later the CLI keeps Node's
-  compiled code in `~/.shomra/compile-cache`, so a tool call spends about a
+  compiled code in `~/.nofly/compile-cache`, so a tool call spends about a
   fifth less time in the hook (`NODE_DISABLE_COMPILE_CACHE=1` turns it off).
-  `~/.shomra` is created private (0700) before anything is written there.
+  `~/.nofly` is created private (0700) before anything is written there.
 - **A flagged call never runs silently when no server answers.** On a machine
   with no key, during an outage, or when the credential is refused, a call the
   on-machine tier flags now asks the person and names what matched
-  (`SHOMRA_GUARD_LOCAL_FLAG=ask|allow|deny`).
+  (`NOFLY_GUARD_LOCAL_FLAG=ask|allow|deny`).
 - **One slow screen no longer switches org policy off.** The breaker opens after
-  3 failures in a row (`SHOMRA_GUARD_BREAKER_FAILURES`), not after one - a slow
+  3 failures in a row (`NOFLY_GUARD_BREAKER_FAILURES`), not after one - a slow
   screen is something content can cause, so a poisoned page could buy a window
   with no server checks.
 - **You are told when policy is off.** When the server cannot be reached the
   firewall says so once every 30 minutes (Claude Code, Codex, Gemini CLI)
   instead of only writing to a log nobody sees.
 - **Refusals made offline reach the server later.** A local refusal or a tamper
-  attempt whose report failed is kept in a small outbox under `~/.shomra` and
+  attempt whose report failed is kept in a small outbox under `~/.nofly` and
   sent once the server answers again; a 5xx no longer counts as delivered.
 - **A blocked tool result is withheld, not just annotated.** Claude Code gets a
   same-shape replacement (`updatedToolOutput`, and `updatedMCPToolOutput` for MCP
   tools), Codex and Copilot CLI theirs, and every agent's block text says what to
   do if the original is still visible.
-- **Strict mode refuses on a crash.** Under `SHOMRA_GUARD_STRICT` an unexpected
+- **Strict mode refuses on a crash.** Under `NOFLY_GUARD_STRICT` an unexpected
   error in a hook answers with a refusal instead of an error exit the agent
   ignores.
 - **Hooks cannot hang.** Every timer covers the response body, so a backend that
@@ -91,7 +100,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **A call too large to screen asks you instead of running unscreened.** A
   request over the server's limit used to open the outage window, so that call
   and the next ones ran with no server check. Reconstructed files are dropped
-  first; a call still too large is put to you (`SHOMRA_GUARD_LOCAL_FLAG`
+  first; a call still too large is put to you (`NOFLY_GUARD_LOCAL_FLAG`
   decides), and the outage window stays closed.
 - **The on-machine screen cannot be crashed by a large write.** It reads the
   first and last 512 KB of very large text and flags what it did not read, and
@@ -132,14 +141,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `schedule install --all-users` and `install-hook --managed` stop when Node or
   the agent can be modified by a non-root user, since they run it as root or for
   everyone; accept the risk with `--allow-user-writable`
-  (`SHOMRA_ALLOW_USER_NODE=1`).
+  (`NOFLY_ALLOW_USER_NODE=1`).
 - **Backups are never overwritten.** Git hook installs keep the first backup
   (`.bak`, then `.bak.1` …), never back up their own hook over yours, and the
   MCP guard backup is never written through a planted link.
 - **The pre-receive hook goes in git's hooks folder,** never a `hooks/` folder
   of your source tree.
 - **`fix --apply` refuses a fix that would empty the file or make it worse.**
-- **`rules --write` leaves a damaged Shomra block alone** and says so, instead of
+- **`rules --write` leaves a damaged NoFly block alone** and says so, instead of
   deleting the text after it on the next run.
 - **`init` keeps your key.** A user-level `init` no longer overwrites the
   machine-wide config or drops the key it was given.
@@ -151,30 +160,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   under `"hooks"` in hooks.json (and asks you to trust them at its next start);
   Copilot CLI needs `{ version: 1, hooks: { preToolUse, postToolUse } }`; Cline
   runs one script per event. All three were written in shapes the agent ignored.
-- **`shomra protect` now wires Copilot CLI**, and status reports guarded agents
+- **`nofly protect` now wires Copilot CLI**, and status reports guarded agents
   from the real hook files.
-- **`install-hook --uninstall`** removes exactly Shomra's entries and keeps
+- **`install-hook --uninstall`** removes exactly NoFly's entries and keeps
   yours; one malformed settings file no longer stops `--agent all` or `protect`
   from protecting the rest; settings writes are atomic, follow symlinks and keep
   their owner and permissions.
 - **Claude Code's Monitor tool** is screened like Bash.
 - **Windows hook commands are shell-neutral**, and re-running an install repairs
-  hooks left pointing at a removed Node or Shomra install.
+  hooks left pointing at a removed Node or NoFly install.
 - **An Aider config that already sets `openai-api-base` is left alone** with a
   note, instead of being shadowed by a second key.
 
 ### Organization rollout
-- **`sudo shomra install-hook --managed`** writes hooks a developer cannot remove:
+- **`sudo nofly install-hook --managed`** writes hooks a developer cannot remove:
   Claude Code's managed-settings.d (2.1.83 or later), `/etc/codex/hooks.json` and
-  Copilot CLI's policy.d. It warns when the Node or Shomra install those hooks
-  run could be changed by a non-root user. `shomra admin mdm-script --guard`
+  Copilot CLI's policy.d. It warns when the Node or NoFly install those hooks
+  run could be changed by a non-root user. `nofly admin mdm-script --guard`
   adds it to the Jamf, Intune or Kandji bootstrap.
 - **The macOS and Linux bootstrap only runs a root-owned Node.** It used the
   first `node` on PATH - on most Macs Homebrew's, which the user owns - ran npm
   with it as root, and then stopped at the schedule step, which refuses such a
   Node. It now picks the first Node whose file and folders root owns (links
   followed), says so before running anything when there is none
-  (`SHOMRA_ALLOW_USER_NODE=1` accepts the risk), checks npm is there, runs every
+  (`NOFLY_ALLOW_USER_NODE=1` accepts the risk), checks npm is there, runs every
   step, and exits non-zero when the schedule or the managed firewall could not
   be installed so the MDM console shows it. The Windows bootstrap now does the
   same instead of stopping at a failed schedule or passing a failed firewall.
@@ -191,7 +200,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   boundaries, the shim forwards signals, flushes before exiting, applies
   backpressure and caps a line, and a refused server answers the client's own
   initialize id.
-- **`shomra mcp guard` covers every config**: servers kept per project in
+- **`nofly mcp guard` covers every config**: servers kept per project in
   `~/.claude.json`, Claude Desktop, VS Code, Cline and Gemini; a server guarded
   by an install that moved is repointed, never wrapped twice; backups keep the
   original's permissions.
@@ -205,12 +214,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Windows launches work**: `npx` resolves to `npx.cmd` (not the extensionless
   script beside it), only absolute PATH folders are searched, and arguments
   through cmd.exe keep trailing backslashes and quotes.
-- **`shomra mcp serve` never turns a model-supplied path into a CLI flag.**
+- **`nofly mcp serve` never turns a model-supplied path into a CLI flag.**
 - **`mcp add`** keeps comma lists in `--env`, honours quotes in `--command`,
   accepts arguments after `--`, and will not rewrite a commented config.
 
 ### CI gates
-- **`shomra redteam` fails when the server's gate fails.** The run's own gate
+- **`nofly redteam` fails when the server's gate fails.** The run's own gate
   (an org threshold set on the server, attempts that could not be graded, a
   guard that also blocked ordinary requests) decides the exit code, and
   `--min` / `--fail-on-regression` travel to it. A run stopped before it
@@ -221,11 +230,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`memory-scan` fails when it could not send what it found.** A store whose
   upload failed is counted (`failed` in `--json`), the summary says nothing
   was checked instead of "No memory poisoning found", and the exit code is 1.
-- **`shomra run` passes only a run that reports COMPLETED.** A run still
+- **`nofly run` passes only a run that reports COMPLETED.** A run still
   running, or one with no status, used to print "Completed" and exit 0.
 - **Gates fail on what they could not analyze.** Skill folders named build or
   dist, namespaced commands, oversized, unreadable or symlinked artifacts, an
-  HTML page from a wrong `SHOMRA_URL`, and a mistyped target all passed before.
+  HTML page from a wrong `NOFLY_URL`, and a mistyped target all passed before.
 - **`check --staged` checks what the commit carries**: the staged copy (not the
   working copy), renamed files, non-ASCII paths, staged symlinks and the scripts
   a staged skill ships.
@@ -296,10 +305,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Large or broken MCP stores are reported**, not shown as empty (a
   `~/.claude.json` over 1 MB is read whole).
 - **Artifacts sent for org policy have their secret values replaced** by
-  same-shape stand-ins; `shomra fix` restores the real values in the returned
+  same-shape stand-ins; `nofly fix` restores the real values in the returned
   fix.
 - **The docs and `status` say exactly what leaves the machine without a key**:
-  only pinned MCP package names, checked against osv.dev (`SHOMRA_OFFLINE=1`
+  only pinned MCP package names, checked against osv.dev (`NOFLY_OFFLINE=1`
   stops that).
 - **`scan` and `report` never send a credential.** Every asset and artifact is
   masked before it is printed or uploaded, including permission allow-lists,
@@ -326,7 +335,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   budget, large cache folders under your home are skipped, and a walk that
   ran out of budget is listed as skipped instead of ending silently.
 - **A `headersHelper` command keeps its shape but never its credential.**
-- **`shomra new rules` writes a template that passes the gate.** The shipped
+- **`nofly new rules` writes a template that passes the gate.** The shipped
   CLAUDE.md template listed the instructions it warned against and the gate
   blocked it (risk 100/100); it now describes the project instead, every
   template is tested to gate clean, and a template that did not is no longer
@@ -336,19 +345,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`<command> --help` shows that command for every command.** Admin verbs
   (`scan-zip`, `redteam`, `mdm-script` and the rest), `agent-id`, `mcp-guard`
   and `ledger` printed the whole manual; they now print their own lines plus
-  the longer section when there is one. `shomra mcp --help` lists every `mcp`
-  sub-command, `shomra help <typo>` suggests the closest command and exits 3,
-  and `shomra admin memory-restore` runs as the admin help says it does.
+  the longer section when there is one. `nofly mcp --help` lists every `mcp`
+  sub-command, `nofly help <typo>` suggests the closest command and exits 3,
+  and `nofly admin memory-restore` runs as the admin help says it does.
 - **`ledger` finds the pre-commit hook where git keeps it**, including
   `core.hooksPath` and worktrees, and never stalls on a config that is not a
   regular file.
 - **No command or hook waits on a file that is not a regular file.** A named
-  pipe, a folder or a link to a device in place of `~/.shomra/config.json`, a
-  repo's `.shomraignore`, `.shomra/policy.yml`, `.shomra/baseline.json`, an
+  pipe, a folder or a link to a device in place of `~/.nofly/config.json`, a
+  repo's `.noflyignore`, `.nofly/policy.yml`, `.nofly/baseline.json`, an
   agent settings file, a git hook or a file passed to `plan`, `why`, `design`,
   `add skill` or `mcp … --config` is now named and skipped; before, every hook
-  and command could hang on it, and a repo linking `.shomraignore` to
-  `/dev/zero` held `shomra check` until the CI job timed out.
+  and command could hang on it, and a repo linking `.noflyignore` to
+  `/dev/zero` held `nofly check` until the CI job timed out.
 - **A path that is not there is refused, not reported clean.** `models nope/`
   printed "No AI model references found" and exited 0, and `rules nope
   --write` created the folder; both now exit 3. `models` also says when its
@@ -371,7 +380,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `HTTPS_PROXY` is set but Node is not using it (`NODE_USE_ENV_PROXY=1`). A
   `null` answer, a sign-in page or an HTML error page is refused in words
   instead of crashing the command or printing the page, and the GitHub token
-  used by `shomra pr` never follows a redirect to another host.
+  used by `nofly pr` never follows a redirect to another host.
 - **A config that cannot be read is reported, never read as empty.** `mcp list`
   says a config is broken instead of listing no servers, reads comments, and
   skips entries that are not servers; `mcp guard` no longer claims servers were
@@ -381,7 +390,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
 ### Agent identity registration
-- **`agent-identity register` works with the key `shomra init` stores.** The
+- **`agent-identity register` works with the key `nofly init` stores.** The
   server refused every org endpoint key as "an agent credential"; it now refuses
   only a real agent credential.
 - **`--owner` and `--no-owner` work.** Neither was a known flag, so the command
@@ -393,11 +402,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Registering with a stored credential from CI now needs `--static`, because it
   minted a new secret per run and printed it into the build log.
 - **No copy-paste, no restart.** On a developer machine the credential is saved
-  to `~/.shomra/config.json` (0600) and presented by the firewall, `llm-proxy`
+  to `~/.nofly/config.json` (0600) and presented by the firewall, `llm-proxy`
   and the MCP shim; `--for claude` keeps one per coding agent, `--no-save`
   prints it instead.
 - **`--purpose`** records what the agent is for, so its calls can be graded
-  against it, and `shomra status` shows which identity the machine presents.
+  against it, and `nofly status` shows which identity the machine presents.
 - **A keyless session is never reused by another job.** The cached session was
   keyed only by backend and audience, so on a self-hosted runner a later job
   could present an earlier job's agent for up to an hour. It is now keyed to the
@@ -430,48 +439,48 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   shows them the code directly (`systemMessage`), not only the agent. Control
   and bidi-override characters in a tool name never reach their screen.
 - **The server now answers before the hook gives up.** The hook waits
-  `SHOMRA_GUARD_TIMEOUT_MS` (2s by default) and then fails open, while the
+  `NOFLY_GUARD_TIMEOUT_MS` (2s by default) and then fails open, while the
   server allowed its enrichment passes 4s - so a slow pass ran the call
   unscreened and opened a 30s breaker. Every tool call and every prompt now
   declares its wait (`guard_timeout_ms`), and the server bounds its screen
   inside it: a pass cut short is recorded and raises the floor instead.
-  `SHOMRA_GUARD_TIER=fast` now reaches the server from both hooks.
+  `NOFLY_GUARD_TIER=fast` now reaches the server from both hooks.
 - **The org key never follows a redirect to another host.** Node's `fetch`
-  strips only `Authorization` on a cross-origin redirect, so `X-Shomra-Key` and
-  an `shm_agt_` credential in `X-Shomra-Agent` went wherever a 3xx pointed.
+  strips only `Authorization` on a cross-origin redirect, so `X-NoFly-Key` and
+  an `shm_agt_` credential in `X-NoFly-Agent` went wherever a 3xx pointed.
   Every keyed call now goes through `keyedFetch`, which follows same-origin
   redirects (and an https upgrade on the same host) and refuses the rest.
 - **A forged breaker can no longer switch the server tier off.** A breaker
   stamped in the future used to hold the circuit open forever. Only a stamp in
   the last cooldown window counts, and the file is written `0600`.
 - **The guard protects its own state.** A tool call that writes, moves or
-  deletes anything under `~/.shomra` (the key, the breaker, the ledger, the
+  deletes anything under `~/.nofly` (the key, the breaker, the ledger, the
   cached subject types) asks a person first, is reported to the server, and is
-  refused outright under `SHOMRA_GUARD_STRICT` or on an agent that cannot ask.
+  refused outright under `NOFLY_GUARD_STRICT` or on an agent that cannot ask.
 - **`llm-proxy` serves this machine only.** A non-loopback `Host` or `Origin`
   is refused, which stops a web page reaching it through DNS rebinding. The
-  configured `SHOMRA_AGENT` now wins over an `x-shomra-agent` a local client
+  configured `NOFLY_AGENT` now wins over an `x-nofly-agent` a local client
   sends.
 - **`agent-identity register` recommends the credential**, not the bare handle,
   and prints the credential's lifetime.
 
 ### Added (shift-left, batch 3)
-- **`shomra plan` + `shomra_review_plan` + `plan-guard`** - threat-model what an
+- **`nofly plan` + `nofly_review_plan` + `plan-guard`** - threat-model what an
   agent is ABOUT to build. `design` reads a document a human remembered to write;
   coding agents produce a plan before every non-trivial task, automatically. Same
   engine, a hundred times the frequency, zero human effort: agent proposes a plan
-  → Shomra threat-models it → the controls land in its context before it writes
+  → NoFly threat-models it → the controls land in its context before it writes
   line one. Three redundant paths, strongest first: the MCP tool (any MCP-capable
   agent, no vendor hook), a `rules` section that asks the agent to call it (added
-  only when the Shomra MCP server is actually registered - telling an agent to
+  only when the NoFly MCP server is actually registered - telling an agent to
   call a tool it does not have is noise that trains it to ignore the block), and
   a Claude Code `PreToolUse` hook on `ExitPlanMode`. That tool name is NOT in the
   published hook docs, so it gets its OWN PreToolUse entry rather than being
   folded into the tool-guard matcher: if it never fires, only this hook is dead.
   ⚠ A plan is a proposal - the default is to inform, never refuse. Only
   untrusted-input-reaches-a-hard-sink escalates to `ask`, and only under
-  `SHOMRA_GUARD_STRICT=1`. `SHOMRA_PLAN_GUARD_OFF=1` disables just this channel.
-- **`shomra corpus`** - screen RAG documents at INDEX time. The result firewall
+  `NOFLY_GUARD_STRICT=1`. `NOFLY_PLAN_GUARD_OFF=1` disables just this channel.
+- **`nofly corpus`** - screen RAG documents at INDEX time. The result firewall
   screens what a retrieval brings back; nothing screened what went in, so a
   poisoned document sat in the vector store indefinitely and was judged for the
   first time as one chunk, stripped of its document, inside a live request. Index
@@ -491,7 +500,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   running plan-guard against a realistic plan. Both fixed and pinned.
 
 ### Added (shift-left, batch 2)
-- **`shomra design <file|dir|->`** - threat-model a system that does not exist
+- **`nofly design <file|dir|->`** - threat-model a system that does not exist
   yet. Reads an RFC / design doc / Jira or Linear ticket / PR body and says
   whether what is described closes a path from untrusted input to a consequence.
   Reuses the platform's own model (`attack-graph.ts`: sources = untrusted input /
@@ -502,24 +511,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   behaviour rather than the first line the word appeared on. `--checklist` emits
   the conditions as a markdown task list to paste into the ticket as acceptance
   criteria. Ticket integration is a pipe, deliberately:
-  `gh issue view 42 --json body -q .body | shomra design -`.
+  `gh issue view 42 --json body -q .body | nofly design -`.
   ⚠ There is no clean verdict, by design: `NOT_DESCRIBED` is a statement about
   the DOCUMENT, not the system. Exit 1 when untrusted input reaches execution or
   a destructive action; 2 for any other closed path under `--strict`.
-- **`shomra add mcp|skill|model|package <ref>`** - one gate for every channel an
+- **`nofly add mcp|skill|model|package <ref>`** - one gate for every channel an
   agent acquires from, not just MCP. `skill` gates the manifest AND the scripts
   the skill bundles; `model` checks the Model Index before any weights download;
   `package` catches the dominant failure - an agent suggesting a plausible
   package name - with edit-distance typosquat detection against the AI package
   catalog, fully offline. ⚠ Unknown is never clean: an unreachable index, an
   unscanned model and an unrecognised package all return FLAG, never ALLOW.
-- **`shomra install-precommit --pre-receive`** - the un-bypassable sibling of the
+- **`nofly install-precommit --pre-receive`** - the un-bypassable sibling of the
   pre-commit hook. Runs on the git SERVER, on every push, for every developer;
   no `--no-verify`, no per-machine install. Deliberately FAILS CLOSED (the client
   hook fails open): at an enforcement point, deleting the binary must not be the
   bypass. Self-hosted Git + GitHub Enterprise; on GitHub.com the equivalent is
   the Action as a required status check.
-- **`shomra new agent [name] --framework vercel-ai`** - a whole project that
+- **`nofly new agent [name] --framework vercel-ai`** - a whole project that
   starts compliant: guard enforcing on every model call, an egress allowlist in
   code rather than in the prompt, untrusted input kept out of the system prompt,
   secrets referenced from the environment, and the gate wired into CI from commit
@@ -527,43 +536,43 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Reusable GitHub Action** (`action.yml`) - replaces the copy-pasted workflow
   snippet that no consumer ever updated. Composite, not Docker.
 - **Dev Container Feature** (`devcontainer-feature/`) - installs the CLI and runs
-  `shomra protect` at provision time, so the guard exists before the first
+  `nofly protect` at provision time, so the guard exists before the first
   keystroke in Codespaces / Gitpod / a local rebuild. `rules` is off by default:
   a feature that edits a developer's committed files unasked is a surprise.
-  There is deliberately no `curl … | sh` installer - Shomra's own Tier-0 blocks
+  There is deliberately no `curl … | sh` installer - NoFly's own Tier-0 blocks
   that pattern, and shipping one would be the product contradicting its own
   control in its own README.
 
 ### Added
-- **`shomra rules`** - compiles what Shomra enforces into the coding agent's own
-  context files (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules/shomra.mdc`,
+- **`nofly rules`** - compiles what NoFly enforces into the coding agent's own
+  context files (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules/nofly.mdc`,
   `.github/copilot-instructions.md`, `GEMINI.md`, `.windsurfrules`,
-  `.clinerules/shomra.md`), so the blocked pattern is never generated. Every
+  `.clinerules/nofly.md`), so the blocked pattern is never generated. Every
   other surface intercepts *after* the model wrote something; this one runs
   before it. The block is derived, not boilerplate: the always-on directives
   mirror the Tier-0 signals the firewall actually blocks, sections switch on
   according to what the repo holds, and an "Already present in this repo"
   section names what a local gate pass actually found, with paths. Org policy
   is layered on when enrolled (new `POST /gate/rules`). Written inside a
-  `<!-- BEGIN SHOMRA MANAGED BLOCK -->` marker pair - nothing outside it is
+  `<!-- BEGIN NOFLY MANAGED BLOCK -->` marker pair - nothing outside it is
   ever touched - with `--write`, `--check` (CI drift gate, exit 1 when stale),
   `--agent`, `--json`.
-- **`shomra prompt-guard`** - the third runtime channel: what *you* submit,
+- **`nofly prompt-guard`** - the third runtime channel: what *you* submit,
   screened before it leaves the machine. `install-hook` now wires Claude Code's
   `UserPromptSubmit` and Cursor's `beforeSubmitPrompt`. A live credential in a
   prompt is refused; pasted injection text is passed through but flagged to the
   model as untrusted data (you meant to send it - the risk is that you did not
   read it). Backtick-quoted payloads are down-ranked, so asking about a
-  signature is never blocked. `SHOMRA_PROMPT_GUARD_OFF=1` disables just this
+  signature is never blocked. `NOFLY_PROMPT_GUARD_OFF=1` disables just this
   channel. Only vendors with a documented pre-submit hook that can stop a
   submission are wired - a guessed event name would silently never fire, which
   reads as a control being on while it is off.
-- **`shomra mcp install`** - registers Shomra *as* an MCP server with Claude
+- **`nofly mcp install`** - registers NoFly *as* an MCP server with Claude
   Code / Cursor / Gemini CLI / Windsurf, so `mcp serve` is actually reachable
   instead of shipping switched off.
 - **Two MCP tools** that answer *before* the write, when changing course is
-  free: `shomra_review_change` (proposed content + intended path → verdict,
-  nothing written to disk) and `shomra_rules` (what will be refused here).
+  free: `nofly_review_change` (proposed content + intended path → verdict,
+  nothing written to disk) and `nofly_rules` (what will be refused here).
 
 ### Fixed
 - **The local Tier-0 mirror scored a rules file that FORBIDS exfiltration the
@@ -579,7 +588,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   toxic-flow check moved from whole-document co-occurrence to a single
   imperative line. Pinned by four new regression tests that also assert real
   poisoning still BLOCKs.
-- **`shomra protect` skipped agents it considered already guarded**, so a
+- **`nofly protect` skipped agents it considered already guarded**, so a
   machine wired before a new channel existed never received it while `protect`
   reported the agent protected. The installers are idempotent and report
   `changed` honestly, so they now always run.
@@ -596,8 +605,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `provenance` with no backend exited `0` (now `3` - a green build that proved
   nothing).
 - `install-hook` now writes an **absolute hook invocation**
-  (`"<node>" "<path to shomra.mjs>" tool-guard …`) instead of the bare
-  `shomra tool-guard`, so hooks keep firing when the CLI was run via `npx` or
+  (`"<node>" "<path to nofly.mjs>" tool-guard …`) instead of the bare
+  `nofly tool-guard`, so hooks keep firing when the CLI was run via `npx` or
   PATH drifts. Detection/idempotency accept both the old and new forms.
 - The Aider integration now points at the proxy's real route
   (`http://127.0.0.1:4141/openai/v1`); previously it wrote `/llm/openai`,
@@ -605,12 +614,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   configs keep working.
 
 ### Added
-- `shomra --version` / `-v` / `version` (reads package.json - single source).
+- `nofly --version` / `-v` / `version` (reads package.json - single source).
 - Unknown commands and unknown `--flags` now error with exit `3` and a
   "did you mean …?" suggestion instead of dumping the full help (commands) or
   silently no-opping (flags - the worst failure mode for a security gate).
 - Boolean flags (`--strict`, `--json`, `--sarif`, …) no longer swallow the
-  next argument: `shomra check --strict <dir>` and `shomra gate --json <file>`
+  next argument: `nofly check --strict <dir>` and `nofly gate --json <file>`
   now work in any order.
 - `status` reports the runtime-firewall hook per agent (all 8 supported
   agents' config files, both bare and absolute command forms) and prints
@@ -632,12 +641,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `harden` is now pure JSON (progress chatter no longer breaks `| jq`).
 - Shared "Not configured" error (exit `3`) that says where to get a key
   (app → Settings → API Keys).
-- `install-precommit`'s hook now prints an unmissable warning when `shomra`
+- `install-precommit`'s hook now prints an unmissable warning when `nofly`
   is not on PATH (the gate did NOT run), instead of a silent skip.
 - `install-hook` with no `--agent` says it defaults to Claude Code only and
-  suggests `--agent all` / `shomra protect`; help lists all 8 agents.
-- Help: exit-code table, `report`, `mcp list`, and the full `SHOMRA_*` env
-  var set; README documents the same plus the baseline/.shomraignore/
+  suggests `--agent all` / `nofly protect`; help lists all 8 agents.
+- Help: exit-code table, `report`, `mcp list`, and the full `NOFLY_*` env
+  var set; README documents the same plus the baseline/.noflyignore/
   policy.yml adoption story.
 - CLI-level tests (`tests/cli.test.mjs`): flag parsing, unknown-flag/command
   rejection, `--version`, JSON purity, and exit-code mapping.
@@ -649,7 +658,7 @@ Consolidated - these releases shipped between 0.2.0 and 0.3.0:
 - `fix` (AI remediation with unified-diff preview / `--apply`) and `why`
   (per-finding explanation + false-positive read; works offline).
 - `baseline` - accept current findings so only NEW ones fail; plus
-  `.shomraignore`, inline `shomra-ignore` comments, and `.shomra/policy.yml`
+  `.noflyignore`, inline `nofly-ignore` comments, and `.nofly/policy.yml`
   policy-as-code (block/flag thresholds + allow-list, worst-wins vs org).
 - `provenance` - evidence-backed "which changed files did an AI agent write?"
   from runtime-firewall telemetry, with `--trailer` and `--fail-on-blocked`.
@@ -657,8 +666,8 @@ Consolidated - these releases shipped between 0.2.0 and 0.3.0:
   self-hardening flywheel (propose → FP-verify → `--apply` signatures).
 - `llm-proxy` - local guard proxy for OpenAI/Anthropic/Gemini + compatible
   providers; `agent-identity register` - per-agent credentials presented as
-  `x-shomra-agent`.
-- `mcp serve` - Shomra as an MCP server (check / scan_models / fix / explain
+  `x-nofly-agent`.
+- `mcp serve` - NoFly as an MCP server (check / scan_models / fix / explain
   tools over stdio JSON-RPC); `mcp add` vets servers against the MCP Security
   Index before writing configs.
 - `pr --init` - one-shot scaffold of the GitHub Actions PR-review workflow.
@@ -676,7 +685,7 @@ Consolidated - these releases shipped between 0.2.0 and 0.3.0:
   commands, subagents, hooks, MCP configs, rules/instruction files, memory).
 - `check` / `gate` / `gate --all` with `--json` and `--sarif` output and
   CI-friendly exit codes (0 allowed / 1 blocked / 2 flagged with `--strict`).
-- `models` - detects AI-model loads in source and looks them up in the Shomra
+- `models` - detects AI-model loads in source and looks them up in the NoFly
   Model Security Index (enrichment; degrades offline).
 - `install-hook` / `tool-guard` / `result-guard` - tiered runtime firewall for
   coding agents (local Tier-0 block, optional backend escalation).

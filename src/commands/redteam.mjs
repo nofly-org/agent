@@ -90,7 +90,7 @@ export async function cmdRedteam(flags) {
     console.log(
       '\n  ' +
         verdictLine(run, { held, word: 'scenario', breachedNote: `⚠ ${run.breachedCount} scenario(s) breached your defenses.` }) +
-        dim(' Full report in the Shomra dashboard → Red Team.\n'),
+        dim(' Full report in the NoFly dashboard → Red Team.\n'),
     );
   }
 
@@ -140,7 +140,7 @@ export async function cmdCampaign(flags) {
     console.log(
       '\n  ' +
         verdictLine(run, { held, word: 'objective', breachedNote: `⚠ ${run.breachedCount} objective(s) achieved by the autonomous attacker.` }) +
-        dim(' Full transcript in the Shomra dashboard → Red Team. Harden the guard against the winning turns.\n'),
+        dim(' Full transcript in the NoFly dashboard → Red Team. Harden the guard against the winning turns.\n'),
     );
   }
 
@@ -197,5 +197,5 @@ export async function cmdHarden(flags) {
   } else if (res.status === 'REJECTED') {
     console.log(`  ${yellow('⚠')} No candidate was both effective and false-positive-free - nothing applied.`);
   }
-  console.log(dim('\n  Full detail in the Shomra dashboard → Self-Hardening.\n'));
+  console.log(dim('\n  Full detail in the NoFly dashboard → Self-Hardening.\n'));
 }

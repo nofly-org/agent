@@ -9,7 +9,7 @@ import { git, resolveOnPath, safeRef } from '../src/core/git-exec.mjs';
 /**
  * A BRANCH NAME IS DATA, NEVER SHELL.
  *
- * `shomra pr` and `shomra provenance` built `git diff … ${base}...HEAD` as a
+ * `nofly pr` and `nofly provenance` built `git diff … ${base}...HEAD` as a
  * shell string, with `base` from `--base`, `GITHUB_BASE_REF` or the PR event.
  * `$(...)` is legal in a git ref, so a crafted branch name ran commands in the
  * CI job that holds the repository token.
@@ -52,7 +52,7 @@ test('no command builds a git shell string from a variable', () => {
  * (cmd.exe for execSync, Node for execFileSync) - and the working directory is
  * the repository under check. A committed `git.bat` ran inside CI.
  */
-const planted = mkdtempSync(join(tmpdir(), 'shomra-planted-git-'));
+const planted = mkdtempSync(join(tmpdir(), 'nofly-planted-git-'));
 process.on('exit', () => rmSync(planted, { recursive: true, force: true }));
 writeFileSync(join(planted, 'git.bat'), '@echo PLANTED\r\n');
 writeFileSync(join(planted, 'git.cmd'), '@echo PLANTED\r\n');

@@ -113,7 +113,7 @@ const CONTROLS = {
   'injection→exec': [
     'The set of commands the agent can run is a fixed allowlist in code. Model output selects WHICH allowlisted action runs, never the command string itself.',
     'Untrusted text is passed as a labelled data parameter, never concatenated into a command, a prompt template, or a tool argument that reaches a shell.',
-    'The runtime firewall is wired on this path (`shomra protect`), so a command assembled at runtime is refused rather than logged.',
+    'The runtime firewall is wired on this path (`nofly protect`), so a command assembled at runtime is refused rather than logged.',
   ],
   'injection→destructive': [
     'Every destructive or money-moving action requires an approval step that a human performs outside the agent loop.',
@@ -139,7 +139,7 @@ const CONTROLS = {
   ],
   'filesystem→exec': [
     'Files the agent writes cannot land anywhere on an execution path (no hooks, no startup dirs, no CI config, no agent rules files) without passing the gate.',
-    '`shomra check` runs over agent-authored artifacts before they are committed.',
+    '`nofly check` runs over agent-authored artifacts before they are committed.',
   ],
   'filesystem→network': [
     'The agent cannot write a file and then cause that file to be uploaded to a destination it chose.',
@@ -219,6 +219,6 @@ export function designChecklist(result) {
   out.push('');
   for (const c of result.controls) out.push(`- [ ] ${c.text}`);
   out.push('');
-  out.push('_Derived by `shomra design` from the description above. It reads prose, so it sees only what was written down - a capability nobody documented is not a capability you do not have._');
+  out.push('_Derived by `nofly design` from the description above. It reads prose, so it sees only what was written down - a capability nobody documented is not a capability you do not have._');
   return out.join('\n') + '\n';
 }

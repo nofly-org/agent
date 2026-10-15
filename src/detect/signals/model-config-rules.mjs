@@ -1,6 +1,6 @@
 // GENERATED MIRROR of Dragox.Backend model-formats/model-config-rules.ts (types stripped, imports swapped).
 // Do not hand-edit the rules here - change the backend file and regenerate, so
-// `shomra gate` and the platform grade a model config identically.
+// `nofly gate` and the platform grade a model config identically.
 import { parseYaml } from '../../core/yaml-lite.mjs';
 import { inspectText } from './inspect-shim.mjs';
 

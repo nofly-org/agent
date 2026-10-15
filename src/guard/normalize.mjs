@@ -17,7 +17,7 @@ export function parentSessionFrom(agent, payload) {
     agent === 'windsurf' ? p.parent_trajectory_id : undefined,
     agent === 'cline' ? p.parent_task_id : undefined,
 
-    process.env.SHOMRA_PARENT_SESSION_ID,
+    process.env.NOFLY_PARENT_SESSION_ID,
   ];
   const self = String(p.session_id ?? p.conversation_id ?? p.task_id ?? p.trajectory_id ?? '').trim();
   for (const c of candidates) {

@@ -11,6 +11,6 @@ export const MCP_HOST_CONFIGS = {
 
 export const MCP_HOST_KEYS = Object.keys(MCP_HOST_CONFIGS);
 
-export function shomraMcpEntry() {
+export function noflyMcpEntry() {
   return { command: process.execPath, args: [SELF_PATH, 'mcp', 'serve'] };
 }

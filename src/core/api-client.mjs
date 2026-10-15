@@ -84,9 +84,9 @@ function originOf(url) {
 
 export async function api(url, key, route, body, opts = {}) {
 
-  if (!url) throw new Error('no backend configured - set SHOMRA_URL or run `shomra init --url <your backend>`');
+  if (!url) throw new Error('no backend configured - set NOFLY_URL or run `nofly init --url <your backend>`');
 
-  const timeoutMs = opts.timeoutMs ?? clampInt(process.env.SHOMRA_API_TIMEOUT_MS, 30000, 1000, 600000);
+  const timeoutMs = opts.timeoutMs ?? clampInt(process.env.NOFLY_API_TIMEOUT_MS, 30000, 1000, 600000);
   const deadline = Date.now() + timeoutMs;
   const method = opts.method ?? 'POST';
   for (let attempt = 0; ; attempt += 1) {
@@ -98,13 +98,13 @@ export async function api(url, key, route, body, opts = {}) {
       res = await keyedFetch(`${url}${route}`, {
         method,
 
-        headers: { 'Content-Type': 'application/json', 'X-Shomra-Key': key, Connection: 'close' },
+        headers: { 'Content-Type': 'application/json', 'X-NoFly-Key': key, Connection: 'close' },
         ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
         signal: ctrl.signal,
       });
       text = await res.text();
     } catch (e) {
-      if (e?.name === 'AbortError') throw new Error(`request timed out after ${timeoutMs}ms (raise SHOMRA_API_TIMEOUT_MS or check the backend)`);
+      if (e?.name === 'AbortError') throw new Error(`request timed out after ${timeoutMs}ms (raise NOFLY_API_TIMEOUT_MS or check the backend)`);
       throw networkError(e, url);
     } finally {
       clearTimeout(timer);

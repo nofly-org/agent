@@ -61,11 +61,11 @@ export function mcpLookupId(server, name) {
 
 export async function mcpLookup(url, id) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), clampInt(process.env.SHOMRA_API_TIMEOUT_MS, 15000, 1000, 60000));
+  const timer = setTimeout(() => ctrl.abort(), clampInt(process.env.NOFLY_API_TIMEOUT_MS, 15000, 1000, 60000));
   try {
     const res = await fetch(`${url}/catalog/lookup?id=${encodeURIComponent(id)}`, {
       signal: ctrl.signal,
-      headers: { Accept: 'application/json', 'User-Agent': 'shomra-agent' },
+      headers: { Accept: 'application/json', 'User-Agent': 'nofly-agent' },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();

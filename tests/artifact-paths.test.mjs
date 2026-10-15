@@ -128,7 +128,7 @@ test('a shell write to an artifact is sent to the gate', () => {
  * settings file while matching no rule anywhere in the product.
  */
 test('a write through a symlink is sent to the gate', (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-link-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-link-'));
   const real = path.join(dir, '.claude');
   fs.mkdirSync(real, { recursive: true });
   const target = path.join(real, 'settings.json');

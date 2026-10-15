@@ -53,7 +53,7 @@ export function clampArtifact(artifact) {
 }
 
 export const MAX_WIRE_DEPTH = 32;
-export const TOO_DEEP = '[shomra: nested too deep to read]';
+export const TOO_DEEP = '[nofly: nested too deep to read]';
 
 export function pruneDepth(value, depth = 0) {
   if (!value || typeof value !== 'object') return value;

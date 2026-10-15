@@ -11,7 +11,7 @@ import { TOOL_GUARD_MATCHERS, widenToolGuardMatcher } from '../src/agents/instal
 import { cachedSkillVerdict, rememberSkillVerdict, requestedSkill, resolveSkill, skillCacheKey } from '../src/guard/skill-check.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
+const CLI = path.join(HERE, '..', 'nofly.mjs');
 const KEY = 'shm_test_key_0000000000000000';
 
 function tmp(prefix) {
@@ -26,7 +26,7 @@ function writeSkill(dir, name, body = 'Summarise the document the user names.\n'
 
 function guard(payload, { home, cwd, env = {} }) {
   const base = { ...process.env, USERPROFILE: home, HOME: home, NO_COLOR: '1' };
-  for (const k of Object.keys(base)) if (k.startsWith('SHOMRA_') || k === 'CLAUDE_PROJECT_DIR') delete base[k];
+  for (const k of Object.keys(base)) if (k.startsWith('NOFLY_') || k === 'CLAUDE_PROJECT_DIR') delete base[k];
   return new Promise((done) => {
     const child = spawn(process.execPath, [CLI, 'tool-guard', '--agent', 'claude'], { env: { ...base, ...env }, cwd: cwd ?? home });
     let stdout = '';
@@ -77,7 +77,7 @@ const BANNED = () => ({
 
 test('the Claude Code matcher names the Skill tool, and an older install is widened to it', () => {
   assert.match(TOOL_GUARD_MATCHERS.claude, /(^|\|)Skill(\||$)/);
-  const pre = [{ matcher: 'Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|mcp__.*', hooks: [{ type: 'command', command: 'npx -y @shomra/agent tool-guard --agent claude' }] }];
+  const pre = [{ matcher: 'Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|mcp__.*', hooks: [{ type: 'command', command: 'npx -y @nofly/agent tool-guard --agent claude' }] }];
   assert.equal(widenToolGuardMatcher(pre, TOOL_GUARD_MATCHERS.claude), true);
   assert.match(pre[0].matcher, /(^|\|)Skill(\||$)/);
   assert.equal(widenToolGuardMatcher(pre, TOOL_GUARD_MATCHERS.claude), false);
@@ -94,8 +94,8 @@ test('the invoked skill is read from either input shape, with a plugin or direct
 });
 
 test('a skill resolves in the project, in ~/.claude/skills, by its declared name, under a nested scope and in a plugin', () => {
-  const home = tmp('shomra-skill-home-');
-  const project = tmp('shomra-skill-proj-');
+  const home = tmp('nofly-skill-home-');
+  const project = tmp('nofly-skill-proj-');
   writeSkill(path.join(project, '.claude', 'skills', 'deploy'), 'deploy');
   writeSkill(path.join(home, '.claude', 'skills', 'pdf'), 'pdf');
   writeSkill(path.join(home, '.claude', 'skills', 'notes-v2'), 'notes');
@@ -118,8 +118,8 @@ test('a skill resolves in the project, in ~/.claude/skills, by its declared name
 });
 
 test('a skill present in both the project and ~/.claude/skills is checked in both places', () => {
-  const home = tmp('shomra-skill-home-');
-  const project = tmp('shomra-skill-proj-');
+  const home = tmp('nofly-skill-home-');
+  const project = tmp('nofly-skill-proj-');
   writeSkill(path.join(project, '.claude', 'skills', 'deploy'), 'deploy');
   writeSkill(path.join(home, '.claude', 'skills', 'deploy'), 'deploy');
   const found = resolveSkill({ raw: 'deploy', scope: null, name: 'deploy' }, { projectDir: project, cwd: project, home });
@@ -127,7 +127,7 @@ test('a skill present in both the project and ~/.claude/skills is checked in bot
 });
 
 test('a cached verdict is served inside its TTL and only for the same content', () => {
-  const file = path.join(tmp('shomra-skill-cache-'), 'skill-verdicts.json');
+  const file = path.join(tmp('nofly-skill-cache-'), 'skill-verdicts.json');
   const key = skillCacheKey({ url: 'http://x', apiKey: 'k', path: '.claude/skills/a/SKILL.md', content: 'one', siblings: [] });
   const changed = skillCacheKey({ url: 'http://x', apiKey: 'k', path: '.claude/skills/a/SKILL.md', content: 'two', siblings: [] });
   const moved = skillCacheKey({ url: 'http://x', apiKey: 'k', path: '.claude/skills/a/SKILL.md', content: 'one', siblings: ['.claude/skills/a/run.sh'] });
@@ -142,12 +142,12 @@ test('a cached verdict is served inside its TTL and only for the same content', 
 });
 
 test('a skill the gate refuses is denied before it loads, and the repeat is answered from the cache', async () => {
-  const home = tmp('shomra-skill-e2e-');
+  const home = tmp('nofly-skill-e2e-');
   writeSkill(path.join(home, '.claude', 'skills', 'pdf'), 'pdf');
   fs.writeFileSync(path.join(home, '.claude', 'skills', 'pdf', 'extract.py'), 'print(1)\n');
   const s = await serve(BANNED);
   try {
-    const env = { SHOMRA_API_KEY: KEY, SHOMRA_URL: s.url, SHOMRA_GUARD_BREAKER_MS: '0' };
+    const env = { NOFLY_API_KEY: KEY, NOFLY_URL: s.url, NOFLY_GUARD_BREAKER_MS: '0' };
     const payload = { tool_name: 'Skill', tool_input: { skill: 'pdf' }, cwd: home, session_id: 'sess-skill-1' };
     const first = await guard(payload, { home, env });
     assert.equal(first.decision, 'deny', first.stdout);
@@ -171,12 +171,12 @@ test('a skill the gate refuses is denied before it loads, and the repeat is answ
 });
 
 test('an allowed skill passes, is not re-checked while unchanged, and is re-checked once it changes', async () => {
-  const home = tmp('shomra-skill-e2e-');
-  const project = tmp('shomra-skill-proj-');
+  const home = tmp('nofly-skill-e2e-');
+  const project = tmp('nofly-skill-proj-');
   const file = writeSkill(path.join(project, '.claude', 'skills', 'deploy'), 'deploy');
   const s = await serve(ALLOW);
   try {
-    const env = { SHOMRA_API_KEY: KEY, SHOMRA_URL: s.url, SHOMRA_GUARD_BREAKER_MS: '0', CLAUDE_PROJECT_DIR: project };
+    const env = { NOFLY_API_KEY: KEY, NOFLY_URL: s.url, NOFLY_GUARD_BREAKER_MS: '0', CLAUDE_PROJECT_DIR: project };
     const payload = { tool_name: 'Skill', tool_input: { skill: 'deploy' }, cwd: project, session_id: 'sess-skill-2' };
     assert.equal((await guard(payload, { home, cwd: project, env })).decision, null);
     assert.equal((await guard(payload, { home, cwd: project, env })).decision, null);
@@ -191,10 +191,10 @@ test('an allowed skill passes, is not re-checked while unchanged, and is re-chec
 });
 
 test('a skill that cannot be found is not blocked and nothing is checked', async () => {
-  const home = tmp('shomra-skill-e2e-');
+  const home = tmp('nofly-skill-e2e-');
   const s = await serve(BANNED);
   try {
-    const out = await guard({ tool_name: 'Skill', tool_input: { skill: 'built-in-thing' }, cwd: home, session_id: 's' }, { home, env: { SHOMRA_API_KEY: KEY, SHOMRA_URL: s.url, SHOMRA_GUARD_BREAKER_MS: '0' } });
+    const out = await guard({ tool_name: 'Skill', tool_input: { skill: 'built-in-thing' }, cwd: home, session_id: 's' }, { home, env: { NOFLY_API_KEY: KEY, NOFLY_URL: s.url, NOFLY_GUARD_BREAKER_MS: '0' } });
     assert.equal(out.decision, null, out.stdout);
     assert.equal(out.code, 0);
     assert.match(out.stderr, /skill not checked: no SKILL\.md found for "built-in-thing"/);
@@ -205,23 +205,23 @@ test('a skill that cannot be found is not blocked and nothing is checked', async
 });
 
 test('an unreachable gate lets the skill run unless the machine fails closed', async () => {
-  const home = tmp('shomra-skill-e2e-');
+  const home = tmp('nofly-skill-e2e-');
   writeSkill(path.join(home, '.claude', 'skills', 'pdf'), 'pdf');
   const payload = { tool_name: 'Skill', tool_input: { skill: 'pdf' }, cwd: home, session_id: 's' };
-  const env = { SHOMRA_API_KEY: KEY, SHOMRA_URL: 'http://127.0.0.1:9', SHOMRA_GUARD_TIMEOUT_MS: '300', SHOMRA_GUARD_BREAKER_MS: '0' };
+  const env = { NOFLY_API_KEY: KEY, NOFLY_URL: 'http://127.0.0.1:9', NOFLY_GUARD_TIMEOUT_MS: '300', NOFLY_GUARD_BREAKER_MS: '0' };
   const open = await guard(payload, { home, env });
   assert.equal(open.decision, null, open.stdout);
-  const strict = await guard(payload, { home, env: { ...env, SHOMRA_GUARD_STRICT: '1' } });
+  const strict = await guard(payload, { home, env: { ...env, NOFLY_GUARD_STRICT: '1' } });
   assert.equal(strict.decision, 'deny');
   assert.match(strict.reason, /could not check the skill "pdf"/);
 });
 
 test('an agent credential alone does not ask the gate, which only accepts an org key', async () => {
-  const home = tmp('shomra-skill-e2e-');
+  const home = tmp('nofly-skill-e2e-');
   writeSkill(path.join(home, '.claude', 'skills', 'pdf'), 'pdf');
   const s = await serve(BANNED);
   try {
-    const out = await guard({ tool_name: 'Skill', tool_input: { skill: 'pdf' }, cwd: home, session_id: 's' }, { home, env: { SHOMRA_AGENT: `shm_agt_${crypto.randomBytes(8).toString('hex')}`, SHOMRA_URL: s.url, SHOMRA_GUARD_BREAKER_MS: '0' } });
+    const out = await guard({ tool_name: 'Skill', tool_input: { skill: 'pdf' }, cwd: home, session_id: 's' }, { home, env: { NOFLY_AGENT: `shm_agt_${crypto.randomBytes(8).toString('hex')}`, NOFLY_URL: s.url, NOFLY_GUARD_BREAKER_MS: '0' } });
     assert.equal(s.seen.checks.length, 0);
     assert.equal(out.code, 0);
   } finally {

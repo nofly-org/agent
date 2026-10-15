@@ -20,7 +20,7 @@ export function emitGuardDeny(agent, reason, userNote, stopped) {
 export function stoppedNote(stopped) {
   if (!stopped || typeof stopped.sentence !== 'string') return undefined;
   const clean = stopped.sentence.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, ' ').trim().slice(0, 400);
-  return clean ? `Shomra stopped this session. ${clean}` : undefined;
+  return clean ? `NoFly stopped this session. ${clean}` : undefined;
 }
 
 export function confirmationNote(confirmation) {
@@ -76,7 +76,7 @@ export function emitGuardNotice(agent, message) {
   process.exit(0);
 }
 
-const CLINE_ASK = ' Cline cannot pause a tool call for approval, so Shomra refused it - run it yourself if you meant it.';
+const CLINE_ASK = ' Cline cannot pause a tool call for approval, so NoFly refused it - run it yourself if you meant it.';
 
 export function emitGuardAsk(agent, reason) {
   const bodies = {

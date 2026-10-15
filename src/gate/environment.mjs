@@ -36,7 +36,7 @@ export function remoteRunner(e = process.env) {
 const ENV_RANK = { LOCAL: 0, CI: 1, REMOTE: 2 };
 
 export function declaredEnvironment(e = process.env) {
-  const v = String(e?.SHOMRA_ENVIRONMENT ?? '').trim().toUpperCase();
+  const v = String(e?.NOFLY_ENVIRONMENT ?? '').trim().toUpperCase();
   return v in ENV_RANK ? v : null;
 }
 

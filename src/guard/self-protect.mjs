@@ -2,24 +2,25 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { CONFIG_DIR } from '../core/config.mjs';
+import { stateDirs } from '../core/legacy.mjs';
 import { SHELL_TOOLS_RE, WRITE_TOOLS, guardTouchedPaths, patchTextOf, shellCommandOf, shellWritePaths } from './classify.mjs';
-import { SHOMRA_ANY_HOOK_RE } from '../agents/hook-command.mjs';
+import { NOFLY_ANY_HOOK_RE } from '../agents/hook-command.mjs';
 import { postEditContents } from './memory-write.mjs';
 import { readRegularText } from '../core/safe-read.mjs';
 
 const HOME_PREFIX = /^(?:~|\$HOME|\$\{HOME\}|%USERPROFILE%|\$env:USERPROFILE)(?=[\\/]|$)/i;
 const MUTATE_VERB = /(?:^|[\s;&|(])(?:rm|rmdir|unlink|shred|truncate|mv|cp|install|dd|chmod|chown|chattr|ln|tee|sed|perl|remove-item|del|erase|rd|set-content|add-content|clear-content|out-file|new-item|copy-item|move-item|rename-item)(?=\s)|>/i;
-const STATE_REF = /(?:~|\$HOME|\$\{HOME\}|%USERPROFILE%|\$env:USERPROFILE)[\\/]\.shomra(?=[\\/\s"';|&)]|$)/i;
+const STATE_REF = /(?:~|\$HOME|\$\{HOME\}|%USERPROFILE%|\$env:USERPROFILE)[\\/]\.(?:nofly|shomra)(?=[\\/\s"';|&)]|$)/i;
 const ASK_CAPABLE = new Set(['claude', 'cursor', 'copilot', 'gemini', 'codex', 'cline']);
 const MUTATING_LEAVES = new Set(['move_file', 'delete_file', 'remove_file', 'rename_file', 'copy_file']);
 const HOOK_FILE_RE = /(?:^|[\\/])(?:\.claude[\\/]settings(?:\.local)?\.json|\.codex[\\/]hooks\.json|\.gemini[\\/]settings\.json|\.cursor[\\/]hooks\.json|\.codeium[\\/]windsurf[\\/]hooks\.json|\.windsurf[\\/]hooks\.json|\.copilot[\\/]hooks[\\/][^\\/]+\.json|\.github[\\/]hooks[\\/][^\\/]+\.json|\.cline[\\/]hooks\.json|(?:\.clinerules|\.cline)[\\/]hooks[\\/](?:PreToolUse|PostToolUse)(?:\.\w+)?|Cline[\\/]Hooks[\\/](?:PreToolUse|PostToolUse)(?:\.\w+)?)$/i;
-const CLINE_MARK_RE = /\/\/ shomra cline hook/;
-const ours = (text) => SHOMRA_ANY_HOOK_RE.test(text) || CLINE_MARK_RE.test(text);
-const IGNORE_FILE_RE = /(?:^|[\\/])\.shomraignore$/i;
+const CLINE_MARK_RE = /\/\/ (?:nofly|shomra) cline hook/;
+const ours = (text) => NOFLY_ANY_HOOK_RE.test(text) || CLINE_MARK_RE.test(text);
+const IGNORE_FILE_RE = /(?:^|[\\/])\.(?:nofly|shomra)ignore$/i;
 const DISABLE_HOOKS_RE = /["']?disableAllHooks["']?\s*:\s*true\b/i;
-const GUARD_ENV_RE = /["']?SHOMRA_(?:GUARD_LOCAL|GUARD_IGNORE|MODEL_GUARD|MCP_SCREEN|URL|GUARD_TIMEOUT_MS|GUARD_BREAKER_MS)["']?\s*:|\bSHOMRA_(?:GUARD_LOCAL|GUARD_IGNORE|MODEL_GUARD|MCP_SCREEN|URL|GUARD_TIMEOUT_MS|GUARD_BREAKER_MS)=/gi;
+const GUARD_ENV_RE = /["']?(?:NOFLY|SHOMRA)_(?:GUARD_LOCAL|GUARD_IGNORE|MODEL_GUARD|MCP_SCREEN|URL|GUARD_TIMEOUT_MS|GUARD_BREAKER_MS)["']?\s*:|\b(?:NOFLY|SHOMRA)_(?:GUARD_LOCAL|GUARD_IGNORE|MODEL_GUARD|MCP_SCREEN|URL|GUARD_TIMEOUT_MS|GUARD_BREAKER_MS)=/gi;
 const HOOK_COMMAND_RE = /"command"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
-const SELF_UNINSTALL_RE = /(?:\bshomra(?:\.mjs)?["']?|@shomra\/agent(?:@[\w.-]+)?)\s+install-hook\b[^\n;&|]*\s--uninstall\b/i;
+const SELF_UNINSTALL_RE = /(?:\b(?:nofly|shomra)(?:\.mjs)?["']?|@(?:nofly|shomra)\/agent(?:@[\w.-]+)?)\s+install-hook\b[^\n;&|]*\s--uninstall\b/i;
 const CHAINED_SHELL_RE = /[;&|`<>()]|\$\(/;
 
 function deshelled(command) {
@@ -56,9 +57,9 @@ function chainedGuardCount(text) {
   let n = 0;
   for (const m of String(text).matchAll(HOOK_COMMAND_RE)) {
     const cmd = m[1];
-    if (!SHOMRA_ANY_HOOK_RE.test(cmd)) continue;
+    if (!NOFLY_ANY_HOOK_RE.test(cmd)) continue;
     const lead = /^\s*((?:[A-Za-z_]\w*=\S*\s+)*)/.exec(cmd)?.[1] ?? '';
-    const foreignEnv = [...lead.matchAll(/([A-Za-z_]\w*)=/g)].some((a) => !/^SHOMRA_/i.test(a[1]));
+    const foreignEnv = [...lead.matchAll(/([A-Za-z_]\w*)=/g)].some((a) => !/^(?:NOFLY|SHOMRA)_/i.test(a[1]));
     if (CHAINED_SHELL_RE.test(cmd) || foreignEnv) n++;
   }
   return n;
@@ -87,7 +88,8 @@ export function insideGuardState(p, { cwd = process.cwd(), home = os.homedir(), 
   if (typeof p !== 'string' || !p.trim()) return false;
   const raw = p.trim().replace(/^["']|["']$/g, '').replace(HOME_PREFIX, home);
   const abs = path.resolve(cwd || process.cwd(), raw);
-  const roots = [path.resolve(stateDir), real(stateDir)].filter(Boolean);
+  const dirs = stateDir === CONFIG_DIR ? [...new Set([stateDir, ...stateDirs(home)])] : [stateDir];
+  const roots = dirs.flatMap((dir) => [path.resolve(dir), real(dir)]).filter(Boolean);
   const targets = [abs, real(abs)].filter(Boolean);
   return roots.some((root) => targets.some((t) => within(root, t)));
 }
@@ -108,7 +110,7 @@ export function guardStateTamper(tool, input = {}, opts = {}) {
 }
 
 export function tamperReason(hit) {
-  return `This call changes Shomra's own guard state (${hit.paths.join(', ')}) - the settings, credential and breaker the firewall screening this agent depends on. `
+  return `This call changes NoFly's own guard state (${hit.paths.join(', ')}) - the settings, credential and breaker the firewall screening this agent depends on. `
     + 'An agent has no reason to edit the guard that screens it; approve only if you asked for exactly this.';
 }
 
@@ -162,13 +164,13 @@ export function guardHookTamper(tool, input = {}, { cwd = process.cwd(), home = 
 }
 
 const HOOK_TAMPER_WHY = {
-  'removes-hook': 'removes the Shomra guard hook from',
-  'disables-hooks': 'sets disableAllHooks, which stops every hook including the Shomra guard, in',
-  'guard-env': 'sets a SHOMRA_ variable that switches off or re-points the guard in',
-  'chains-hook': 'wraps the Shomra guard hook in other commands, which then run on every screened call, in',
-  rewrites: 'rewrites, with no way to check the Shomra guard hook survives,',
-  'ignore-list': 'edits the list of paths the Shomra guard skips,',
-  uninstall: 'runs `shomra install-hook --uninstall`, which removes the Shomra guard hook from',
+  'removes-hook': 'removes the NoFly guard hook from',
+  'disables-hooks': 'sets disableAllHooks, which stops every hook including the NoFly guard, in',
+  'guard-env': 'sets a NOFLY_ variable that switches off or re-points the guard in',
+  'chains-hook': 'wraps the NoFly guard hook in other commands, which then run on every screened call, in',
+  rewrites: 'rewrites, with no way to check the NoFly guard hook survives,',
+  'ignore-list': 'edits the list of paths the NoFly guard skips,',
+  uninstall: 'runs `nofly install-hook --uninstall`, which removes the NoFly guard hook from',
 };
 
 export function hookTamperReason(hit) {

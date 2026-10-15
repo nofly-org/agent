@@ -28,37 +28,37 @@ function uninstallHooks(flags) {
       const result = AGENT_UNINSTALLERS[agent](global);
       if (result.changed) {
         removed += result.removed;
-        console.log(green('✓') + ` Removed the Shomra runtime firewall for ${bold(AGENT_LABELS[agent])} from ${bold(result.file)}`);
+        console.log(green('✓') + ` Removed the NoFly runtime firewall for ${bold(AGENT_LABELS[agent])} from ${bold(result.file)}`);
       } else if (flags.agent) {
-        console.log(dim(`  • No Shomra hook for ${AGENT_LABELS[agent]} in ${result.file}`));
+        console.log(dim(`  • No NoFly hook for ${AGENT_LABELS[agent]} in ${result.file}`));
       }
     } catch (error) {
       failed++;
       console.error(red('✗') + ` ${AGENT_LABELS[agent]}: ${error.message}`);
     }
   }
-  if (!removed && !failed) console.log(dim(`  No Shomra hooks found ${global ? 'in your user settings' : 'in this repo'}${global ? '' : ' (use --global for your user settings)'}.`));
+  if (!removed && !failed) console.log(dim(`  No NoFly hooks found ${global ? 'in your user settings' : 'in this repo'}${global ? '' : ' (use --global for your user settings)'}.`));
   else if (removed) console.log(dim('\n  Restart the agent to pick up the change. Your own hooks and settings were left as they were.'));
   if (failed) process.exitCode = 1;
 }
 
 function managedHooks(flags) {
-  if (!process.env.SHOMRA_MANAGED_ROOT && !isPrivileged()) {
-    console.error(red('✗') + ' ' + bold('shomra install-hook --managed') + ' writes machine-wide policy files and must run as root (sudo) or an elevated Administrator.');
+  if (!process.env.NOFLY_MANAGED_ROOT && !isPrivileged()) {
+    console.error(red('✗') + ' ' + bold('nofly install-hook --managed') + ' writes machine-wide policy files and must run as root (sudo) or an elevated Administrator.');
     process.exit(EXIT_USAGE);
   }
   const targets = flags.agent ? requestedAgents(flags, 'all') : MANAGED_AGENTS;
   const writableLauncher = flags.uninstall ? null : userWritableLauncher();
   if (writableLauncher && !acceptsUserWritable(flags)) {
     console.error(red('✗') + ` The managed hooks would run ${bold(process.execPath)} for every user of this machine, but ${bold(writableLauncher)} can be changed by a non-root user - nothing was installed.`);
-    console.error(dim('  Install Shomra in a root-owned location (the script from shomra admin mdm-script does), or accept the risk with --allow-user-writable (SHOMRA_ALLOW_USER_NODE=1).'));
+    console.error(dim('  Install NoFly in a root-owned location (the script from nofly admin mdm-script does), or accept the risk with --allow-user-writable (NOFLY_ALLOW_USER_NODE=1).'));
     process.exit(1);
   }
   let failed = 0;
   let done = 0;
   for (const agent of targets) {
     if (!MANAGED_AGENTS.includes(agent)) {
-      console.log(dim(`  • ${AGENT_LABELS[agent]} has no machine-wide hook location - install it per user with shomra install-hook --global.`));
+      console.log(dim(`  • ${AGENT_LABELS[agent]} has no machine-wide hook location - install it per user with nofly install-hook --global.`));
       continue;
     }
     let result;
@@ -75,12 +75,12 @@ function managedHooks(flags) {
     }
     done++;
     if (flags.uninstall) {
-      if (result.changed) console.log(green('✓') + ` Removed the managed Shomra hooks for ${bold(AGENT_LABELS[agent])} from ${bold(result.file)}`);
-      else console.log(dim(`  • No managed Shomra hook for ${AGENT_LABELS[agent]} in ${result.file}`));
+      if (result.changed) console.log(green('✓') + ` Removed the managed NoFly hooks for ${bold(AGENT_LABELS[agent])} from ${bold(result.file)}`);
+      else console.log(dim(`  • No managed NoFly hook for ${AGENT_LABELS[agent]} in ${result.file}`));
       continue;
     }
-    if (result.changed) console.log(green('✓') + ` Installed managed Shomra hooks for ${bold(AGENT_LABELS[agent])} → ${bold(result.file)}`);
-    else console.log(yellow('•') + ` Managed Shomra hooks already installed for ${AGENT_LABELS[agent]} in ${bold(result.file)}`);
+    if (result.changed) console.log(green('✓') + ` Installed managed NoFly hooks for ${bold(AGENT_LABELS[agent])} → ${bold(result.file)}`);
+    else console.log(yellow('•') + ` Managed NoFly hooks already installed for ${AGENT_LABELS[agent]} in ${bold(result.file)}`);
     if (result.note) console.log(dim(`    ${result.note}`));
   }
   if (failed) process.exitCode = 1;
@@ -90,8 +90,8 @@ function managedHooks(flags) {
   const writable = userWritableLauncher();
   if (writable) {
     console.log(yellow('\n  ⚠') + ` The hooks run ${bold(process.execPath)} on this install, but ${bold(writable)} can be changed by a`);
-    console.log(dim('    non-root user, who could replace what every hook runs. Install Shomra in a root-owned location'));
-    console.log(dim('    (the script from shomra admin mdm-script does) and run this again from there.'));
+    console.log(dim('    non-root user, who could replace what every hook runs. Install NoFly in a root-owned location'));
+    console.log(dim('    (the script from nofly admin mdm-script does) and run this again from there.'));
   }
 }
 
@@ -101,7 +101,7 @@ export function cmdInstallHook(flags) {
   const global = !!flags.global;
   const targets = requestedAgents(flags, 'claude');
   if (!flags.agent) {
-    console.log(dim('  No --agent given - installing for Claude Code only. Use ') + bold('--agent all') + dim(' (or ') + bold('shomra protect') + dim(') to cover every agent.'));
+    console.log(dim('  No --agent given - installing for Claude Code only. Use ') + bold('--agent all') + dim(' (or ') + bold('nofly protect') + dim(') to cover every agent.'));
   }
 
   let failed = 0;
@@ -116,9 +116,9 @@ export function cmdInstallHook(flags) {
     }
     const { file, changed } = result;
     if (changed) {
-      console.log(green('✓') + ` Installed the Shomra runtime firewall for ${bold(AGENT_LABELS[agent])} → ${bold(file)}`);
+      console.log(green('✓') + ` Installed the NoFly runtime firewall for ${bold(AGENT_LABELS[agent])} → ${bold(file)}`);
     } else {
-      console.log(yellow('•') + ` Shomra runtime firewall already installed for ${AGENT_LABELS[agent]} in ${bold(file)}`);
+      console.log(yellow('•') + ` NoFly runtime firewall already installed for ${AGENT_LABELS[agent]} in ${bold(file)}`);
     }
     if (result.note) console.log(dim(`    Note: ${result.note}`));
     if (agent === 'windsurf') {
@@ -126,25 +126,25 @@ export function cmdInstallHook(flags) {
     }
     if (agent === 'aider') {
       console.log(dim('    Note: Aider has no tool hook - this routes its model calls through the'));
-      console.log(dim('          Shomra LLM Guard proxy. Start it with ') + 'shomra llm-proxy' + dim(' and set your API key.'));
+      console.log(dim('          NoFly LLM Guard proxy. Start it with ') + 'nofly llm-proxy' + dim(' and set your API key.'));
     }
   }
   if (failed) process.exitCode = 1;
   if (failed === targets.length) return;
   console.log(dim('\n  PreToolUse:  screens every shell command, artifact write, and MCP call BEFORE it runs -'));
   console.log(dim('               and vets AI model loads the agent writes (from_pretrained / hf_hub /'));
-  console.log(dim('               torch.hub …) against the Shomra Model Index, so a known-vulnerable model'));
-  console.log(dim('               is flagged with its fix BEFORE the load lands. (SHOMRA_MODEL_GUARD=0 to silence.)'));
+  console.log(dim('               torch.hub …) against the NoFly Model Index, so a known-vulnerable model'));
+  console.log(dim('               is flagged with its fix BEFORE the load lands. (NOFLY_MODEL_GUARD=0 to silence.)'));
   console.log(dim('  PostToolUse: screens content fetched pages / file reads / MCP responses bring BACK'));
   console.log(dim('               into the agent context - prompt injection, exfil sinks, hidden payloads.'));
   if (targets.some((a) => PROMPT_HOOK_AGENTS.has(a))) {
     console.log(dim('  Prompt:      screens what YOU submit before it leaves the machine - a pasted live'));
     console.log(dim('               credential is refused; pasted injection text is flagged to the model as'));
-    console.log(dim('               untrusted data. (SHOMRA_PROMPT_GUARD_OFF=1 to disable just this one.)'));
+    console.log(dim('               untrusted data. (NOFLY_PROMPT_GUARD_OFF=1 to disable just this one.)'));
   }
-  console.log(dim('  Blocked calls/results are refused with a reason; every decision lands in Shomra → Gate Activity.'));
+  console.log(dim('  Blocked calls/results are refused with a reason; every decision lands in NoFly → Gate Activity.'));
   console.log(dim('  Dangerous calls (curl|sh, reverse shells, secrets, injection) are blocked ON-MACHINE with'));
   console.log(dim('  no network; only policy-relevant calls escalate to the backend, so a slow/down backend'));
-  console.log(dim('  never freezes the agent. Tip: ') + 'SHOMRA_GUARD_STRICT=1' + dim(' also fails-closed on the server tier.'));
-  console.log(dim('  Remove it again with ') + bold(`shomra install-hook --uninstall${global ? ' --global' : ''}`) + dim('.'));
+  console.log(dim('  never freezes the agent. Tip: ') + 'NOFLY_GUARD_STRICT=1' + dim(' also fails-closed on the server tier.'));
+  console.log(dim('  Remove it again with ') + bold(`nofly install-hook --uninstall${global ? ' --global' : ''}`) + dim('.'));
 }

@@ -47,7 +47,7 @@ function printDryRun(flags, references, url) {
     }, null, 2));
     return;
   }
-  console.log(bold(cyan('\n  Shomra models')) + dim(` - ${references.length} reference(s) detected (dry run - no lookup)`));
+  console.log(bold(cyan('\n  NoFly models')) + dim(` - ${references.length} reference(s) detected (dry run - no lookup)`));
   for (const reference of references) {
     const revision = reference.sha ? dim(`@${reference.sha}`) : '';
     console.log(`  ${gray('•')} ${bold(reference.id)}${revision} ${dim(`(${reference.source})`)} ${dim(`→ ${url}/models/lookup?id=${reference.id}`)}`);
@@ -84,14 +84,14 @@ function printModel(model) {
   printAlternatives(model.alternatives, 'model');
 
   if (model.notIndexed && model.source !== 'ollama') {
-    console.log(`      ${dim('→ scan it now:')} ${bold(`shomra model-scan ${model.id}`)}`);
+    console.log(`      ${dim('→ scan it now:')} ${bold(`nofly model-scan ${model.id}`)}`);
   }
 }
 
 function uncheckedNotice(models, url) {
   const failed = models.filter((model) => model.error).length;
   if (!failed) return null;
-  const why = url ? ' (model index unreachable)' : ' (no backend configured - set SHOMRA_URL)';
+  const why = url ? ' (model index unreachable)' : ' (no backend configured - set NOFLY_URL)';
   return yellow(`⚠ ${failed} model reference(s) could not be checked`) + dim(why);
 }
 
@@ -105,12 +105,12 @@ function summaryLine({ models, blocked, flagged, url }) {
 
 function printReport({ models, blocked, flagged, url, indexUnreachable }) {
   const indexNote = url ? ` · index at ${url}` : ' · local detection only';
-  console.log(bold(cyan('\n  Shomra models')) + dim(` - ${models.length} model reference(s)${indexNote}`));
+  console.log(bold(cyan('\n  NoFly models')) + dim(` - ${models.length} model reference(s)${indexNote}`));
 
   if (indexUnreachable) {
     const why = url
       ? 'Model index unreachable - could not fetch vulnerability info.'
-      : 'Model index not configured - set SHOMRA_URL to check models against the Shomra Model Index.';
+      : 'Model index not configured - set NOFLY_URL to check models against the NoFly Model Index.';
     console.log(`  ${yellow('⚠')} ${dim(why)}`);
   }
 
@@ -139,7 +139,7 @@ export async function cmdModels(flags, positional) {
     return;
   }
 
-  const concurrency = clampInt(process.env.SHOMRA_GATE_CONCURRENCY, DEFAULT_CONCURRENCY, MIN_CONCURRENCY, MAX_CONCURRENCY);
+  const concurrency = clampInt(process.env.NOFLY_GATE_CONCURRENCY, DEFAULT_CONCURRENCY, MIN_CONCURRENCY, MAX_CONCURRENCY);
   const { results, indexUnreachable } = await lookupModels(url, references, concurrency);
   const models = references.map((reference, index) => assessModel(reference, results[index]));
 

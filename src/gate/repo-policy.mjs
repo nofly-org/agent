@@ -33,11 +33,17 @@ function unquote(s) { return String(s).replace(/^["']|["']$/g, ''); }
 
 export const REPO_POLICY_FILES = ['policy.yml', 'policy.yaml', 'policy.json'];
 
+export const REPO_CONFIG_DIRS = ['.nofly', '.shomra'];
+
+export const REPO_IGNORE_FILES = ['.noflyignore', '.shomraignore'];
+
 export function loadRepoPolicy(root) {
-  for (const f of REPO_POLICY_FILES) {
-    let text;
-    try { text = readRegularText(path.join(root, '.shomra', f), MAX_REPO_FILE_BYTES); } catch { continue; }
-    return parseRepoPolicy(text, f);
+  for (const dir of REPO_CONFIG_DIRS) {
+    for (const f of REPO_POLICY_FILES) {
+      let text;
+      try { text = readRegularText(path.join(root, dir, f), MAX_REPO_FILE_BYTES); } catch { continue; }
+      return parseRepoPolicy(text, f);
+    }
   }
   return null;
 }

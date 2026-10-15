@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { MAX_ACTIVE_ARTIFACTS, activeArtifactsField, activeArtifactsFor, discoverActiveArtifacts } from '../src/guard/active-artifacts.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
+const CLI = path.join(HERE, '..', 'nofly.mjs');
 
 const registryHash = (text) => crypto.createHash('sha256').update(text, 'utf8').digest('hex');
 
@@ -25,8 +25,8 @@ function put(file, text) {
 }
 
 function workspace() {
-  const home = tmp('shomra-active-home-');
-  const project = tmp('shomra-active-proj-');
+  const home = tmp('nofly-active-home-');
+  const project = tmp('nofly-active-proj-');
   const texts = {
     rules: put(path.join(project, 'CLAUDE.md'), '# Project rules\nUse pnpm.\n'),
     userRules: put(path.join(home, '.claude', 'CLAUDE.md'), '# Me\nBe brief.\n'),
@@ -61,7 +61,7 @@ test('the list never grows past what the tool-call endpoint accepts', () => {
 });
 
 test('a home that is also the project is listed once', () => {
-  const home = tmp('shomra-active-home-');
+  const home = tmp('nofly-active-home-');
   put(path.join(home, '.claude', 'CLAUDE.md'), 'rules\n');
   put(path.join(home, '.claude', 'skills', 'a', 'SKILL.md'), 'a\n');
   const { items } = discoverActiveArtifacts({ projectDir: home, home });
@@ -70,7 +70,7 @@ test('a home that is also the project is listed once', () => {
 
 test('the list is computed once per session and recomputed when a file or folder changes', () => {
   const { home, project } = workspace();
-  const dir = tmp('shomra-active-cache-');
+  const dir = tmp('nofly-active-cache-');
   const first = activeArtifactsFor({ sessionId: 's1', projectDir: project, home, dir });
   const [file] = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
   const cached = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
@@ -89,7 +89,7 @@ test('the list is computed once per session and recomputed when a file or folder
 
 test('only Claude Code sends the field, and an unreadable tree sends an empty list rather than failing the call', () => {
   const { home, project } = workspace();
-  const dir = tmp('shomra-active-cache-');
+  const dir = tmp('nofly-active-cache-');
   assert.deepEqual(activeArtifactsField('codex', { cwd: project, session_id: 's' }, { home, dir, env: {} }), {});
   const field = activeArtifactsField('claude', { cwd: project, session_id: 's' }, { home, dir, env: {} });
   assert.equal(field.active_artifacts.length, 6);
@@ -115,8 +115,8 @@ test('the enforced guard call carries the active list for Claude Code', async ()
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
   try {
     const env = { ...process.env, HOME: home, USERPROFILE: home, NO_COLOR: '1', CLAUDE_PROJECT_DIR: project };
-    for (const k of Object.keys(env)) if (k.startsWith('SHOMRA_')) delete env[k];
-    Object.assign(env, { SHOMRA_API_KEY: 'shm_test_key_0000000000000000', SHOMRA_URL: `http://127.0.0.1:${server.address().port}`, SHOMRA_GUARD_BREAKER_MS: '0' });
+    for (const k of Object.keys(env)) if (k.startsWith('NOFLY_')) delete env[k];
+    Object.assign(env, { NOFLY_API_KEY: 'shm_test_key_0000000000000000', NOFLY_URL: `http://127.0.0.1:${server.address().port}`, NOFLY_GUARD_BREAKER_MS: '0' });
     await new Promise((done) => {
       const child = spawn(process.execPath, [CLI, 'tool-guard', '--agent', 'claude'], { env, cwd: project });
       child.stdout.resume();

@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { discoverAgentArtifacts, canonicalHooks, installedMarketplaces } from '../src/inventory/agent-artifacts.mjs';
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-artifacts-'));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-artifacts-'));
 const write = (rel, body) => {
   const full = path.join(tmp, rel);
   fs.mkdirSync(path.dirname(full), { recursive: true });
@@ -119,7 +119,7 @@ test('the sweep is bounded and says so', () => {
 });
 
 test('a Copilot hook file under .github/hooks is collected whatever it is named', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-copilot-hooks-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-copilot-hooks-'));
   const put = (rel, body) => {
     const full = path.join(dir, rel);
     fs.mkdirSync(path.dirname(full), { recursive: true });

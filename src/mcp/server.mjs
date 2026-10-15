@@ -56,7 +56,7 @@ function handleRequest({ id, method, params }, { transport, runCli }) {
     return transport.ok(id, {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: { tools: {} },
-      serverInfo: { name: 'shomra', version: VERSION },
+      serverInfo: { name: 'nofly', version: VERSION },
     });
   }
   if (method === 'ping') return transport.ok(id, {});

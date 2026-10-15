@@ -69,7 +69,7 @@ export const MEMORY_SECTION_HEADINGS                                            
 ];
 
 // ⚠ NOT DEAD CODE. Nothing in the backend reads the two tables below, but they
-// are mirrored into Shomra.Agent (scripts/mirror-memory.mjs) where `shomra
+// are mirrored into NoFly.Agent (scripts/mirror-memory.mjs) where `nofly
 // memory-scan` walks MACHINE_MEMORY_ROOTS and prints SERVER_SIDE_MEMORY. An
 // unused-export sweep removed them once and the mirror bench caught it.
 export const SERVER_SIDE_MEMORY                                     = [

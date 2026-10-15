@@ -7,10 +7,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
+const CLI = path.join(HERE, '..', 'nofly.mjs');
 
 function sandbox() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-managed-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-managed-'));
   const home = path.join(root, 'home');
   const repo = path.join(root, 'repo');
   const image = path.join(root, 'image');
@@ -19,8 +19,8 @@ function sandbox() {
 }
 
 function cli(box, args) {
-  const env = { ...process.env, HOME: box.home, USERPROFILE: box.home, NO_COLOR: '1', SHOMRA_MANAGED_ROOT: box.image };
-  for (const k of Object.keys(env)) if (k.startsWith('SHOMRA_') && k !== 'SHOMRA_MANAGED_ROOT') delete env[k];
+  const env = { ...process.env, HOME: box.home, USERPROFILE: box.home, NO_COLOR: '1', NOFLY_MANAGED_ROOT: box.image };
+  for (const k of Object.keys(env)) if (k.startsWith('NOFLY_') && k !== 'NOFLY_MANAGED_ROOT') delete env[k];
   return spawnSync(process.execPath, [CLI, ...args], { cwd: box.repo, env, encoding: 'utf8', timeout: 30000 });
 }
 
@@ -32,9 +32,9 @@ test('a managed install writes each agent\'s machine-wide policy file, readable 
   try {
     const out = cli(box, ['install-hook', '--managed']);
     assert.equal(out.status, 0, out.stderr);
-    const claude = inImage(box, 'etc/claude-code/managed-settings.d/50-shomra.json');
+    const claude = inImage(box, 'etc/claude-code/managed-settings.d/50-nofly.json');
     const codex = inImage(box, 'etc/codex/hooks.json');
-    const copilot = inImage(box, 'etc/github-copilot/policy.d/50-shomra.json');
+    const copilot = inImage(box, 'etc/github-copilot/policy.d/50-nofly.json');
     const c = read(claude);
     assert.match(c.hooks.PreToolUse[0].matcher, /\bMonitor\b/);
     assert.match(JSON.stringify(c.hooks), /tool-guard --agent claude/);
@@ -75,8 +75,8 @@ test('managed uninstall removes the drop-in files, and an agent with no machine-
     assert.equal(cli(box, ['install-hook', '--managed', '--agent', 'claude,copilot']).status, 0);
     const out = cli(box, ['install-hook', '--managed', '--uninstall', '--agent', 'claude,copilot']);
     assert.equal(out.status, 0, out.stderr);
-    assert.equal(fs.existsSync(inImage(box, 'etc/claude-code/managed-settings.d/50-shomra.json')), false);
-    assert.equal(fs.existsSync(inImage(box, 'etc/github-copilot/policy.d/50-shomra.json')), false);
+    assert.equal(fs.existsSync(inImage(box, 'etc/claude-code/managed-settings.d/50-nofly.json')), false);
+    assert.equal(fs.existsSync(inImage(box, 'etc/github-copilot/policy.d/50-nofly.json')), false);
     const cursor = cli(box, ['install-hook', '--managed', '--agent', 'cursor']);
     assert.match(cursor.stdout, /no machine-wide hook location/);
   } finally {
@@ -87,12 +87,12 @@ test('managed uninstall removes the drop-in files, and an agent with no machine-
 test('the MDM script installs the managed firewall only when asked to', () => {
   const box = sandbox();
   try {
-    const plain = cli(box, ['admin', 'mdm-script', '--os', 'linux', '--url', 'https://shomra.example']);
+    const plain = cli(box, ['admin', 'mdm-script', '--os', 'linux', '--url', 'https://nofly.example']);
     assert.equal(plain.status, 0, plain.stderr);
     assert.ok(!plain.stdout.includes('install-hook --managed'));
-    const guarded = cli(box, ['admin', 'mdm-script', '--os', 'macos', '--url', 'https://shomra.example', '--guard']);
+    const guarded = cli(box, ['admin', 'mdm-script', '--os', 'macos', '--url', 'https://nofly.example', '--guard']);
     assert.match(guarded.stdout, /"\$NODE" "\$ENTRY" install-hook --managed/);
-    const windows = cli(box, ['admin', 'mdm-script', '--os', 'windows', '--url', 'https://shomra.example', '--guard']);
+    const windows = cli(box, ['admin', 'mdm-script', '--os', 'windows', '--url', 'https://nofly.example', '--guard']);
     assert.match(windows.stdout, /& \$Node \$Entry install-hook --managed/);
   } finally {
     fs.rmSync(box.root, { recursive: true, force: true });
@@ -101,23 +101,23 @@ test('the MDM script installs the managed firewall only when asked to', () => {
 
 test('status and selftest see a managed install as installed', async () => {
   const box = sandbox();
-  const prev = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, ROOT: process.env.SHOMRA_MANAGED_ROOT };
+  const prev = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, ROOT: process.env.NOFLY_MANAGED_ROOT };
   const cwd = process.cwd();
   try {
     assert.equal(cli(box, ['install-hook', '--managed', '--agent', 'claude']).status, 0);
     process.env.HOME = box.home;
     process.env.USERPROFILE = box.home;
-    process.env.SHOMRA_MANAGED_ROOT = box.image;
+    process.env.NOFLY_MANAGED_ROOT = box.image;
     process.chdir(box.repo);
     const { agentHookInstalled } = await import('../src/agents/hook-files.mjs');
-    assert.deepEqual(agentHookInstalled('claude'), [inImage(box, 'etc/claude-code/managed-settings.d/50-shomra.json')]);
+    assert.deepEqual(agentHookInstalled('claude'), [inImage(box, 'etc/claude-code/managed-settings.d/50-nofly.json')]);
     const { staticCheck } = await import('../src/selftest/static-checks.mjs');
     const row = staticCheck('claude');
     assert.equal(row.state, 'ok', row.statement);
     assert.equal(row.installs[0].scope, 'machine');
   } finally {
     process.chdir(cwd);
-    for (const [k, v] of [['HOME', prev.HOME], ['USERPROFILE', prev.USERPROFILE], ['SHOMRA_MANAGED_ROOT', prev.ROOT]]) {
+    for (const [k, v] of [['HOME', prev.HOME], ['USERPROFILE', prev.USERPROFILE], ['NOFLY_MANAGED_ROOT', prev.ROOT]]) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
     }

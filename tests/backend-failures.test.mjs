@@ -11,19 +11,19 @@ import { okBody } from '../src/core/api-client.mjs';
 import { fitReport } from '../src/commands/scan.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.join(HERE, '..', 'shomra.mjs');
+const CLI = path.join(HERE, '..', 'nofly.mjs');
 const failed = (code) => Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('x'), { code }) });
 
 test('a network failure is named in plain words, with the proxy hint only where a proxy applies', () => {
   assert.match(describeFetchError(failed('ECONNREFUSED'), 'http://127.0.0.1:3010', {}), /nothing answered at http:\/\/127\.0\.0\.1:3010 \(connection refused\)/);
-  assert.match(describeFetchError(failed('ENOTFOUND'), 'https://shomra.corp.example', {}), /shomra\.corp\.example could not be found \(DNS lookup failed\)/);
+  assert.match(describeFetchError(failed('ENOTFOUND'), 'https://nofly.corp.example', {}), /nofly\.corp\.example could not be found \(DNS lookup failed\)/);
   assert.match(describeFetchError(failed('UND_ERR_SOCKET'), 'https://a.example', {}), /closed before it answered/);
   assert.match(describeFetchError(failed('SELF_SIGNED_CERT_IN_CHAIN'), 'https://a.example', {}), /NODE_EXTRA_CA_CERTS/);
   assert.match(describeFetchError(Object.assign(new Error('aborted'), { name: 'AbortError' }), 'https://a.example', {}), /did not answer in time/);
   const proxied = { HTTPS_PROXY: 'http://proxy.corp:8080' };
-  assert.match(describeFetchError(failed('ENOTFOUND'), 'https://shomra.corp.example', proxied), /HTTPS_PROXY is set, but Node uses a proxy only with NODE_USE_ENV_PROXY=1/);
-  assert.doesNotMatch(describeFetchError(failed('ENOTFOUND'), 'https://shomra.corp.example', { ...proxied, NODE_USE_ENV_PROXY: '1' }), /HTTPS_PROXY/);
-  assert.doesNotMatch(describeFetchError(failed('ENOTFOUND'), 'https://shomra.corp.example', { ...proxied, NO_PROXY: '.corp.example' }), /HTTPS_PROXY/);
+  assert.match(describeFetchError(failed('ENOTFOUND'), 'https://nofly.corp.example', proxied), /HTTPS_PROXY is set, but Node uses a proxy only with NODE_USE_ENV_PROXY=1/);
+  assert.doesNotMatch(describeFetchError(failed('ENOTFOUND'), 'https://nofly.corp.example', { ...proxied, NODE_USE_ENV_PROXY: '1' }), /HTTPS_PROXY/);
+  assert.doesNotMatch(describeFetchError(failed('ENOTFOUND'), 'https://nofly.corp.example', { ...proxied, NO_PROXY: '.corp.example' }), /HTTPS_PROXY/);
   assert.doesNotMatch(describeFetchError(failed('ECONNREFUSED'), 'http://localhost:3010', { HTTP_PROXY: 'http://p:1' }), /PROXY/);
   assert.equal(describeFetchError(new Error('HTTP 500'), 'https://a.example', {}), 'HTTP 500');
 });
@@ -46,13 +46,13 @@ async function backend(handler) {
 }
 
 function run(args, url) {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-backend-fail-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-backend-fail-'));
   fs.writeFileSync(path.join(home, 'w.zip'), Buffer.from([0x50, 0x4b, 0x05, 0x06, ...new Array(18).fill(0)]));
   fs.writeFileSync(path.join(home, 'CLAUDE.md'), '# Rules\nUse pnpm.\n');
   return new Promise((done) => {
     const child = spawn(process.execPath, [CLI, ...args], {
       cwd: home,
-      env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, NO_COLOR: '1', SHOMRA_URL: url, SHOMRA_API_KEY: 'shm_live_test0000000000000000000000', SHOMRA_API_TIMEOUT_MS: '5000' },
+      env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, NO_COLOR: '1', NOFLY_URL: url, NOFLY_API_KEY: 'shm_live_test0000000000000000000000', NOFLY_API_TIMEOUT_MS: '5000' },
     });
     let out = '';
     child.stdout.on('data', (d) => { out += d; });

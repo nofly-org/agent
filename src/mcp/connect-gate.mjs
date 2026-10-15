@@ -12,7 +12,7 @@ async function postJson(url, apiKey, body, timeoutMs) {
   try {
     const response = await keyedFetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Shomra-Key': apiKey, Connection: 'close' },
+      headers: { 'Content-Type': 'application/json', 'X-NoFly-Key': apiKey, Connection: 'close' },
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -63,7 +63,7 @@ export async function requestConnectVerdict({ url, apiKey, server, agent, projec
       env: detectEnv(),
       agent,
       projectId,
-      sessionId: process.env.SHOMRA_SESSION_ID || undefined,
+      sessionId: process.env.NOFLY_SESSION_ID || undefined,
     }, guardTimeoutMs());
     if (!response.ok) {
       const error = new Error(`HTTP ${response.status}`);

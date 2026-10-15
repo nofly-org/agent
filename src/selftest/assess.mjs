@@ -81,7 +81,7 @@ export function assessCanary({ canary, expectEscalation, result, hookStale = nul
     return row(STATE.LOCAL, `Refused on-machine by the local tier (${why ?? 'dangerous tool call'}) - the hook is in path and nothing reached the server.`);
   }
   if (stage === 'not-configured') {
-    return row(STATE.FAILED, 'This machine has no Shomra credentials, so the call was screened locally only and no org policy was applied. Run `shomra init --key shm_… --url <backend>`.');
+    return row(STATE.FAILED, 'This machine has no NoFly credentials, so the call was screened locally only and no org policy was applied. Run `nofly init --key shm_… --url <backend>`.');
   }
   if (stage === 'not-escalated') {
     return expectEscalation

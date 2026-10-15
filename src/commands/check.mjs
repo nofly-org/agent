@@ -53,8 +53,8 @@ function printHeader({ flags, artifacts, env, apiKey }) {
 
   const scope = flags.rev !== undefined ? `commit ${flags.rev}` : flags.staged ? 'staged' : flags.changed ? 'changed' : env.environment;
   const provider = env.ciProvider ? ` · ${env.ciProvider}` : '';
-  console.log(bold(cyan('\n  Shomra check')) + dim(` - ${artifacts.length} artifact${artifacts.length > 1 ? 's' : ''} · ${scope}${provider}`));
-  if (!apiKey) console.error(`  ${dim('On-machine analysis only - run')} ${bold('shomra init')} ${dim('to also apply org policy.')}`);
+  console.log(bold(cyan('\n  NoFly check')) + dim(` - ${artifacts.length} artifact${artifacts.length > 1 ? 's' : ''} · ${scope}${provider}`));
+  if (!apiKey) console.error(`  ${dim('On-machine analysis only - run')} ${bold('nofly init')} ${dim('to also apply org policy.')}`);
 }
 
 async function applyFixes({ results, flags, apiKey, url, blocked, flagged }) {
@@ -62,7 +62,7 @@ async function applyFixes({ results, flags, apiKey, url, blocked, flagged }) {
 
   if (!apiKey) {
     if (!flags.json) {
-      console.error(`  ${yellow('⚠')} ${dim('--fix needs enrollment (the fix runs on the platform). Run')} ${bold('shomra init')}${dim('.')}`);
+      console.error(`  ${yellow('⚠')} ${dim('--fix needs enrollment (the fix runs on the platform). Run')} ${bold('nofly init')}${dim('.')}`);
     }
     return 0;
   }
@@ -96,9 +96,9 @@ function printSummary({ results, blocked, flagged, suppressed, backendDown, reje
   for (const entry of rejected) console.log(`  ${yellow('!')} ${dim(`${entry.path} (${entry.kind}) - ${entry.reason}`)}`);
 
   if (flags.fix && fixed) {
-    console.log(`  ${green('✓')} ${dim(`applied ${fixed} fix${fixed > 1 ? 'es' : ''} - re-run`)} ${bold('shomra check')} ${dim('to confirm.')}`);
+    console.log(`  ${green('✓')} ${dim(`applied ${fixed} fix${fixed > 1 ? 'es' : ''} - re-run`)} ${bold('nofly check')} ${dim('to confirm.')}`);
   } else if (!flags.fix && (blocked || flagged)) {
-    console.log(dim('  Run ') + bold('shomra fix <file>') + dim(' or ') + bold('shomra check --fix') + dim(' to remediate.'));
+    console.log(dim('  Run ') + bold('nofly fix <file>') + dim(' or ') + bold('nofly check --fix') + dim(' to remediate.'));
   }
   if (strictOutage) console.log(`  ${red('✗ Failing closed (--strict): backend unreachable or the credential was refused, org policy unverified.')}`);
   console.log('');
@@ -214,7 +214,7 @@ export async function cmdBaseline(flags, positional) {
   });
   const fingerprints = new Set(Object.keys(counts));
 
-  const file = path.join(root, '.shomra', 'baseline.json');
+  const file = path.join(root, '.nofly', 'baseline.json');
   writeFileAtomic(file, JSON.stringify({
     createdAt: new Date().toISOString(),
     agentVersion: VERSION,

@@ -6,7 +6,7 @@ import { unwrapMcpConfig, wrapMcpConfig } from '../src/mcp/config-wrapping.mjs';
 import { createLineFramer, refusal } from '../src/mcp/jsonrpc.mjs';
 import { MCP_TOOLS, mcpToolInvocation } from '../src/mcp/server-tools.mjs';
 
-const SELF = '/opt/shomra/shomra.mjs';
+const SELF = '/opt/nofly/nofly.mjs';
 const NODE = '/usr/bin/node';
 
 test('a poisoned tool descriptor is withheld, the clean one is kept', () => {
@@ -139,7 +139,7 @@ test('the framer emits one message per line and passes unparseable lines through
   assert.equal(seen[1].line, 'not json');
 });
 
-test('a refusal carries the shomra error code', () => {
+test('a refusal carries the nofly error code', () => {
   assert.equal(refusal(7, 'nope', { server: 'x' }).error.code, -32001);
 });
 
@@ -151,13 +151,13 @@ test('every advertised MCP tool maps to a CLI invocation', () => {
 });
 
 test('a tool called without its required arguments is refused, not run', () => {
-  assert.ok(mcpToolInvocation('shomra_review_change', { path: 'SKILL.md' }).error);
-  assert.ok(mcpToolInvocation('shomra_review_plan', { plan: '   ' }).error);
+  assert.ok(mcpToolInvocation('nofly_review_change', { path: 'SKILL.md' }).error);
+  assert.ok(mcpToolInvocation('nofly_review_plan', { plan: '   ' }).error);
   assert.ok(mcpToolInvocation('no_such_tool', {}).error);
 });
 
 test('review_change passes the proposed content on stdin, never as an argument', () => {
-  const invocation = mcpToolInvocation('shomra_review_change', { content: 'body', path: 'SKILL.md', kind: 'skill' });
+  const invocation = mcpToolInvocation('nofly_review_change', { content: 'body', path: 'SKILL.md', kind: 'skill' });
 
   assert.equal(invocation.stdin, 'body');
   assert.deepEqual(invocation.args, ['gate', '--stdin', '--path=SKILL.md', '--kind=skill']);
@@ -166,11 +166,11 @@ test('review_change passes the proposed content on stdin, never as an argument',
 test('a path the model supplies can never become a CLI flag', async () => {
   const path = await import('node:path');
   const cwd = path.resolve('/work/repo');
-  assert.deepEqual(mcpToolInvocation('shomra_rules', { path: '--write' }, cwd).args, ['rules', path.resolve(cwd, '--write')]);
-  assert.deepEqual(mcpToolInvocation('shomra_check', { path: '--fix' }, cwd).args, ['check', path.resolve(cwd, '--fix')]);
-  assert.deepEqual(mcpToolInvocation('shomra_fix', { file: '--apply', apply: 'yes' }, cwd).args, ['fix', path.resolve(cwd, '--apply')], 'only a real true asks for --apply');
-  assert.deepEqual(mcpToolInvocation('shomra_review_change', { content: 'x', path: '--strict' }, cwd).args, ['gate', '--stdin', '--path=strict']);
-  for (const [name, args] of [['shomra_check', { path: '--fix' }], ['shomra_rules', { path: '--write' }], ['shomra_fix', { file: '--apply' }]]) {
+  assert.deepEqual(mcpToolInvocation('nofly_rules', { path: '--write' }, cwd).args, ['rules', path.resolve(cwd, '--write')]);
+  assert.deepEqual(mcpToolInvocation('nofly_check', { path: '--fix' }, cwd).args, ['check', path.resolve(cwd, '--fix')]);
+  assert.deepEqual(mcpToolInvocation('nofly_fix', { file: '--apply', apply: 'yes' }, cwd).args, ['fix', path.resolve(cwd, '--apply')], 'only a real true asks for --apply');
+  assert.deepEqual(mcpToolInvocation('nofly_review_change', { content: 'x', path: '--strict' }, cwd).args, ['gate', '--stdin', '--path=strict']);
+  for (const [name, args] of [['nofly_check', { path: '--fix' }], ['nofly_rules', { path: '--write' }], ['nofly_fix', { file: '--apply' }]]) {
     assert.ok(mcpToolInvocation(name, args, cwd).args.slice(1).every((a) => !a.startsWith('--') || a.startsWith('--path=') || a === '--apply' && args.apply === true));
   }
 });
@@ -226,7 +226,7 @@ test('backend mode sends tools/call and its result, and a BLOCK refuses before t
     req.on('data', (d) => (body += d));
     req.on('end', () => {
       const b = body ? JSON.parse(body) : {};
-      seen.push({ url: req.url, body: b, agent: req.headers['x-shomra-agent'] });
+      seen.push({ url: req.url, body: b, agent: req.headers['x-nofly-agent'] });
       res.setHeader('content-type', 'application/json');
       if (req.url === '/gate/mcp-connect') return res.end(JSON.stringify({ decision: 'ALLOW', deniedTools: [] }));
       if (req.url === '/gate/tool-call') return res.end(JSON.stringify({ decision: b.tool_name.endsWith('__delete_all') ? 'BLOCK' : 'ALLOW', reason: 'not permitted for this agent' }));
@@ -247,8 +247,8 @@ test('backend mode sends tools/call and its result, and a BLOCK refuses before t
     '  }',
     '});',
   ].join(' ');
-  const child = spawn(process.execPath, [path.join(root, 'shomra.mjs'), 'mcp-guard', '--name', 'ops', '--screen', 'backend', '--', process.execPath, '-e', fake], {
-    env: { ...process.env, SHOMRA_URL: url, SHOMRA_API_KEY: 'shm_live_test', SHOMRA_AGENT: 'shm_agt_test', HOME: root, USERPROFILE: root },
+  const child = spawn(process.execPath, [path.join(root, 'nofly.mjs'), 'mcp-guard', '--name', 'ops', '--screen', 'backend', '--', process.execPath, '-e', fake], {
+    env: { ...process.env, NOFLY_URL: url, NOFLY_API_KEY: 'shm_live_test', NOFLY_AGENT: 'shm_agt_test', HOME: root, USERPROFILE: root },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   const out = [];
@@ -304,8 +304,8 @@ test('local mode sends no tool call or result anywhere, and still withholds a po
     '  }',
     '});',
   ].join(' ');
-  const child = spawn(process.execPath, [path.join(root, 'shomra.mjs'), 'mcp-guard', '--name', 'docs', '--screen', 'local', '--', process.execPath, '-e', fake], {
-    env: { ...process.env, SHOMRA_URL: url, SHOMRA_API_KEY: 'shm_live_test' },
+  const child = spawn(process.execPath, [path.join(root, 'nofly.mjs'), 'mcp-guard', '--name', 'docs', '--screen', 'local', '--', process.execPath, '-e', fake], {
+    env: { ...process.env, NOFLY_URL: url, NOFLY_API_KEY: 'shm_live_test' },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   const out = [];
@@ -351,8 +351,8 @@ test('a server request that reuses a pending call id does not carry the call res
     '  }',
     '});',
   ].join(' ');
-  const child = spawn(process.execPath, [path.join(root, 'shomra.mjs'), 'mcp-guard', '--name', 'docs', '--screen', 'local', '--', process.execPath, '-e', fake], {
-    env: { ...process.env, SHOMRA_URL: url, SHOMRA_API_KEY: 'shm_live_test' },
+  const child = spawn(process.execPath, [path.join(root, 'nofly.mjs'), 'mcp-guard', '--name', 'docs', '--screen', 'local', '--', process.execPath, '-e', fake], {
+    env: { ...process.env, NOFLY_URL: url, NOFLY_API_KEY: 'shm_live_test' },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   const out = [];
@@ -399,8 +399,8 @@ test('a credential form from the server is refused back to the server and never 
     '  }',
     '});',
   ].join(' ');
-  const child = spawn(process.execPath, [path.join(root, 'shomra.mjs'), 'mcp-guard', '--name', 'docs', '--screen', 'local', '--', process.execPath, '-e', fake], {
-    env: { ...process.env, SHOMRA_URL: url, SHOMRA_API_KEY: 'shm_live_test' },
+  const child = spawn(process.execPath, [path.join(root, 'nofly.mjs'), 'mcp-guard', '--name', 'docs', '--screen', 'local', '--', process.execPath, '-e', fake], {
+    env: { ...process.env, NOFLY_URL: url, NOFLY_API_KEY: 'shm_live_test' },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   const out = [];
@@ -414,7 +414,7 @@ test('a credential form from the server is refused back to the server and never 
   assert.ok(!out.some((m) => m.id === 'e1'), 'the credential form never reaches the client');
   assert.ok(out.some((m) => m.id === 'e2' && m.method === 'elicitation/create'), 'an ordinary confirmation still does');
   const reply = out.find((m) => m.id === 9);
-  assert.match(reply?.result?.content?.[0]?.text ?? '', /refused: -32001/, 'the server was answered with the Shomra refusal code');
+  assert.match(reply?.result?.content?.[0]?.text ?? '', /refused: -32001/, 'the server was answered with the NoFly refusal code');
 });
 
 test('a tool whose title, output schema or _meta carries an injection is withheld, an honest one is kept', () => {
@@ -470,8 +470,8 @@ test('a server error carrying an injection is withheld, an ordinary error and th
     '  }',
     '});',
   ].join(' ');
-  const child = spawn(process.execPath, [path.join(root, 'shomra.mjs'), 'mcp-guard', '--name', 'docs', '--screen', 'local', '--', process.execPath, '-e', fake], {
-    env: { ...process.env, SHOMRA_URL: url, SHOMRA_API_KEY: 'shm_live_test' },
+  const child = spawn(process.execPath, [path.join(root, 'nofly.mjs'), 'mcp-guard', '--name', 'docs', '--screen', 'local', '--', process.execPath, '-e', fake], {
+    env: { ...process.env, NOFLY_URL: url, NOFLY_API_KEY: 'shm_live_test' },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   const out = [];

@@ -1,7 +1,8 @@
 # Dependencies (this package has none at runtime, but tooling may add them)
 node_modules/
 
-# Shomra local state (config + caches live in the user's home dir, but never commit any that land here)
+# NoFly local state (config + caches live in the user's home dir, but never commit any that land here)
+.nofly/
 .shomra/
 *.log
 

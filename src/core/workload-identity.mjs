@@ -7,12 +7,12 @@ export const EXCHANGE_PATH = '/public/agents/federated-credential';
 export const WORKLOAD_SOURCES = ['github', 'gitlab', 'kubernetes', 'entra', 'okta'];
 const RENEW_BEFORE_MS = 5 * 60_000;
 const TIMEOUT_MS = 3_000;
-const DEFAULT_K8S_TOKEN = '/var/run/secrets/shomra/token';
+const DEFAULT_K8S_TOKEN = '/var/run/secrets/nofly/token';
 const IMDS = 'http://169.254.169.254/metadata/identity/oauth2/token';
 const JWT_BEARER = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer';
 
 export function workloadSource(env = process.env) {
-  const v = String(env.SHOMRA_WORKLOAD ?? '').trim().toLowerCase();
+  const v = String(env.NOFLY_WORKLOAD ?? '').trim().toLowerCase();
   return WORKLOAD_SOURCES.includes(v) ? v : null;
 }
 
@@ -31,14 +31,14 @@ function jwtWorkload(token) {
 
 export function localWorkloadToken(source, env = process.env) {
   try {
-    if (source === 'gitlab') return String(env.SHOMRA_ID_TOKEN ?? '').trim() || null;
+    if (source === 'gitlab') return String(env.NOFLY_ID_TOKEN ?? '').trim() || null;
     if (source === 'entra' || source === 'okta') {
-      const given = String(env.SHOMRA_ID_TOKEN ?? '').trim();
+      const given = String(env.NOFLY_ID_TOKEN ?? '').trim();
       if (given) return given;
-      const file = String(env.SHOMRA_TOKEN_FILE ?? '').trim();
+      const file = String(env.NOFLY_TOKEN_FILE ?? '').trim();
       return file ? fs.readFileSync(file, 'utf8').trim() : null;
     }
-    if (source === 'kubernetes') return fs.readFileSync(String(env.SHOMRA_TOKEN_FILE ?? '').trim() || DEFAULT_K8S_TOKEN, 'utf8').trim();
+    if (source === 'kubernetes') return fs.readFileSync(String(env.NOFLY_TOKEN_FILE ?? '').trim() || DEFAULT_K8S_TOKEN, 'utf8').trim();
   } catch {}
   return null;
 }
@@ -144,19 +144,19 @@ export async function platformToken(source, audience, env = process.env) {
     return body.value;
   }
   if (source === 'gitlab') {
-    const token = String(env.SHOMRA_ID_TOKEN ?? '').trim();
-    if (!token) throw new Error('no GitLab identity token - add `id_tokens: SHOMRA_ID_TOKEN` with this org’s audience to the job');
+    const token = String(env.NOFLY_ID_TOKEN ?? '').trim();
+    if (!token) throw new Error('no GitLab identity token - add `id_tokens: NOFLY_ID_TOKEN` with this org’s audience to the job');
     return token;
   }
   if (source === 'entra' || source === 'okta') {
-    const given = String(env.SHOMRA_ID_TOKEN ?? '').trim();
+    const given = String(env.NOFLY_ID_TOKEN ?? '').trim();
     if (given) return given;
-    const file = String(env.SHOMRA_TOKEN_FILE ?? '').trim();
+    const file = String(env.NOFLY_TOKEN_FILE ?? '').trim();
     if (file) return fs.readFileSync(file, 'utf8').trim();
-    if (source === 'okta') throw new Error('no Okta token - point SHOMRA_TOKEN_FILE at the file the agent keeps its Okta token in, or set SHOMRA_ID_TOKEN');
+    if (source === 'okta') throw new Error('no Okta token - point NOFLY_TOKEN_FILE at the file the agent keeps its Okta token in, or set NOFLY_ID_TOKEN');
     return entraToken(audience, env);
   }
-  return fs.readFileSync(String(env.SHOMRA_TOKEN_FILE ?? '').trim() || DEFAULT_K8S_TOKEN, 'utf8').trim();
+  return fs.readFileSync(String(env.NOFLY_TOKEN_FILE ?? '').trim() || DEFAULT_K8S_TOKEN, 'utf8').trim();
 }
 
 export async function exchangeWorkloadToken(url, token) {
@@ -174,7 +174,7 @@ export async function exchangeWorkloadToken(url, token) {
 
 export async function workloadCredential({ url, env = process.env, file = workloadCachePath(), now = Date.now(), onError } = {}) {
   const source = workloadSource(env);
-  const audience = String(env.SHOMRA_AUDIENCE ?? '').trim();
+  const audience = String(env.NOFLY_AUDIENCE ?? '').trim();
   if (!source || !audience || !url) return null;
   const workload = workloadKey(source, env);
   const cached = readCachedCredential(file, { url, source, audience, workload, now });

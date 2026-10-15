@@ -17,11 +17,11 @@ export async function cmdAdd(flags, positional) {
   const kind = String(positional[0] || '').toLowerCase();
   if (!ADD_KINDS.includes(kind)) {
     const near = didYouMean(kind, ADD_KINDS);
-    console.error(red('✗') + ` Usage: ${bold('shomra add ' + ADD_KINDS.join('|') + ' <ref>')}` + (near ? dim(`  (did you mean ${near}?)`) : ''));
-    console.error(dim('  mcp     ') + 'shomra add mcp files npx -y @modelcontextprotocol/server-filesystem /tmp');
-    console.error(dim('  skill   ') + 'shomra add skill ./downloaded-skill');
-    console.error(dim('  model   ') + 'shomra add model openai-community/gpt2');
-    console.error(dim('  package ') + 'shomra add package langchain --type pypi');
+    console.error(red('✗') + ` Usage: ${bold('nofly add ' + ADD_KINDS.join('|') + ' <ref>')}` + (near ? dim(`  (did you mean ${near}?)`) : ''));
+    console.error(dim('  mcp     ') + 'nofly add mcp files npx -y @modelcontextprotocol/server-filesystem /tmp');
+    console.error(dim('  skill   ') + 'nofly add skill ./downloaded-skill');
+    console.error(dim('  model   ') + 'nofly add model openai-community/gpt2');
+    console.error(dim('  package ') + 'nofly add package langchain --type pypi');
     process.exit(EXIT_USAGE);
   }
 
@@ -48,7 +48,7 @@ function finishAdd(kind, ref, verdict, lines, flags, extra = {}) {
 
 async function addSkill(flags, positional) {
   const ref = positional[0];
-  if (!ref) { console.error(red('✗') + ' Usage: ' + bold('shomra add skill <path>')); process.exit(EXIT_USAGE); }
+  if (!ref) { console.error(red('✗') + ' Usage: ' + bold('nofly add skill <path>')); process.exit(EXIT_USAGE); }
   let target = path.resolve(String(ref));
   if (!fs.existsSync(target)) { console.error(red('✗') + ` Not found: ${ref}`); process.exit(EXIT_USAGE); }
   if (fs.statSync(target).isDirectory()) {
@@ -71,7 +71,7 @@ async function addSkill(flags, positional) {
 
 async function addModel(flags, positional) {
   const raw = String(positional[0] || '');
-  if (!raw) { console.error(red('✗') + ' Usage: ' + bold('shomra add model <owner/model[@revision]>')); process.exit(EXIT_USAGE); }
+  if (!raw) { console.error(red('✗') + ' Usage: ' + bold('nofly add model <owner/model[@revision]>')); process.exit(EXIT_USAGE); }
   const [id, revision] = raw.split('@');
   const { url } = resolveSettings(loadConfig());
 
@@ -86,7 +86,7 @@ async function addModel(flags, positional) {
   if (!lk || !lk.found) {
     return finishAdd('model', raw, 'FLAG', [
       yellow('not in the Model Index') + dim(' - nobody has scanned this model'),
-      dim('Unscanned is not safe. `shomra admin model-scan ' + id + '` scans it on the platform.'),
+      dim('Unscanned is not safe. `nofly admin model-scan ' + id + '` scans it on the platform.'),
     ], flags, { checked: true, found: false });
   }
 
@@ -107,7 +107,7 @@ const TYPOSQUAT_MAX_DISTANCE = 2;
 
 async function addPackage(flags, positional) {
   const name = String(positional[0] || '').trim();
-  if (!name) { console.error(red('✗') + ' Usage: ' + bold('shomra add package <name> [--type npm|pypi]')); process.exit(EXIT_USAGE); }
+  if (!name) { console.error(red('✗') + ' Usage: ' + bold('nofly add package <name> [--type npm|pypi]')); process.exit(EXIT_USAGE); }
   const type = flags.type ? String(flags.type).toLowerCase() : null;
   if (type && type !== 'npm' && type !== 'pypi') { console.error(red('✗') + ' --type must be npm or pypi.'); process.exit(EXIT_USAGE); }
 
@@ -141,7 +141,7 @@ async function addPackage(flags, positional) {
 
     verdict = 'FLAG';
     lines.push(yellow('not in the AI package catalog') + dim(' - no typosquat signal, and no verification either'));
-    lines.push(dim('Shomra knows AI packages by name only. Check the publisher, the download count, and the repo link yourself.'));
+    lines.push(dim('NoFly knows AI packages by name only. Check the publisher, the download count, and the repo link yourself.'));
   }
   finishAdd('package', name + (type ? ` (${type})` : ''), verdict, lines, flags, {
     known: !!exact, ecosystem: exact ? exact.ecosystem : otherEco ? otherEco.ecosystem : null,
