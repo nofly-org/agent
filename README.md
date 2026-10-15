@@ -290,6 +290,13 @@ It **fails closed** - the opposite of the client hook. Blocking a local commit
 because a binary is missing is hostile; waving a push through for the same reason
 makes deleting the binary the bypass.
 
+It reads each pushed commit straight from git (`shomra check --rev <new>
+--base-rev <old>`), with no checkout, so a pushed `.gitattributes` cannot change
+what it sees. It judges what the push changes, and waivers (`.shomraignore`,
+baseline, ignore marks, policy) count only as they stood before the push - push
+a waiver on its own first, then the change it covers. Re-run the install command
+to upgrade a hook installed by an older version.
+
 Available on self-hosted Git (GitLab, Gitea, Bitbucket DC, plain bare repos) and
 GitHub Enterprise. GitHub.com does not run server-side hooks - use the action as
 a required status check instead.
@@ -657,18 +664,21 @@ findings but never lift an org decision, so that artifact stays BLOCK and is
 reported as *ignored locally, still blocked by org policy*. Accept the risk or
 add an exception in the platform instead:
 
-- **`shomra baseline`** records every current finding (line-independent
-  fingerprints, with how many of each) in `.shomra/baseline.json` - commit it so
-  the whole team shares it. From then on only findings introduced *after* the
-  baseline fail, including a new copy of one it accepted; re-run it to refresh
-  after cleanups. Skip it per-run with `--no-baseline`.
+- **`shomra baseline`** records every current finding, and the lines it was
+  seen on, in `.shomra/baseline.json` - commit it so the whole team shares it.
+  From then on only findings introduced *after* the baseline fail, including a
+  new copy of one it accepted, even in the same file; moving an accepted line
+  does not matter. Re-run it to refresh after cleanups. Skip it per-run with
+  `--no-baseline`.
 - **`.shomraignore`** - a repo file of `path/glob` lines (skip the file) or
   `path/glob :: title-substring` lines (skip one finding class in those files).
   The runtime firewall honors it too, so test fixtures and detection source
   aren't withheld. Silence a single finding inline with `// shomra-ignore` (or
   `# shomra-ignore`) on the finding's line or the line above, or opt a whole
   file out with `shomra-ignore-file` in its first lines (works in JSON as a
-  `"_shomra": "shomra-ignore-file"` key). `--no-suppress` ignores all of this.
+  `"_shomra": "shomra-ignore-file"` key). A mark covers only its own line: the
+  same problem on another line of the file is still reported. `--no-suppress`
+  ignores all of this.
 - **In `shomra pr` these waivers come from the base branch**, never from the
   pull request itself: a `.shomraignore`, baseline, policy or ignore mark the
   pull request adds takes effect once it is merged, so nobody can approve their
@@ -713,5 +723,9 @@ add an exception in the platform instead:
 | `SHOMRA_PLAN_GUARD_OFF` | `1` = disable the plan channel only |
 | `SHOMRA_MODEL_CACHE` | `0` = disable the on-machine model-index verdict cache |
 | `SHOMRA_MODEL_CACHE_TTL_MS` | Model-cache freshness window (default 7 days) |
+| `SHOMRA_ALLOW_USER_NODE` | `1` = let a machine-wide schedule or `install-hook --managed` run a Node or Shomra install a normal user can change (same as `--allow-user-writable`) |
+| `NODE_USE_ENV_PROXY` | `1` = send the CLI's requests through `HTTPS_PROXY` / `HTTP_PROXY`, honouring `NO_PROXY` (Node releases whose `node --help` lists `--use-env-proxy`). Without it Node ignores those variables, and a failed request says so |
+| `NODE_EXTRA_CA_CERTS` | Path to a company CA bundle, for a proxy that inspects HTTPS |
+| `NODE_DISABLE_COMPILE_CACHE` | `1` = do not keep compiled code in `~/.shomra/compile-cache` (on by default on Node 22.8+, it makes every hook start faster) |
 
-Run `shomra help` for the full command reference.
+Run `shomra help` for the full command reference, or `shomra <command> --help` for one command.

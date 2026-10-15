@@ -1,6 +1,6 @@
 export { discoverAiDependencies, discoverAiUsageInCode } from './discovery/ai-dependencies.mjs';
 export { discoverAiTools } from './discovery/ai-tools.mjs';
-export { discoverAll } from './discovery/all.mjs';
+export { discoverAll, discoveryFailures } from './discovery/all.mjs';
 export { discoverCodingAgents } from './discovery/coding-agents.mjs';
 export { discoverLocalRuntimes } from './discovery/local-runtimes.mjs';
 export { discoverMcpClients } from './discovery/mcp-clients.mjs';

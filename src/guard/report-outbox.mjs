@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG_DIR } from '../core/config.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 const MAX_ENTRIES = 200;
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -40,7 +41,7 @@ function appendEntries(entries, dir) {
   } catch {
   }
   if (size > MAX_BYTES) {
-    const kept = parseLines(fs.readFileSync(file, 'utf8')).slice(-Math.floor(MAX_ENTRIES / 2));
+    const kept = parseLines(readRegularText(file)).slice(-Math.floor(MAX_ENTRIES / 2));
     const tmp = `${file}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, kept.map(entryLine).filter(Boolean).map((l) => `${l}\n`).join(''), { mode: 0o600 });
     fs.renameSync(tmp, file);
@@ -65,7 +66,7 @@ export async function drainReports(url, send, { dir = CONFIG_DIR, now = Date.now
   }
   let entries = [];
   try {
-    entries = parseLines(fs.readFileSync(claim, 'utf8'));
+    entries = parseLines(readRegularText(claim));
   } catch {
   }
   try {
@@ -86,7 +87,7 @@ export async function drainReports(url, send, { dir = CONFIG_DIR, now = Date.now
 
 export function pendingReports({ dir = CONFIG_DIR } = {}) {
   try {
-    return parseLines(fs.readFileSync(outboxFile(dir), 'utf8')).length;
+    return parseLines(readRegularText(outboxFile(dir))).length;
   } catch {
     return 0;
   }

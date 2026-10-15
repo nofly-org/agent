@@ -4,12 +4,14 @@ import { breakerOpen, breakerReset, breakerTrip } from '../core/circuit-breaker.
 import { CONFIG_DIR } from '../core/config.mjs';
 import { clampInt } from '../core/numbers.mjs';
 import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
+import { describeFetchError } from '../core/keyed-fetch.mjs';
 
 const MODEL_CACHE_FILE = path.join(CONFIG_DIR, 'model-cache.json');
 
 function modelCacheOff() { return process.env.SHOMRA_MODEL_CACHE === '0' || String(process.env.SHOMRA_MODEL_CACHE).toLowerCase() === 'false'; }
 
-function loadModelCache() { try { return JSON.parse(fs.readFileSync(MODEL_CACHE_FILE, 'utf8')) || {}; } catch { return {}; } }
+function loadModelCache() { try { return JSON.parse(readRegularText(MODEL_CACHE_FILE)) || {}; } catch { return {}; } }
 
 function saveModelCache(c) { try { fs.mkdirSync(CONFIG_DIR, { recursive: true }); fs.writeFileSync(MODEL_CACHE_FILE, JSON.stringify(c)); } catch {  } }
 
@@ -55,7 +57,7 @@ export async function modelLookup(url, id, sha, timeoutMs) {
   } catch (e) {
     breakerTrip();
     if (hit && hit.data) return { ...hit.data, cached: true, stale: true };
-    throw e;
+    throw e?.cause || e?.name === 'AbortError' ? new Error(describeFetchError(e, url)) : e;
   } finally { clearTimeout(timer); }
 }
 

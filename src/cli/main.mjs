@@ -8,16 +8,18 @@ import { didYouMean } from './suggestions.mjs';
 const GUARD_COMMANDS = new Set(['tool-guard', 'result-guard', 'prompt-guard', 'plan-guard', 'session-guard']);
 const PASSTHROUGH_COMMANDS = new Set(['mcp-guard']);
 
+const COMMAND_SWITCHES = { protect: ['project'] };
+
 export async function main() {
   const [, , command, ...rest] = process.argv;
 
   const sep = rest.indexOf('--');
   const ours = sep === -1 ? rest : rest.slice(0, sep);
-  const { flags, positional: before, unknown, invalid } = parseFlags(ours);
+  const { flags, positional: before, unknown, invalid } = parseFlags(ours, { switches: COMMAND_SWITCHES[command] });
   const positional = sep === -1 || PASSTHROUGH_COMMANDS.has(command) ? before : [...before, ...rest.slice(sep + 1)];
 
   if (command === 'help' || command === undefined || command === '--help' || command === '-h') {
-    return (await import('./help.mjs')).cmdHelp(positional[0]);
+    return (await import('./help.mjs')).cmdHelp(positional[0], positional[1]);
   }
   if (command === '--version' || command === '-v' || command === 'version') {
     console.log(VERSION);
@@ -26,7 +28,7 @@ export async function main() {
 
   const guardCmd = GUARD_COMMANDS.has(command);
   if (!guardCmd && command !== 'admin' && COMMANDS[command] && (flags.help || ours.includes('-h'))) {
-    return (await import('./help.mjs')).cmdHelp(command);
+    return (await import('./help.mjs')).cmdHelp(command, positional[0]);
   }
   if (unknown.length && !guardCmd) {
     for (const u of unknown) {
@@ -43,7 +45,7 @@ export async function main() {
 
   if (command === 'admin') {
     const sub = positional[0];
-    if (!sub || sub === 'help' || flags.help) return (await import('./help.mjs')).cmdAdminHelp();
+    if (!sub || sub === 'help' || flags.help) return (await import('./help.mjs')).cmdAdminHelp(sub === 'help' ? positional[1] : sub);
     const fn = COMMANDS[sub];
     if (!fn || !ADMIN_VERBS.has(sub)) {
       const near = didYouMean(sub, [...ADMIN_VERBS]);

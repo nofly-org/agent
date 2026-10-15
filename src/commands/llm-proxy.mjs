@@ -1,10 +1,10 @@
 import os from 'node:os';
 import { loadConfig, resolveSettings, storedAgentCredential } from '../core/config.mjs';
-import { exitNotConfigured } from '../core/exit-codes.mjs';
+import { EXIT_USAGE, exitNotConfigured } from '../core/exit-codes.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { VERSION } from '../core/version.mjs';
 import { resolveAgentIdentityHandle } from './agent-identity.mjs';
-import { keyedFetch } from '../core/keyed-fetch.mjs';
+import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
 import { currentUsername } from '../core/api-client.mjs';
 
 export const LLM_PROVIDERS = ['openai', 'anthropic', 'gemini', 'groq', 'mistral', 'xai', 'deepseek', 'openrouter', 'together', 'cohere', 'voyage', 'jina'];
@@ -14,8 +14,11 @@ const EMBEDDINGS_ONLY = ['voyage', 'jina'];
 const DEFAULT_PORT = 4141;
 const MAX_BODY_BYTES = 64 * 1024 * 1024;
 const BODYLESS_METHODS = ['GET', 'HEAD'];
-const HOP_BY_HOP_REQUEST_HEADERS = ['host', 'connection', 'content-length', 'accept-encoding', 'expect'];
-const HOP_BY_HOP_RESPONSE_HEADERS = ['content-length', 'transfer-encoding', 'content-encoding', 'connection'];
+const HOP_BY_HOP = ['connection', 'keep-alive', 'proxy-connection', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade'];
+const HOP_BY_HOP_REQUEST_HEADERS = [...HOP_BY_HOP, 'host', 'content-length', 'accept-encoding', 'expect'];
+const HOP_BY_HOP_RESPONSE_HEADERS = [...HOP_BY_HOP, 'content-length', 'content-encoding'];
+
+const namedByConnection = (value) => String(value ?? '').split(',').map((name) => name.trim().toLowerCase()).filter(Boolean);
 const AGENT_CREDENTIAL_PREFIX = 'shm_agt_';
 
 function newSessionId() {
@@ -44,7 +47,7 @@ export function localClientOnly(headers = {}) {
 
 export function forwardHeaders(incoming, { apiKey, actor, machineId, sessionId, project, agentId }) {
   const headers = { ...incoming };
-  for (const name of HOP_BY_HOP_REQUEST_HEADERS) delete headers[name];
+  for (const name of [...HOP_BY_HOP_REQUEST_HEADERS, ...namedByConnection(incoming.connection)]) delete headers[name];
 
   headers['x-shomra-key'] = apiKey;
   headers['x-shomra-actor'] = actor;
@@ -102,8 +105,9 @@ async function streamUpstreamBody(upstream, response) {
 
 async function relayResponse(upstream, response) {
   const headers = {};
+  const dropped = new Set([...HOP_BY_HOP_RESPONSE_HEADERS, ...namedByConnection(upstream.headers.get('connection'))]);
   for (const [name, value] of upstream.headers) {
-    if (!HOP_BY_HOP_RESPONSE_HEADERS.includes(name)) headers[name] = value;
+    if (!dropped.has(name)) headers[name] = value;
   }
   response.once('close', () => {
     if (!response.writableFinished) upstream.body?.cancel?.().catch(() => {});
@@ -171,9 +175,9 @@ function createProxyHandler({ url, headerContext, providerPattern }) {
         body: BODYLESS_METHODS.includes(request.method) ? undefined : body,
       });
     } catch (error) {
-      const cause = error.cause ? ` (${error.cause.code ?? ''} ${error.cause.message ?? error.cause})` : '';
-      sendJson(response, 502, { error: { message: `Shomra backend unreachable at ${url}: ${error.message}${cause}` } });
-      console.log(`  ${red('✗')} ${request.method} ${request.url} ${red('backend unreachable')}${dim(cause)} ${dim(`hdrs: ${Object.keys(headers).join(',')}`)}`);
+      const why = describeFetchError(error, url);
+      sendJson(response, 502, { error: { message: `Shomra backend unreachable: ${why}` } });
+      console.log(`  ${red('✗')} ${request.method} ${request.url} ${red('backend unreachable')} ${dim(why)}`);
       return;
     }
 
@@ -208,9 +212,13 @@ function printStartupBanner({ port, url, project, actor }) {
 export async function cmdLlmProxy(flags) {
   const config = loadConfig();
   const { apiKey, url } = resolveSettings(config);
-  if (!apiKey) exitNotConfigured();
+  if (!apiKey || !url) exitNotConfigured();
 
-  const port = parseInt(flags.port, 10) || DEFAULT_PORT;
+  const port = flags.port === undefined || flags.port === true ? DEFAULT_PORT : Number(flags.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error(red(`✗ --port must be a whole number from 1 to 65535 (got ${flags.port}).`));
+    process.exit(EXIT_USAGE);
+  }
   const project = flags.project ? String(flags.project) : null;
   const actor = `${os.hostname()}/${currentUsername()}`;
 
@@ -236,7 +244,9 @@ export async function cmdLlmProxy(flags) {
   server.on('error', (error) => {
     const why = error?.code === 'EADDRINUSE'
       ? `port ${port} is already in use - another llm-proxy may be running, or pass --port <n>`
-      : error?.message ?? String(error);
+      : error?.code === 'EACCES'
+        ? `port ${port} needs elevated rights on this machine - pass a port above 1023`
+        : error?.message ?? String(error);
     console.error(red(`✗ Shomra LLM proxy could not listen: ${why}`));
     process.exit(1);
   });

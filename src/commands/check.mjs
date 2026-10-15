@@ -15,6 +15,7 @@ import { detectEnv } from '../gate/environment.mjs';
 import { toSarif } from '../gate/sarif.mjs';
 import { findingFingerprint } from '../gate/suppressions.mjs';
 import { fixOneFile } from './fix.mjs';
+import { writeFileAtomic } from '../core/json-file.mjs';
 
 async function stagedArtifacts(root, single) {
   const changed = stagedNames(root);
@@ -198,28 +199,29 @@ export async function cmdBaseline(flags, positional) {
     process.stdout.write(dim(`  Scanning ${artifacts.length} artifact${artifacts.length > 1 ? 's' : ''} to baseline… `));
   }
 
-  const { results } = await gateArtifactList(artifacts, {
-    apiKey, url, env, root, flags: { ...flags, json: true, 'no-suppress': true },
+  const { results, acceptedLines } = await gateArtifactList(artifacts, {
+    apiKey, url, env, root, acceptLines: true, flags: { ...flags, json: true, 'no-suppress': true },
   });
 
   const counts = {};
-  for (const result of results) {
+  const lines = {};
+  results.forEach((result, index) => {
     for (const finding of result.findings || []) {
       const fp = findingFingerprint(result.path, finding);
       counts[fp] = (counts[fp] ?? 0) + 1;
     }
-  }
+    Object.assign(lines, acceptedLines[index]);
+  });
   const fingerprints = new Set(Object.keys(counts));
 
-  const directory = path.join(root, '.shomra');
-  fs.mkdirSync(directory, { recursive: true });
-  const file = path.join(directory, 'baseline.json');
-  fs.writeFileSync(file, JSON.stringify({
+  const file = path.join(root, '.shomra', 'baseline.json');
+  writeFileAtomic(file, JSON.stringify({
     createdAt: new Date().toISOString(),
     agentVersion: VERSION,
     count: fingerprints.size,
     fingerprints: [...fingerprints],
     counts,
+    lines,
   }, null, 2));
 
   const relative = path.relative(process.cwd(), file).split(path.sep).join('/');

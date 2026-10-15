@@ -1,6 +1,6 @@
 export { autonomySeverity, localAutonomy } from './signals/autonomy.mjs';
 export { RISKY_CONFIG_MARKERS } from './signals/config-markers.mjs';
-export { classifyConsequence } from './signals/consequence.mjs';
+export { classifyConsequence, isPersistenceTarget } from './signals/consequence.mjs';
 export { detectCredentialHarvest } from './signals/credential-harvest.mjs';
 export { claimSeverity, detectDurableClaims } from './signals/durable-claims.mjs';
 export { SUSPICIOUS_EGRESS_HOSTS, egressHost } from './signals/egress.mjs';
@@ -10,7 +10,7 @@ export { INJECTION_PHRASES, INJECTION_REGEXES, INVISIBLE_CHARS_RE } from './sign
 export { localMemory } from './signals/memory.mjs';
 export { AGENT_ROOT_RE, isAgentAdjacentPath, localPropagation } from './signals/propagation.mjs';
 export { citationGoverns, describesAt, isDocumentationLine, prohibitsAt } from './signals/prose-context.mjs';
-export { downrankCodeContext, localScan } from './signals/scan.mjs';
+export { boundedLocalScan, downrankCodeContext, localScan } from './signals/scan.mjs';
 export { PII_PATTERNS, SECRET_PATTERNS } from './signals/secrets.mjs';
 export { NETWORK_VERBS, SENSITIVE_READ } from './signals/sensitive.mjs';
 export { grade } from './signals/severity.mjs';

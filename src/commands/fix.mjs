@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { readRegularFile } from '../artifacts/matchers.mjs';
+import { artifactKindOf, readRegularFile } from '../artifacts/matchers.mjs';
+import { localGate } from '../detect/guard-signals.mjs';
 import { api } from '../core/api-client.mjs';
 import { writeFileAtomic } from '../core/json-file.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
@@ -115,6 +116,8 @@ export async function fixOneFile(target, { apiKey, url, flags }) {
     return true;
   }
   if (typeof res.fixedContent !== 'string') return fail(`  ${red('✗')} the backend sent no fixed content for ${rel} - nothing was written`);
+  const refusal = fixRefusal(content, res.fixedContent, { kind: kind ?? artifactKindOf(rel) ?? 'auto', path: rel });
+  if (refusal) return fail(`  ${red('✗')} the fix for ${rel} was not written: ${refusal}`);
   try {
     writeFileAtomic(target, res.fixedContent);
     if (!flags.json && !flags.quiet) {
@@ -124,6 +127,19 @@ export async function fixOneFile(target, { apiKey, url, flags }) {
   } catch (e) {
     return fail(`  ${red('✗')} could not write ${rel}: ${e.message}`);
   }
+}
+
+const RANK = { ALLOW: 0, FLAG: 1, BLOCK: 2 };
+const SERIOUS = new Set(['HIGH', 'CRITICAL']);
+
+export function fixRefusal(before, after, { kind, path: rel } = {}) {
+  if (!after.trim() && before.trim()) return 'it would empty the file';
+  const was = localGate(before, { kind, path: rel });
+  const now = localGate(after, { kind, path: rel });
+  if ((RANK[now.verdict] ?? 0) > (RANK[was.verdict] ?? 0)) return `it would make the file worse (${was.verdict} → ${now.verdict})`;
+  const known = new Set((was.findings ?? []).map((f) => f.title));
+  const added = (now.findings ?? []).find((f) => SERIOUS.has(f.severity) && !known.has(f.title));
+  return added ? `it would add a new problem: ${added.title}` : null;
 }
 
 export function fixDidFail(target) {

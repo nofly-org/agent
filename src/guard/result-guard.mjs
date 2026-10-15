@@ -1,14 +1,14 @@
 import { gateMachine } from '../core/api-client.mjs';
 import { breakerOpen, breakerReset, breakerTrip, guardTimeoutMs } from '../core/circuit-breaker.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
-import { downrankCodeContext, grade, localScan } from '../detect/guard-signals.mjs';
+import { boundedLocalScan, downrankCodeContext, grade } from '../detect/guard-signals.mjs';
 import { detectEnv } from '../gate/environment.mjs';
 import { WRITE_TOOLS, guardTargetPath } from './classify.mjs';
 import { emitResultBlock, emitResultContext } from './emit.mjs';
 import { guardPathAllowlisted } from './ignore.mjs';
 import { normalizeGuardInput } from './normalize.mjs';
 import { envFlag, guardWait, resolveAgentFlag } from './options.mjs';
-import { keyedFetch } from '../core/keyed-fetch.mjs';
+import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
 import { resultText, sendableResponse, withheldOutput } from './result-shape.mjs';
 import { readHookPayload as readPayload } from './payload.mjs';
 
@@ -29,7 +29,7 @@ function localTierDisabled() {
 
 function screenResponse(normalized, response) {
   const allowlisted = guardPathAllowlisted(normalized.cwd, guardTargetPath(normalized), { repo: false });
-  const scan = localScan(resultText(response));
+  const scan = boundedLocalScan(resultText(response));
   const findings = allowlisted ? [] : downrankCodeContext(scan.findings);
 
   const hasUnmaskedCritical = scan.findings.some((f) => f.severity === 'CRITICAL' && !f.codeContext);
@@ -108,7 +108,7 @@ async function requestServerDecision({ url, apiKey, body, agent, strict, screen,
   } catch (error) {
     clearTimeout(timer);
     breakerTrip();
-    if (strict) refuse(`Shomra result-guard could not be reached (${error.message}); blocked by fail-closed policy.`);
+    if (strict) refuse(`Shomra result-guard could not be reached (${describeFetchError(error, url)}); blocked by fail-closed policy.`);
     return exitWithoutVerdict(agent, screen);
   }
 }

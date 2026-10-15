@@ -1,8 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
-import { git } from '../core/git-exec.mjs';
+import { git, gitHooksPath } from '../core/git-exec.mjs';
 import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
+import { readFailure, readRegularText } from '../core/safe-read.mjs';
+
+const MAX_HOOK_BYTES = 1024 * 1024;
 
 export async function cmdInstallPrecommit(flags, positional) {
 
@@ -39,10 +42,7 @@ export async function cmdInstallPrecommit(flags, positional) {
     '',
   ].join('\n');
 
-  let existing = null;
-  try {
-    existing = fs.readFileSync(hookPath, 'utf8');
-  } catch {}
+  const existing = readExistingHook(hookPath);
 
   if (existing && existing.includes(marker) && !flags.force) {
     console.log(green('  ✓') + ' Shomra pre-commit hook already installed ' + dim('→ ' + hookPath));
@@ -54,11 +54,13 @@ export async function cmdInstallPrecommit(flags, positional) {
     console.log('    ' + bold(marker) + '\n');
     return;
   }
-  if (existing && flags.force) {
-    try {
-      fs.writeFileSync(hookPath + '.bak', existing);
-      console.log(dim('  Backed up existing hook → ' + path.basename(hookPath) + '.bak'));
-    } catch {}
+  if (existing && flags.force && !existing.includes(marker)) {
+    const kept = keepHookBackup(hookPath, existing);
+    if (!kept) {
+      console.error(red('✗') + ` Could not back up the existing hook at ${hookPath} - nothing was changed.`);
+      process.exit(1);
+    }
+    console.log(dim('  Backed up existing hook → ' + path.basename(kept)));
   }
   fs.writeFileSync(hookPath, managed, 'utf8');
   try {
@@ -71,8 +73,7 @@ export async function cmdInstallPrecommit(flags, positional) {
 function installPreReceive(flags, positional) {
   const root = path.resolve(positional[0] || flags.path || '.');
 
-  const bareHooks = path.join(root, 'hooks');
-  const dir = fs.existsSync(bareHooks) && fs.statSync(bareHooks).isDirectory() ? bareHooks : gitHooksDir(root);
+  const dir = gitHooksDir(root);
   if (!dir) {
     console.error(red('✗') + ` No git hooks directory under ${root}. Point this at a BARE repository (the one the server hosts), not a working checkout.`);
     process.exit(EXIT_USAGE);
@@ -129,8 +130,7 @@ function installPreReceive(flags, positional) {
     '',
   ].join('\n');
 
-  let existing = null;
-  try { existing = fs.readFileSync(hookPath, 'utf8'); } catch {  }
+  const existing = readExistingHook(hookPath);
   const ours = existing !== null && (existing.includes(ownedBy) || existing.includes('shomra gate --all'));
   if (existing === managed) {
     console.log(green('  ✓') + ' Shomra pre-receive hook already installed ' + dim('→ ' + hookPath));
@@ -141,8 +141,16 @@ function installPreReceive(flags, positional) {
     console.log('  Chain Shomra into it, or re-run with ' + bold('--force') + ' to replace it (a backup is kept).\n');
     return;
   }
-  if (existing !== null) {
-    try { fs.writeFileSync(hookPath + '.bak', existing); console.log(dim('  Backed up existing hook → pre-receive.bak')); } catch {  }
+  if (existing !== null && !ours) {
+    const kept = keepHookBackup(hookPath, existing);
+    if (!kept) {
+      console.error(red('✗') + ` Could not back up the existing hook at ${hookPath} - nothing was changed.`);
+      process.exit(1);
+    }
+    console.log(dim('  Backed up existing hook → ' + path.basename(kept)));
+  }
+  if (git(['rev-parse', '--is-bare-repository'], { cwd: root, timeout: 3000 })?.trim() === 'false') {
+    console.log(dim('  Note: this is a working checkout, so the hook runs only for pushes into it. Install it in the bare repository your git server hosts.'));
   }
   fs.writeFileSync(hookPath, managed, 'utf8');
   try { fs.chmodSync(hookPath, 0o755); } catch {  }
@@ -158,11 +166,33 @@ function installPreReceive(flags, positional) {
   console.log(dim('  GitHub.com has no server-side hooks - there, use the Action as a required status check.\n'));
 }
 
-function gitHooksDir(root) {
+function readExistingHook(hookPath) {
   try {
-    const dir = git(['rev-parse', '--git-path', 'hooks'], { cwd: root, timeout: 3000 })?.trim();
-    if (!dir) return null;
-    const abs = path.isAbsolute(dir) ? dir : path.join(root, dir);
+    return readRegularText(hookPath, MAX_HOOK_BYTES);
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    console.error(red('✗') + ` ${hookPath} could not be read (${readFailure(error)}) - nothing was changed.`);
+    return process.exit(1);
+  }
+}
+
+function keepHookBackup(hookPath, text) {
+  for (let n = 0; n < 50; n++) {
+    const name = n ? `${hookPath}.bak.${n}` : `${hookPath}.bak`;
+    try {
+      fs.writeFileSync(name, text, { flag: 'wx', mode: 0o755 });
+      return name;
+    } catch (error) {
+      if (error.code !== 'EEXIST') return null;
+    }
+  }
+  return null;
+}
+
+function gitHooksDir(root) {
+  const abs = gitHooksPath(root);
+  if (!abs) return null;
+  try {
     fs.mkdirSync(abs, { recursive: true });
     return abs;
   } catch {

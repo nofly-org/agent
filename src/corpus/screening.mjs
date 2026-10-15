@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { MAX_ARTIFACT_BYTES, SKIP_DIRS } from '../artifacts/matchers.mjs';
+import { MAX_ARTIFACT_BYTES, SKIP_DIRS, readRegularFile } from '../artifacts/matchers.mjs';
 import { downrankCodeContext, localScan } from '../detect/guard-signals.mjs';
 import { suspiciousInvisible } from '../detect/signals/invisible-chars.mjs';
 
@@ -59,15 +59,10 @@ export function collectCorpusFiles(absolutePath, isDirectory) {
 }
 
 function readDocument(file) {
-  try {
-    const { size } = fs.statSync(file.full);
-    if (size > MAX_ARTIFACT_BYTES) return { reason: `too large (${Math.round(size / 1e6)}MB)` };
-    const text = fs.readFileSync(file.full, 'utf8');
-    if (text.includes('\0')) return { reason: 'not UTF-8 text' };
-    return { text };
-  } catch (error) {
-    return { reason: error.message };
-  }
+  const read = readRegularFile(file.full, MAX_ARTIFACT_BYTES);
+  if (read.skip) return { reason: read.skip };
+  if (read.content.includes('\0')) return { reason: 'not UTF-8 text' };
+  return { text: read.content };
 }
 
 function documentVerdict(scanFindings, rankedFindings, hasInvisibleChars) {

@@ -1,6 +1,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { readRegularText } from '../core/safe-read.mjs';
 
 export const MAX_GAPS = 50;
 
@@ -28,13 +29,14 @@ export function closeWindow(state, { at, staleMs = STALE_WINDOW_MS } = {}) {
   const { openedAt, reason, unscreened, local } = s.open;
   if (!unscreened && !local) return { ...s, open: null };
 
-  const stale = at - openedAt > staleMs;
+  const known = Number.isFinite(openedAt) && openedAt > 0 && openedAt <= at;
+  const stale = !known || at - openedAt > staleMs;
   const gap = {
-    opened_at: new Date(openedAt).toISOString(),
+    opened_at: new Date(known ? openedAt : at).toISOString(),
     ...(stale ? {} : { closed_at: new Date(at).toISOString() }),
     unscreened_calls: unscreened,
     locally_decided_calls: local,
-    reason: stale ? `${reason} (end not observed)` : reason,
+    reason: !known ? `${reason} (start not recorded)` : stale ? `${reason} (end not observed)` : reason,
   };
   return { open: null, pending: compact([...s.pending, gap]) };
 }
@@ -66,13 +68,23 @@ export function ack(state, sent) {
   return { ...s, pending: s.pending.filter((g) => !done.has(g.opened_at)) };
 }
 
+const tally = (n) => (Number.isInteger(n) && n > 0 ? n : 0);
+
+function openOf(open) {
+  if (!open || typeof open !== 'object' || Array.isArray(open)) return null;
+  const openedAt = Number(open.openedAt);
+  return { openedAt: Number.isFinite(openedAt) ? openedAt : NaN, reason: String(open.reason ?? 'unknown').slice(0, 200), unscreened: tally(open.unscreened), local: tally(open.local) };
+}
+
+const isGap = (g) => !!g && typeof g === 'object' && typeof g.opened_at === 'string' && !Number.isNaN(Date.parse(g.opened_at));
+
 export function makeLedgerStore(configDir, { version } = {}) {
   const file = path.join(configDir, 'guard-ledger.json');
 
   const read = () => {
     try {
-      const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-      return { open: raw.open ?? null, pending: Array.isArray(raw.pending) ? raw.pending : [] };
+      const raw = JSON.parse(readRegularText(file));
+      return { open: openOf(raw?.open), pending: Array.isArray(raw?.pending) ? raw.pending.filter(isGap) : [] };
     } catch {
       return emptyLedger();
     }

@@ -96,6 +96,117 @@ test('--help shows help and never runs the command', () => {
   }
 });
 
+test('help for one command shows that command, for admin verbs, aliases and sub-commands too', () => {
+  const s = sandbox();
+  try {
+    const zip = s.run(['scan-zip', '--help']);
+    assert.equal(zip.status, 0);
+    assert.match(zip.stdout, /scan-zip\s+Static-scan a workspace ZIP/);
+    assert.doesNotMatch(zip.stdout, /USAGE/);
+    assert.match(s.run(['agent-id', '--help']).stdout, /agent-identity\s+Register a non-human agent identity/);
+    assert.match(s.run(['ledger', '--help']).stdout, /ledger\s+What each control/);
+    const redteam = s.run(['admin', 'redteam', '--help']).stdout;
+    assert.match(redteam, /REDTEAM/);
+    assert.doesNotMatch(redteam, /scan-zip/);
+    const mcp = s.run(['mcp', '--help']).stdout;
+    for (const sub of ['install', 'add', 'list', 'guard', 'serve']) assert.match(mcp, new RegExp(`mcp ${sub}\\s`));
+    assert.doesNotMatch(s.run(['mcp', 'guard', '--help']).stdout, /mcp add/);
+    const typo = s.run(['help', 'gaet']);
+    assert.equal(typo.status, 3);
+    assert.match(typo.stderr, /did you mean gate/);
+    const restore = s.run(['admin', 'memory-restore', '--help']);
+    assert.equal(restore.status, 0);
+    assert.match(restore.stdout, /memory-restore\s+Write back/);
+  } finally {
+    s.done();
+  }
+});
+
+test('every command a person runs has its own help', async () => {
+  const { COMMANDS } = await import('../src/cli/registry.mjs');
+  const { cmdHelp } = await import('../src/cli/help.mjs');
+  const internal = new Set(['tool-guard', 'result-guard', 'prompt-guard', 'plan-guard', 'session-guard']);
+  const log = console.log;
+  try {
+    for (const name of Object.keys(COMMANDS)) {
+      if (internal.has(name)) continue;
+      let out = '';
+      console.log = (text) => { out += text; };
+      cmdHelp(name);
+      console.log = log;
+      assert.doesNotMatch(out, /USAGE/, `${name} falls back to the full help`);
+    }
+  } finally {
+    console.log = log;
+  }
+});
+
+test('the ledger finds the pre-commit hook wherever git keeps hooks', () => {
+  const s = sandbox();
+  try {
+    spawnSync('git', ['init', '-q', s.dir]);
+    spawnSync('git', ['config', 'core.hooksPath', '.githooks'], { cwd: s.dir });
+    assert.equal(s.run(['install-precommit']).status, 0);
+    const ledger = JSON.parse(s.run(['ledger', '--json']).stdout);
+    assert.equal(ledger.controls.find((c) => c.id === 'install-gate').mode, 'ENFORCE');
+  } finally {
+    s.done();
+  }
+});
+
+test('doctor never grades an empty machine, and an unguarded agent caps the grade', { skip: process.platform === 'win32' }, () => {
+  const s = sandbox();
+  try {
+    const empty = JSON.parse(s.run(['doctor', '--json']).stdout);
+    assert.equal(empty.graded, false);
+    assert.equal(empty.score, null);
+    assert.match(s.run(['doctor']).stdout, /Not Graded/);
+
+    const bin = path.join(s.dir, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\n', { mode: 0o755 });
+    fs.mkdirSync(path.join(s.dir, '.claude'));
+    const env = { PATH: `${bin}${path.delimiter}${process.env.PATH}` };
+    const unguarded = JSON.parse(s.run(['doctor', '--json'], env).stdout);
+    assert.equal(unguarded.unguarded, 1);
+    assert.ok(unguarded.score <= 74, `an unguarded agent graded ${unguarded.score}`);
+    s.run(['install-hook', '--agent', 'claude', '--global'], env);
+    const guarded = JSON.parse(s.run(['doctor', '--json'], env).stdout);
+    assert.equal(guarded.unguarded, 0);
+    assert.equal(guarded.grade, 'A');
+  } finally {
+    s.done();
+  }
+});
+
+test('every scaffold Shomra ships gates clean under its own rules', () => {
+  for (const kind of ['skill', 'command', 'subagent', 'agent-card', 'mcp', 'rules']) {
+    const s = sandbox();
+    try {
+      const r = s.run(['new', kind, 'demo']);
+      assert.equal(r.status, 0, kind);
+      assert.match(r.stdout, /✓ gate: clean/, `${kind}: ${r.stdout}`);
+    } finally {
+      s.done();
+    }
+  }
+});
+
+test('a scaffold name can never point outside the project', () => {
+  const s = sandbox();
+  try {
+    const repo = path.join(s.dir, 'repo');
+    fs.mkdirSync(repo);
+    for (const args of [['new', 'skill', '..'], ['new', 'skill', '../../escape'], ['new', 'agent', '..', '--force']]) {
+      spawnSync(process.execPath, [CLI, ...args], { cwd: repo, env: { PATH: process.env.PATH, HOME: s.dir, USERPROFILE: s.dir, NO_COLOR: '1' }, encoding: 'utf8' });
+    }
+    assert.deepEqual(fs.readdirSync(s.dir).filter((f) => f !== '.shomra').sort(), ['repo']);
+    assert.ok(fs.existsSync(path.join(repo, 'escape', 'SKILL.md')));
+  } finally {
+    s.done();
+  }
+});
+
 test('backend URLs are parsed, not pattern-replaced', () => {
   assert.deepEqual(parseBackendUrl('https://localhost.corp.example:8443/'), { url: 'https://localhost.corp.example:8443', cleartext: false });
   assert.deepEqual(parseBackendUrl('http://localhost-api.internal'), { url: 'http://localhost-api.internal', cleartext: true });
@@ -220,6 +331,25 @@ test('SARIF paths share one base, are encoded, and single-file gate speaks SARIF
     assert.equal(single.status, 1);
     assert.equal(JSON.parse(single.stdout).runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri, 'pkg/.claude/commands/fix%231.md');
     assert.equal(s.run(['gate', 'pkg/.claude/commands/fix#1.md', '--kind', 'bogus']).status, 3);
+  } finally {
+    s.done();
+  }
+});
+
+test('secrets reads big files in parts, skips devices, and says which files were too large to read', { skip: process.platform === 'win32' && 'device files' }, () => {
+  const s = sandbox();
+  try {
+    fs.symlinkSync('/dev/zero', path.join(s.dir, 'zero.txt'));
+    s.write('app.log', `${'request served in 12ms\n'.repeat(400000)}token=${TOKEN}\n`);
+    const huge = fs.openSync(path.join(s.dir, 'huge.log'), 'w');
+    fs.ftruncateSync(huge, 65 * 1024 * 1024);
+    fs.closeSync(huge);
+    const res = s.run(['secrets', '--json']);
+    assert.notEqual(res.signal, 'SIGTERM', 'a device never hangs the scan');
+    const out = JSON.parse(res.stdout);
+    assert.ok(out.hits.some((h) => h.file === 'app.log' && h.line === 400001), JSON.stringify(out.hits));
+    assert.equal(out.complete, false);
+    assert.match(out.incomplete.join(' '), /over 64 MB were not scanned/);
   } finally {
     s.done();
   }

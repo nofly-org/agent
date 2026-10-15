@@ -9,6 +9,7 @@ import { localGate } from '../detect/guard-signals.mjs';
 import { collectLocalSast, mergeSastIntoResult } from '../gate/sast.mjs';
 import { MODEL_SEV_RANK, modelFixPlan, modelLookup, printAlternatives } from '../models/lookup.mjs';
 import { cmdMcp } from './mcp.mjs';
+import { readInputFile } from '../cli/read-input.mjs';
 
 const ADD_KINDS = ['mcp', 'skill', 'model', 'package'];
 
@@ -56,7 +57,7 @@ async function addSkill(flags, positional) {
     target = md;
   }
   const rel = path.relative(process.cwd(), target).split(path.sep).join('/');
-  const content = fs.readFileSync(target, 'utf8');
+  const content = readInputFile(target, String(ref));
 
   const merged = mergeSastIntoResult(
     { ...localGate(content, { kind: 'skill', path: rel }), decision: localGate(content, { kind: 'skill', path: rel }).verdict },

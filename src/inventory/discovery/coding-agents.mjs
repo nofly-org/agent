@@ -22,16 +22,17 @@ export function listProcesses() {
 }
 
 export function discoverCodingAgents(roots = [process.cwd()], opts = {}) {
-  const cwd = process.cwd();
   const { HOME, APPDATA, vscodeUserDir, own } = userDirs(opts.home);
+  const cwd = own ? process.cwd() : null;
+  const inCwd = (...parts) => (cwd ? path.join(cwd, ...parts) : null);
   const agents = [
-    { vendor: 'claude-code', name: 'Claude Code', probes: [path.join(HOME, '.claude.json'), path.join(HOME, '.claude')], hookFiles: [managedFile('claude'), path.join(HOME, '.claude', 'settings.json'), path.join(cwd, '.claude', 'settings.json')].filter(Boolean) },
-    { vendor: 'cursor', name: 'Cursor', probes: [path.join(HOME, '.cursor')], hookFiles: [path.join(HOME, '.cursor', 'hooks.json'), path.join(cwd, '.cursor', 'hooks.json')] },
-    { vendor: 'windsurf', name: 'Windsurf', probes: [path.join(HOME, '.codeium', 'windsurf')], hookFiles: [path.join(HOME, '.codeium', 'windsurf', 'hooks.json'), path.join(cwd, '.windsurf', 'hooks.json')] },
-    { vendor: 'gemini', name: 'Gemini CLI', probes: [path.join(HOME, '.gemini')], hookFiles: [path.join(HOME, '.gemini', 'settings.json'), path.join(cwd, '.gemini', 'settings.json')] },
-    { vendor: 'codex', name: 'OpenAI Codex CLI', probes: [path.join(HOME, '.codex')], hookFiles: [managedFile('codex'), path.join(HOME, '.codex', 'hooks.json'), path.join(cwd, '.codex', 'hooks.json')].filter(Boolean) },
-    { vendor: 'copilot', name: 'GitHub Copilot', probes: [path.join(HOME, '.copilot'), path.join(vscodeUserDir(), 'globalStorage', 'github.copilot-chat')], hookFiles: [managedFile('copilot'), path.join(HOME, '.copilot', 'hooks', 'shomra.json'), path.join(cwd, '.github', 'hooks', 'shomra.json')].filter(Boolean) },
-    { vendor: 'qwen-code', name: 'Qwen Code', probes: [path.join(HOME, '.qwen')], hookFiles: [path.join(HOME, '.qwen', 'settings.json'), path.join(cwd, '.qwen', 'settings.json')] },
+    { vendor: 'claude-code', name: 'Claude Code', probes: [path.join(HOME, '.claude.json'), path.join(HOME, '.claude')], hookFiles: [managedFile('claude'), path.join(HOME, '.claude', 'settings.json'), inCwd('.claude', 'settings.json')].filter(Boolean) },
+    { vendor: 'cursor', name: 'Cursor', probes: [path.join(HOME, '.cursor')], hookFiles: [path.join(HOME, '.cursor', 'hooks.json'), inCwd('.cursor', 'hooks.json')].filter(Boolean) },
+    { vendor: 'windsurf', name: 'Windsurf', probes: [path.join(HOME, '.codeium', 'windsurf')], hookFiles: [path.join(HOME, '.codeium', 'windsurf', 'hooks.json'), inCwd('.windsurf', 'hooks.json')].filter(Boolean) },
+    { vendor: 'gemini', name: 'Gemini CLI', probes: [path.join(HOME, '.gemini')], hookFiles: [path.join(HOME, '.gemini', 'settings.json'), inCwd('.gemini', 'settings.json')].filter(Boolean) },
+    { vendor: 'codex', name: 'OpenAI Codex CLI', probes: [path.join(HOME, '.codex')], hookFiles: [managedFile('codex'), path.join(HOME, '.codex', 'hooks.json'), inCwd('.codex', 'hooks.json')].filter(Boolean) },
+    { vendor: 'copilot', name: 'GitHub Copilot', probes: [path.join(HOME, '.copilot'), path.join(vscodeUserDir(), 'globalStorage', 'github.copilot-chat')], hookFiles: [managedFile('copilot'), path.join(HOME, '.copilot', 'hooks', 'shomra.json'), inCwd('.github', 'hooks', 'shomra.json')].filter(Boolean) },
+    { vendor: 'qwen-code', name: 'Qwen Code', probes: [path.join(HOME, '.qwen')], hookFiles: [path.join(HOME, '.qwen', 'settings.json'), inCwd('.qwen', 'settings.json')].filter(Boolean) },
     { vendor: 'kiro', name: 'Kiro', probes: [path.join(HOME, '.kiro'), path.join(HOME, '.aws', 'amazonq')], hookFiles: [] },
     { vendor: 'opencode', name: 'OpenCode', probes: [path.join(HOME, '.config', 'opencode'), path.join(HOME, '.local', 'share', 'opencode')], hookFiles: [] },
     { vendor: 'goose', name: 'Goose', probes: [path.join(HOME, '.config', 'goose'), path.join(APPDATA, 'Block', 'goose')], hookFiles: [] },
@@ -39,9 +40,9 @@ export function discoverCodingAgents(roots = [process.cwd()], opts = {}) {
     { vendor: 'augment', name: 'Augment', probes: [path.join(HOME, '.augment')], hookFiles: [] },
     { vendor: 'continue', name: 'Continue', probes: [path.join(HOME, '.continue')], hookFiles: [] },
     { vendor: 'amp', name: 'Amp', probes: [path.join(HOME, '.config', 'amp'), path.join(vscodeUserDir(), 'globalStorage', 'sourcegraph.amp')], hookFiles: [] },
-    { vendor: 'cline', name: 'Cline', probes: [...['Code', 'Cursor', 'Windsurf'].map((app) => path.join(vscodeUserDir(app), 'globalStorage', 'saoudrizwan.claude-dev')), path.join(HOME, '.cline', 'data')], hookFiles: [path.join(HOME, 'Documents', 'Cline', 'Hooks', 'PreToolUse'), path.join(HOME, '.cline', 'hooks', 'PreToolUse'), path.join(cwd, '.clinerules', 'hooks', 'PreToolUse'), path.join(cwd, '.cline', 'hooks', 'PreToolUse')] },
-    { vendor: 'roo', name: 'Roo Code', probes: ['Code', 'Cursor', 'Windsurf'].map((app) => path.join(vscodeUserDir(app), 'globalStorage', 'rooveterinaryinc.roo-cline')), hookFiles: [path.join(cwd, '.roo', 'hooks.json')] },
-    { vendor: 'aider', name: 'Aider', probes: [path.join(HOME, '.aider.conf.yml'), path.join(cwd, '.aider.conf.yml'), path.join(HOME, '.aider')], hookFiles: [path.join(HOME, '.aider.conf.yml'), path.join(cwd, '.aider.conf.yml')] },
+    { vendor: 'cline', name: 'Cline', probes: [...['Code', 'Cursor', 'Windsurf'].map((app) => path.join(vscodeUserDir(app), 'globalStorage', 'saoudrizwan.claude-dev')), path.join(HOME, '.cline', 'data')], hookFiles: [path.join(HOME, 'Documents', 'Cline', 'Hooks', 'PreToolUse'), path.join(HOME, '.cline', 'hooks', 'PreToolUse'), inCwd('.clinerules', 'hooks', 'PreToolUse'), inCwd('.cline', 'hooks', 'PreToolUse')].filter(Boolean) },
+    { vendor: 'roo', name: 'Roo Code', probes: ['Code', 'Cursor', 'Windsurf'].map((app) => path.join(vscodeUserDir(app), 'globalStorage', 'rooveterinaryinc.roo-cline')), hookFiles: [inCwd('.roo', 'hooks.json')].filter(Boolean) },
+    { vendor: 'aider', name: 'Aider', probes: [path.join(HOME, '.aider.conf.yml'), inCwd('.aider.conf.yml'), path.join(HOME, '.aider')].filter(Boolean), hookFiles: [path.join(HOME, '.aider.conf.yml'), inCwd('.aider.conf.yml')].filter(Boolean) },
   ];
   const assets = [];
   let projects = null;

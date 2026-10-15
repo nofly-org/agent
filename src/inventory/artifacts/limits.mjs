@@ -17,6 +17,10 @@ export const MAX_BUNDLED = 20;
 
 export const MAX_TOTAL_BYTES = 4_000_000;
 
+export const CREDENTIAL_STORE = /(?:^|[\\/])(?:\.ssh|\.aws|\.gnupg|\.kube|\.docker|\.azure|\.password-store|\.config[\\/](?:gcloud|gh))(?:[\\/]|$)|(?:^|[\\/])(?:\.netrc|\.npmrc|\.pypirc|\.git-credentials|\.pgpass|\.env(?:\.[\w.-]+)?|id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?|credentials(?:\.json)?)$|\.(?:pem|key|p12|pfx|jks|kdbx)$/i;
+
+export const SECRET_PATH = /(?:^|[\\/])(?:\.env|\.ssh|\.aws|\.gnupg|\.netrc|\.npmrc|\.kube|\.docker)(?:[\\/]|$)|id_(?:rsa|dsa|ecdsa|ed25519)|secret|credential|password|\.pem$|\.key$/i;
+
 export const IGNORE_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', 'out', 'coverage', '__pycache__',
   '.venv', 'venv', 'site-packages', '.next', '.turbo', 'target',

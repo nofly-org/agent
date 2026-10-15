@@ -31,13 +31,33 @@ const PRIVILEGED_TARGET =
 const PERSISTENCE_TARGET =
   /(^|\/)\.(ssh|aws|kube)\/|authorized_keys|\.bashrc|\.zshrc|\.profile|crontab|\/etc\/(sudoers|passwd|shadow)|systemd|(^|\/)\.env(\.|$)/i;
 
+export function isPersistenceTarget(target) {
+  return PERSISTENCE_TARGET.test(String(target ?? ''));
+}
+
 const PRODUCTION = /\b(prod|production|live|main|master|release)\b/i;
 
 /* ⚠ `force[-_]?push` never matched the way anybody writes it, so `git push
  * --force origin main` graded MATERIAL and the fail-closed rung never covered
  * it. --force-with-lease is included on purpose: it refuses when the remote
  * moved, which makes it safer, not less destructive. */
-const FORCE_PUSH = /\bgit\s+push\b[^|;&\n]*?\s--?f(?:orce(?:-with-lease)?)?\b/i;
+const FORCE_FLAG = /\s--?f(?:orce(?:-with-lease)?)?\b/i;
+const FORCE_FLAG_AT = /^--?f(?:orce(?:-with-lease)?)?\b/i;
+
+function forcePush(text) {
+  const push = /\bgit\s+push\b/gi;
+  const separator = /[|;&\n]/g;
+  for (let m = push.exec(text); m; m = push.exec(text)) {
+    const from = m.index + m[0].length;
+    separator.lastIndex = from;
+    const sep = separator.exec(text);
+    const end = sep ? sep.index : text.length;
+    if (FORCE_FLAG.test(text.slice(from, end))) return true;
+    if (sep?.[0] === '\n' && FORCE_FLAG_AT.test(text.slice(end + 1, end + 41))) return true;
+    push.lastIndex = Math.max(end, push.lastIndex);
+  }
+  return false;
+}
 
 export function classifyConsequence(input) {
   const leaf = String(input.tool ?? '').replace(/^mcp__[^_]+__/, '');
@@ -48,7 +68,7 @@ export function classifyConsequence(input) {
     return SEVERE_VERB.test(blob) || RM_COMMAND.test(raw) ? 'severe' : 'material';
   }
   if (PERSISTENCE_TARGET.test(raw)) return 'severe';
-  if (SEVERE_VERB.test(blob) || RM_COMMAND.test(raw) || FORCE_PUSH.test(raw)) return 'severe';
+  if (SEVERE_VERB.test(blob) || RM_COMMAND.test(raw) || forcePush(raw)) return 'severe';
   if (AUTHORITY_GRANT.test(blob)) return PRIVILEGED_TARGET.test(blob) ? 'severe' : 'material';
   if (input.isShell) return 'material';
   if (MATERIAL_VERB.test(blob)) return 'material';

@@ -5,6 +5,7 @@ import { MAX_ARTIFACT_BYTES } from '../artifacts/matchers.mjs';
 import { CONFIG_DIR } from '../core/config.mjs';
 import { artifactName } from '../inventory/artifacts/discover.mjs';
 import { sha256 } from './memory-write.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 export const ACTIVE_ARTIFACTS_DIR = path.join(CONFIG_DIR, 'active-artifacts');
 export const MAX_ACTIVE_ARTIFACTS = 20;
@@ -135,7 +136,7 @@ function prune(dir) {
 export function activeArtifactsFor({ sessionId, projectDir, home = os.homedir(), dir = ACTIVE_ARTIFACTS_DIR }) {
   const file = sessionFile(dir, sessionId, projectDir, home);
   try {
-    const entry = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const entry = JSON.parse(readRegularText(file));
     if (stillValid(entry)) return entry.items;
   } catch {
   }

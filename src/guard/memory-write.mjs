@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { CONFIG_DIR } from '../core/config.mjs';
 import { patchTextOf } from './command-text.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 const SECTION_TOOLS = [
   { re: /^save_memory$/i, file: () => path.join(os.homedir(), '.gemini', 'GEMINI.md'), heading: '## Gemini Added Memories' },
@@ -18,7 +19,7 @@ const readOr = (read, p) => {
   }
 };
 
-const readUtf8 = (p) => fs.readFileSync(p, 'utf8');
+const readUtf8 = (p) => readRegularText(p);
 
 /** Every index at which `needle` occurs in `hay` (non-overlapping is not required - two overlapping hits are still two). */
 function occurrences(hay, needle, max = 3) {
@@ -87,11 +88,63 @@ function replaceCurly(text, oldStr, newStr) {
   return text.slice(0, at) + (actual === oldStr ? newStr : curled(newStr)) + text.slice(at + oldStr.length);
 }
 
+const MAX_DIFF_BLOCKS = 500;
+const LINE_HINT = /^:(?:start|end)_line:[^\S\n]*\d+\r?$/;
+const RULE_LINE = /^-{3,}\r?$/;
+const REPLACE_LINE = /^(?:\+{3,}|>{3,}) REPLACE/;
+
+const bare = (line) => (line.endsWith('\r') ? line.slice(0, -1) : line);
+
+function isSearchLine(line) {
+  const body = bare(line);
+  if (!body.endsWith(' SEARCH')) return false;
+  const run = body.slice(-10, -7);
+  return run === '---' || run === '<<<';
+}
+
+function isDividerLine(line) {
+  const body = bare(line);
+  return body.length >= 3 && /^=+$/.test(body);
+}
+
+function section(lines) {
+  let from = 0;
+  while (from < lines.length && LINE_HINT.test(lines[from])) from++;
+  if (from > 0 && from < lines.length && RULE_LINE.test(lines[from])) from++;
+  else from = 0;
+  return bare(lines.slice(from).join('\n'));
+}
+
+function searchReplaceBlocks(diff) {
+  const blocks = [];
+  let state = 'out';
+  let search = [];
+  let replace = [];
+  for (const line of String(diff).split('\n')) {
+    if (state === 'out') {
+      if (isSearchLine(line)) {
+        state = 'search';
+        search = [];
+      }
+    } else if (state === 'search') {
+      if (isDividerLine(line)) {
+        state = 'replace';
+        replace = [];
+      } else search.push(line);
+    } else if (REPLACE_LINE.test(line)) {
+      if (blocks.length >= MAX_DIFF_BLOCKS) return null;
+      blocks.push([section(search), bare(replace.join('\n'))]);
+      state = 'out';
+    } else replace.push(line);
+  }
+  return state === 'out' ? blocks : null;
+}
+
 function applySearchReplace(text, diff) {
-  const blocks = [...String(diff).matchAll(/(?:-{3,} SEARCH|<{3,} SEARCH)\r?\n([\s\S]*?)\r?\n={3,}\r?\n([\s\S]*?)\r?\n(?:\+{3,} REPLACE|>{3,} REPLACE)/g)];
-  if (!blocks.length) return null;
+  const blocks = searchReplaceBlocks(diff);
+  if (!blocks?.length) return null;
   let out = text;
-  for (const [, search, replace] of blocks) {
+  for (const [search, replace] of blocks) {
     const next = replaceOnce(out, search, replace, false);
     if (next == null) return null;
     out = next;
@@ -422,7 +475,7 @@ function ledgerFile(p, dir) {
 
 export function readLedger(p, dir = MEMORY_LEDGER_DIR) {
   try {
-    const row = JSON.parse(fs.readFileSync(ledgerFile(p, dir), 'utf8'));
+    const row = JSON.parse(readRegularText(ledgerFile(p, dir)));
     return row && Array.isArray(row.hashes) ? row : null;
   } catch {
     return null;

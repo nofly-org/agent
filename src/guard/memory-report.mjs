@@ -4,6 +4,7 @@ import path from 'node:path';
 import { isMemoryPath, reportMemoryWrite } from '../commands/memory-scan.mjs';
 import { outOfBandChange, pendingWrite, readLedger, recordLedger, sha256 } from './memory-write.mjs';
 import { gateMachine } from '../core/api-client.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 export const OUT_OF_BAND = 'changed outside any agent write the Shomra hook observed';
 export const FIRST_SIGHT = 'first observation of this store - baseline only, no write attributed';
@@ -27,8 +28,8 @@ export function memoryReportBase(filePath, normalized) {
 
 export async function reportFirstSight(url, apiKey, filePath, current, normalized, source = FIRST_SIGHT) {
   if (current == null || readLedger(filePath)) return false;
-  await reportMemoryWrite(url, apiKey, { ...memoryReportBase(filePath, normalized), content: current, writer: 'SCAN', source });
-  recordLedger(filePath, [sha256(current)]);
+  const outcome = await reportMemoryWrite(url, apiKey, { ...memoryReportBase(filePath, normalized), content: current, writer: 'SCAN', source });
+  if (outcome !== 'failed') recordLedger(filePath, [sha256(current)]);
   return true;
 }
 
@@ -36,13 +37,13 @@ export async function reportOutOfBand(url, apiKey, filePath, current, normalized
   if (current == null) return;
   if (await reportFirstSight(url, apiKey, filePath, current, normalized, firstSource)) return;
   if (pendingWrite(filePath, current)) {
-    await reportMemoryWrite(url, apiKey, { ...memoryReportBase(filePath, normalized), content: current, writer: 'AGENT', source: os.hostname(), contentBasis: 'whole' });
-    recordLedger(filePath, [sha256(current)]);
+    const outcome = await reportMemoryWrite(url, apiKey, { ...memoryReportBase(filePath, normalized), content: current, writer: 'AGENT', source: os.hostname(), contentBasis: 'whole' });
+    if (outcome !== 'failed') recordLedger(filePath, [sha256(current)]);
     return;
   }
   if (!outOfBandChange(filePath, current)) return;
-  await reportMemoryWrite(url, apiKey, { ...memoryReportBase(filePath, normalized), content: current, writer: 'UNKNOWN', source: OUT_OF_BAND });
-  recordLedger(filePath, [sha256(current)]);
+  const outcome = await reportMemoryWrite(url, apiKey, { ...memoryReportBase(filePath, normalized), content: current, writer: 'UNKNOWN', source: OUT_OF_BAND });
+  if (outcome !== 'failed') recordLedger(filePath, [sha256(current)]);
 }
 
 const CONTEXT_BASENAMES = [
@@ -105,7 +106,7 @@ export async function baselineSessionContext({ url, apiKey, cwd, sessionId, home
   for (const f of files) {
     let current = null;
     try {
-      current = fs.readFileSync(f, 'utf8');
+      current = readRegularText(f);
     } catch {
       continue;
     }

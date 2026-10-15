@@ -12,6 +12,9 @@ import { findingPath, locationBase, relativeToBase } from '../gate/locations.mjs
 import { toSarif } from '../gate/sarif.mjs';
 import { touchedArtifacts } from '../gate/scope.mjs';
 import { trustedConfig } from '../gate/trusted.mjs';
+import { writeFileAtomic } from '../core/json-file.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
+import { keyedFetch } from '../core/keyed-fetch.mjs';
 
 const PR_WORKFLOW = `name: Shomra AI Security
 on: pull_request
@@ -34,7 +37,7 @@ jobs:
 `;
 
 function readGithubEvent() {
-  try { return JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')); } catch { return {}; }
+  try { return JSON.parse(readRegularText(process.env.GITHUB_EVENT_PATH)); } catch { return {}; }
 }
 
 function githubApiBase() {
@@ -49,7 +52,7 @@ function githubApiBase() {
 }
 
 async function githubApi(token, method, apiPath, body) {
-  const res = await fetch(`${githubApiBase()}${apiPath}`, {
+  const res = await keyedFetch(`${githubApiBase()}${apiPath}`, {
     method,
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json', 'User-Agent': 'shomra-agent' },
     body: body ? JSON.stringify(body) : undefined,
@@ -75,8 +78,7 @@ function writeWorkflow(flags) {
     console.error(`${red('✗')} ${path.relative(process.cwd(), workflow)} exists. Use ${bold('--force')}.`);
     process.exit(EXIT_USAGE);
   }
-  fs.mkdirSync(path.dirname(workflow), { recursive: true });
-  fs.writeFileSync(workflow, PR_WORKFLOW);
+  writeFileAtomic(workflow, PR_WORKFLOW);
   console.log(`\n  ${green('✓ Wrote')} ${bold('.github/workflows/shomra.yml')} ${dim('- commit it; PRs will get an inline Shomra review.')}`);
   console.log(`${dim('  Optional: add ') + bold('SHOMRA_API_KEY') + dim(' as a repo secret to also apply org policy.')}\n`);
 }

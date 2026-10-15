@@ -5,6 +5,7 @@ import { SettingsFileError, readJsonFile, writeFileAtomic, writeJsonFile } from 
 import { LLM_PROXY_BASE, PACKAGE_SPEC, SHOMRA_ANY_HOOK_RE, SELF_PATH, hookCommand, powershellCommand, refreshedHookCommand } from './hook-command.mjs';
 import { CLINE_EVENTS, clineHookDirs, copilotHookFile, hasFlatHook, hasGroupedHook } from './hook-files.mjs';
 import { matcherFor } from './vendor-tools.mjs';
+import { readFailure, readRegularText } from '../core/safe-read.mjs';
 
 export const AGENT_LABELS = {
   claude: 'Claude Code',
@@ -18,6 +19,14 @@ export const AGENT_LABELS = {
 };
 
 export const AGENT_KEYS = Object.keys(AGENT_LABELS);
+
+function readSettingsText(file) {
+  try {
+    return readRegularText(file);
+  } catch (error) {
+    throw new SettingsFileError(`${file} could not be read (${readFailure(error)}) - nothing was changed.`);
+  }
+}
 
 /**
  * ⚠ THE MATCHER DECIDES WHETHER THE HOOK RUNS AT ALL, and a tool it does not
@@ -279,20 +288,25 @@ export const AGENT_INSTALLERS = {
   cline(global) {
     const portable = !global;
     const dir = clineHookDirs(global)[0];
-    let changed = dropLegacyClineHooks(global);
+    const planned = [];
     for (const [event, verb] of Object.entries(CLINE_EVENTS)) {
       const file = path.join(dir, event);
       const body = clineScript(verb, portable);
       let current = null;
       try {
-        current = fs.readFileSync(file, 'utf8');
-      } catch {
+        current = readRegularText(file);
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw new SettingsFileError(`${file} could not be read (${readFailure(error)}) - nothing was changed.`);
         current = null;
       }
       if (current === body) continue;
       if (current != null && !CLINE_MARK_RE.test(current)) {
         throw new SettingsFileError(`${file} already holds a ${event} hook that is not Shomra's - Cline runs one script per event, so merge it by hand; nothing was changed.`);
       }
+      planned.push({ file, body });
+    }
+    let changed = dropLegacyClineHooks(global);
+    for (const { file, body } of planned) {
       writeFileAtomic(file, body);
       fs.chmodSync(file, 0o755);
       changed = true;
@@ -303,7 +317,7 @@ export const AGENT_INSTALLERS = {
   aider(global) {
     const portable = !global;
     const file = global ? path.join(os.homedir(), '.aider.conf.yml') : path.join(process.cwd(), '.aider.conf.yml');
-    let text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+    let text = fs.existsSync(file) ? readSettingsText(file) : '';
     if (/#\s*shomra llm guard/i.test(text) || text.includes(LLM_PROXY_BASE)) {
       return { file, changed: false };
     }
@@ -456,7 +470,7 @@ function uninstallCline(global) {
       const file = path.join(dir, event);
       let text = null;
       try {
-        text = fs.readFileSync(file, 'utf8');
+        text = readRegularText(file);
       } catch {
         continue;
       }
@@ -486,7 +500,7 @@ export const AGENT_UNINSTALLERS = {
   aider(global) {
     const file = homeOrCwd(global, '.aider.conf.yml');
     if (!fs.existsSync(file)) return { file, changed: false, removed: 0 };
-    const text = fs.readFileSync(file, 'utf8');
+    const text = readSettingsText(file);
     if (!AIDER_BLOCK_RE.test(text)) return { file, changed: false, removed: 0 };
     const next = text.replace(AIDER_BLOCK_RE, '');
     if (!next.trim()) fs.rmSync(file, { force: true });

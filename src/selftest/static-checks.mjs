@@ -5,6 +5,7 @@ import { agentHookFiles, managedFile } from '../agents/hook-files.mjs';
 import { PACKAGE_SPEC, SELF_PATH, shomraHookRe } from '../agents/hook-command.mjs';
 import { KIND_LABEL, VENDOR_TOOLS, matcherCovers, missingTools } from '../agents/vendor-tools.mjs';
 import { VERSION } from '../core/version.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 /**
  *  WHAT A SETTINGS FILE ACTUALLY PUTS IN FRONT OF THE HOOK - read on the
@@ -46,7 +47,7 @@ const CLINE_RUN_RE = /spawnSync\((".*?"|'npx'),\s*\[(.*?)\]/;
 function clineEntry(file, event) {
   let text;
   try {
-    text = fs.readFileSync(file, 'utf8');
+    text = readRegularText(file);
   } catch {
     return [];
   }
@@ -66,7 +67,7 @@ function clineEntry(file, event) {
 
 function readJson(file) {
   try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const parsed = JSON.parse(readRegularText(file));
     return parsed && typeof parsed === 'object' ? parsed : null;
   } catch {
     return null;

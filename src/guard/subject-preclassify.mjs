@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG_DIR } from '../core/config.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 /**
  *  WHICH CALLS AN ORG RULE IS WAITING TO SEE - decided on the machine, cheaply.
@@ -163,7 +164,7 @@ const PATH_TYPES = [
   { re: /(?:^|\/)\.devcontainer(?:\/[^/]+)?\/devcontainer\.json$|(?:^|\/)\.devcontainer\.json$/i, types: ['dev-environment', 'image', 'container', 'extension'] },
   { re: /\.tf(?:\.json)?$|(?:^|\/)chart\.ya?ml$|(?:^|\/)values(?:[.-][\w-]+)?\.ya?ml$|(?:^|\/)\.pre-commit-config\.ya?ml$|(?:^|\/)requirements\.ya?ml$/i, types: ['iac-module', 'image', 'container'] },
   { re: /(?:^|\/)(?:k8s|kubernetes|manifests?|deploy(?:ment)?s?|helm|charts?|kustomize|argocd|ansible|playbooks?|roles)\/.+\.ya?ml$/i, types: ['image', 'container', 'iac-module'] },
-  { re: /\.ya?ml$/i, types: ['image', 'container', 'iac-module', 'ci-workflow', 'gh-action'], sniff: /^\s*(?:services:|apiVersion:|kind:|-?\s*image:|containers:|jobs:|steps:|-?\s*uses:|runs-on:|stages:|-?\s*hosts:|tasks:|roles:|repos:|dependencies:)|^on:/m },
+  { re: /\.ya?ml$/i, types: ['image', 'container', 'iac-module', 'ci-workflow', 'gh-action'], sniff: /^[^\S\n]*(?:services:|apiVersion:|kind:|containers:|jobs:|steps:|runs-on:|stages:|tasks:|roles:|repos:|dependencies:|(?:-[^\S\n]*)?(?:image|uses|hosts):)|^on:/m },
   { re: /(?:^|\/)\.env(?:\.[\w.-]+)?$|(?:^|\/)\.(?:npmrc|pypirc|netrc)$|\.(?:pem|key|tfvars|tfstate)$|(?:^|\/)\.kube\/config$|(?:^|\/)\.aws\/credentials$/i, types: ['secret-file'] },
   { re: /\.(?:safetensors|gguf|ggml|pt|pth|ckpt|onnx|h5|keras|pkl|pickle|joblib|mlmodel|tflite|npz)$/i, types: ['model-file'] },
   { re: /\.(?:py|ipynb)$/i, types: ['model'], sniff: /\b(?:from_pretrained|pipeline\s*\(|SentenceTransformer|torch\.hub|trust_remote_code|hf_hub_download|snapshot_download|load_dataset)\b/ },
@@ -263,7 +264,7 @@ export function subjectTypesTtlMs(types = null) {
 
 export function readSubjectTypes({ file = SUBJECT_TYPES_FILE, url = null, now = Date.now() } = {}) {
   try {
-    const row = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const row = JSON.parse(readRegularText(file));
     if (!row || !Array.isArray(row.types) || typeof row.at !== 'number') return null;
     if (url && row.url && row.url !== url) return null;
     if (now - row.at > subjectTypesTtlMs(row.types) || row.at > now + 60_000) return null;

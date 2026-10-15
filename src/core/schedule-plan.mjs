@@ -161,7 +161,10 @@ export function cronLine({ node, entry, args, hours }) {
   return `${cronSchedule(hours)} ${cmd} >/dev/null 2>&1 ${CRON_MARKER}`;
 }
 
+export const isCronEntry = (l) => String(l).trimEnd().endsWith(CRON_MARKER);
+
 export function mergeCrontab(existing, line) {
-  const kept = String(existing ?? '').split(/\r?\n/).filter((l) => l.trim() && !l.includes(CRON_MARKER));
+  const kept = String(existing ?? '').split(/\r?\n/).filter((l) => !isCronEntry(l));
+  while (kept.length && !kept[kept.length - 1].trim()) kept.pop();
   return [...kept, ...(line ? [line] : [])].join('\n') + '\n';
 }

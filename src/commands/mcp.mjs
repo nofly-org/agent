@@ -74,6 +74,14 @@ function cmdMcpInstall(flags) {
   console.log('');
 }
 
+function keepBackup(bak, text, mode) {
+  try {
+    fs.writeFileSync(bak, text, { mode, flag: 'wx' });
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+  }
+}
+
 export async function cmdMcpGuard(flags, positional) {
   const { runMcpShim } = await import('../mcp/shim.mjs');
   return runMcpShim(flags, positional);
@@ -113,8 +121,7 @@ async function cmdMcpGuardInstall(flags) {
     if (changed) {
       try {
 
-        const bak = file + '.shomra-backup';
-        if (!undo && !fs.existsSync(bak)) fs.writeFileSync(bak, before, { mode: fileMode(file) });
+        if (!undo) keepBackup(file + '.shomra-backup', before, fileMode(file));
         writeJsonFile(file, cfg);
       } catch (e) {
         console.log(`  ${red('✗')} ${label} ${dim('- ' + e.message)}`);
@@ -133,10 +140,16 @@ async function cmdMcpGuardInstall(flags) {
     }
   }
 
-  if (results.some((r) => r.error)) process.exitCode = 1;
+  const failed = results.filter((r) => r.error).length;
+  if (failed) process.exitCode = 1;
   if (flags.json) { console.log(JSON.stringify({ mode: undo ? 'uninstall' : 'install', results }, null, 2)); return; }
+  if (failed === results.length) {
+    console.log(dim(`\n  Nothing was ${undo ? 'restored' : 'guarded'}: no config could be read.\n`));
+    return;
+  }
+  if (failed) console.log(dim(`\n  ${failed} config(s) could not be read and were left as they were.`));
   if (!undo) {
-    console.log(dim('\n  Every stdio MCP server now starts through Shomra: a DENIED / REVOKED / QUARANTINED'));
+    console.log(dim(`\n  Every stdio MCP server in ${failed ? 'the configs read' : 'these configs'} now starts through Shomra: a DENIED / REVOKED / QUARANTINED`));
     console.log(dim('  server is refused before its process exists, and poisoned tool descriptions are'));
     console.log(dim('  withheld from the model at tools/list rather than at the first call.'));
     console.log(dim('  Tool calls and results are screened ') + bold(screen === 'local' ? 'on this machine only' : screen === 'backend' ? 'by your Shomra org' : 'by your Shomra org when enrolled, else locally') + dim(' - change with --screen backend|local,'));

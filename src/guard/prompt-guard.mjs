@@ -1,13 +1,13 @@
 import { gateMachine } from '../core/api-client.mjs';
 import { breakerOpen, breakerReset, breakerTrip, guardTimeoutMs } from '../core/circuit-breaker.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
-import { downrankCodeContext, localScan } from '../detect/guard-signals.mjs';
+import { boundedLocalScan, downrankCodeContext } from '../detect/guard-signals.mjs';
 import { redactLocally } from '../detect/local-redact.mjs';
 import { detectEnv } from '../gate/environment.mjs';
 import { parentSessionFrom } from './normalize.mjs';
 import { envFlag, guardWait, resolveAgentFlag } from './options.mjs';
 import { reportGuardDecision } from './report.mjs';
-import { keyedFetch } from '../core/keyed-fetch.mjs';
+import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
 import { stoppedNote } from './emit.mjs';
 import { readHookPayload as readPayload } from './payload.mjs';
 
@@ -70,7 +70,7 @@ function localTierDisabled() {
 }
 
 function screenPrompt(prompt) {
-  const scan = localScan(prompt);
+  const scan = boundedLocalScan(prompt);
   const findings = downrankCodeContext(scan.findings || []);
   return {
     secrets: findings.filter((f) => f.category === 'secret' && f.severity === 'CRITICAL' && !f.codeContext),
@@ -116,7 +116,7 @@ async function requestServerDecision({ url, apiKey, body, agent, strict, injecti
     clearTimeout(timer);
     breakerTrip();
     if (injection.length) emitPromptContext(agent, promptInjectionNote(injection));
-    if (strict) emitPromptDeny(agent, `Shomra prompt-guard could not be reached (${error.message}); blocked by fail-closed policy.`);
+    if (strict) emitPromptDeny(agent, `Shomra prompt-guard could not be reached (${describeFetchError(error, url)}); blocked by fail-closed policy.`);
     return process.exit(0);
   }
 }

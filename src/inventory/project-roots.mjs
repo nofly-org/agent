@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseLooseToml, stripJsonc } from './grant-extract.mjs';
 import { userDirs } from './discovery/platform.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 const MAX_ROOTS = 40;
 const MAX_WORKSPACES = 150;
@@ -25,7 +26,7 @@ function claudeProjects(HOME) {
 
 function codexProjects(HOME) {
   try {
-    const doc = parseLooseToml(fs.readFileSync(path.join(HOME, '.codex', 'config.toml'), 'utf8'));
+    const doc = parseLooseToml(readRegularText(path.join(HOME, '.codex', 'config.toml'), MAX_CLAUDE_JSON));
     return doc && typeof doc.projects === 'object' ? Object.keys(doc.projects).map((p) => ({ dir: p, at: 0 })) : [];
   } catch {
     return [];
@@ -86,7 +87,7 @@ export function projectRoots(cwd = process.cwd(), extra = [], opts = {}) {
     ...codexProjects(HOME),
   ];
   candidates.sort((a, b) => b.at - a.at);
-  const seen = new Set([path.resolve(cwd).toLowerCase()]);
+  const seen = new Set(cwd ? [path.resolve(cwd).toLowerCase()] : []);
   const roots = [];
   for (const { dir } of candidates) {
     if (!dir) continue;

@@ -1,18 +1,20 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { agentHookInstalled } from '../agents/hook-files.mjs';
 import { AGENT_KEYS } from '../agents/installers.mjs';
 import { mcpConfigCandidates, serverEntries } from '../mcp/config-wrapping.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
+import { gitHooksPath } from '../core/git-exec.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 import { bold, cyan, dim, gray, green, red, yellow } from '../core/terminal.mjs';
 import { VERSION } from '../core/version.mjs';
 import { RUNG_LABEL, buildReport, isBeliefGap } from '../ledger/ladder.mjs';
 
 const UNMEASURED = { discrimination: 'UNKNOWN', prevention: 'UNPROVEN', preventionBasis: null };
+const titled = (text) => text.replace(/(^|[\s-])([a-z])/g, (_, lead, ch) => lead + ch.toUpperCase());
 
 function readJson(file) {
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
+    return JSON.parse(readRegularText(file));
   } catch {
     return null;
   }
@@ -40,15 +42,13 @@ function mcpReach() {
 }
 
 function precommitInstalled() {
-  for (const dir of ['.git/hooks', path.join(process.cwd(), '.git', 'hooks')]) {
-    const file = path.join(dir, 'pre-commit');
-    try {
-      if (fs.existsSync(file) && /shomra/i.test(fs.readFileSync(file, 'utf8'))) return true;
-    } catch {
-      /* unreadable is not installed */
-    }
+  const dir = gitHooksPath(process.cwd());
+  if (!dir) return false;
+  try {
+    return /shomra/i.test(readRegularText(path.join(dir, 'pre-commit'), 1024 * 1024));
+  } catch {
+    return false;
   }
-  return false;
 }
 
 function subjects() {
@@ -129,15 +129,15 @@ export function cmdLedger(flags = {}) {
     return 0;
   }
 
-  console.log(bold(cyan('\n  Control ledger')) + dim(` · ${report.controls.length} controls · local read, no account`));
+  console.log(bold(cyan('\n  Control Ledger')) + dim(` · ${report.controls.length} controls · local read, no account`));
   console.log(dim('  What has actually been shown about the controls on this machine.\n'));
 
   for (const c of report.controls) {
     const gap = isBeliefGap(c.rung);
     const paint = gap ? red : c.rung === 'HOLDING' ? green : c.rung === 'ABSENT' ? yellow : gray;
-    console.log(`  ${paint('●')} ${bold(c.label.padEnd(24))} ${paint(RUNG_LABEL[c.rung])}`);
+    console.log(`  ${paint('●')} ${bold(titled(c.label).padEnd(24))} ${paint(RUNG_LABEL[c.rung])}`);
     console.log(`    ${dim(c.statement)}`);
-    if (c.unmeasured.length) console.log(`    ${dim('unmeasured: ' + c.unmeasured.join(', '))}`);
+    if (c.unmeasured.length) console.log(`    ${dim('Unmeasured: ' + c.unmeasured.join(', '))}`);
     console.log('');
   }
 

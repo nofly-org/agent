@@ -1,4 +1,5 @@
 import { clampInt } from '../core/numbers.mjs';
+import { describeFetchError } from '../core/keyed-fetch.mjs';
 
 export function parseEnvKV(str) {
   const env = {};
@@ -68,6 +69,8 @@ export async function mcpLookup(url, id) {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
+  } catch (e) {
+    throw e?.cause || e?.name === 'AbortError' ? new Error(describeFetchError(e, url)) : e;
   } finally {
     clearTimeout(timer);
   }

@@ -1,7 +1,7 @@
 import { PII_PATTERNS, SECRET_PATTERNS, isPlaceholderSecret, luhnValid } from './signals/secrets.mjs';
 
 const MAX_TEXT = 200_000;
-const MAX_SPANS = 5000;
+const MAX_SPANS = MAX_TEXT + 1;
 
 function chunks(src) {
   const out = [];

@@ -1,3 +1,4 @@
+import { boundedJson } from '../../core/wire-limits.mjs';
 import { stripJsonComments } from './file-read.mjs';
 
 export function canonicalHooks(text) {
@@ -10,5 +11,5 @@ export function canonicalHooks(text) {
   if (!doc || typeof doc !== 'object') return null;
   const hooks = doc.hooks;
   if (!hooks || typeof hooks !== 'object' || !Object.keys(hooks).length) return null;
-  return JSON.stringify({ hooks }, null, 2);
+  return boundedJson({ hooks }, 2);
 }

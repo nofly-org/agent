@@ -4,8 +4,8 @@ import path from 'node:path';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE, exitNotConfigured } from '../core/exit-codes.mjs';
 import { SEV_COLOR, VERDICT_COLOR, bold, dim, gray, green, red, yellow } from '../core/terminal.mjs';
-import { keyedFetch } from '../core/keyed-fetch.mjs';
-import { currentUsername } from '../core/api-client.mjs';
+import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
+import { currentUsername, errorText, okBody } from '../core/api-client.mjs';
 import { clampInt } from '../core/numbers.mjs';
 
 const MAX_POLICY_HITS_SHOWN = 3;
@@ -41,18 +41,18 @@ async function buildUploadForm(target, flags) {
   return form;
 }
 
-async function readResponse(response) {
+async function readResponse(response, url) {
   const text = await response.text();
   let body;
+  let parsed = true;
   try {
     body = JSON.parse(text);
   } catch {
     body = { raw: text };
+    parsed = false;
   }
-  if (response.ok) return body;
-
-  const message = body?.message || body?.raw || response.statusText;
-  throw new Error(`${response.status} ${Array.isArray(message) ? message.join(', ') : message}`);
+  if (response.ok) return okBody(text, parsed ? body : undefined, url);
+  throw new Error(`${response.status} ${errorText(body, response)}`);
 }
 
 async function uploadArchive({ url, apiKey, target, flags }) {
@@ -67,12 +67,12 @@ async function uploadArchive({ url, apiKey, target, flags }) {
       body: await buildUploadForm(target, flags),
       signal: ctrl.signal,
     });
-    const report = await readResponse(response);
+    const report = await readResponse(response, url);
     if (!flags.json) console.log(green('done'));
     return report;
   } catch (error) {
     if (!flags.json) console.log(red('failed'));
-    const message = error?.name === 'AbortError' ? `no answer after ${Math.round(timeoutMs / 1000)}s (raise SHOMRA_API_TIMEOUT_MS or check the backend)` : error.message;
+    const message = error?.name === 'AbortError' ? `no answer after ${Math.round(timeoutMs / 1000)}s (raise SHOMRA_API_TIMEOUT_MS or check the backend)` : describeFetchError(error, url);
     console.error(`  ${red('✗')} ${message}\n`);
     return process.exit(1);
   } finally {

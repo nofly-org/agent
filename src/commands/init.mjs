@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { api, machineInfo } from '../core/api-client.mjs';
-import { CONFIG_FILE, MACHINE_CONFIG_FILE, getMachineId, loadConfig, loadMachineConfig, markMachineConfig, parseBackendUrl, saveConfig } from '../core/config.mjs';
+import { CONFIG_FILE, MACHINE_CONFIG_FILE, getMachineId, loadMachineConfig, loadUserConfig, markMachineConfig, parseBackendUrl, saveConfig } from '../core/config.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
 import { isPrivileged } from '../core/user-homes.mjs';
@@ -10,9 +10,9 @@ export async function cmdInit(flags) {
     console.error(red('✗') + ' ' + bold('shomra init --machine') + ` writes ${MACHINE_CONFIG_FILE} and must run as root (sudo) or an elevated Administrator.`);
     process.exit(EXIT_USAGE);
   }
-  const cfg = flags.machine ? markMachineConfig(loadMachineConfig() ?? {}) : loadConfig();
+  const cfg = flags.machine ? markMachineConfig(loadMachineConfig() ?? {}) : loadUserConfig();
   const key = String(flags.key || process.env.SHOMRA_API_KEY || '').trim();
-  const rawUrl = flags.url || process.env.SHOMRA_URL || cfg.url || '';
+  const rawUrl = flags.url || process.env.SHOMRA_URL || cfg.url || (flags.machine ? '' : loadMachineConfig()?.url) || '';
   if (!key) {
     console.error(red('✗') + ' Missing API key. Run: ' + bold('shomra init --key shm_live_… --url <your backend>'));
     process.exit(EXIT_USAGE);

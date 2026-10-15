@@ -88,6 +88,10 @@ function printOutcome(run) {
     console.log(`  ${red('✗')} ${bold('A step failed.')} ${dim(run.error || '')}\n`);
     return;
   }
+  if (run.status !== 'COMPLETED') {
+    console.log(`  ${red('✗')} ${bold('The run did not finish.')} ${dim(`It reported ${run.status ? `"${run.status}"` : 'no status'}, so nothing here proves the playbook passed - exiting non-zero.`)}\n`);
+    return;
+  }
   console.log(`  ${green('✓')} ${bold('Completed.')} ${dim('Every step that was meant to run did.')}\n`);
 }
 
@@ -124,5 +128,5 @@ export async function cmdRun(flags, positional) {
   if (flags.json) console.log(JSON.stringify(run, null, 2));
   else printRun(run);
 
-  if (run.status === 'FAILED') process.exitCode = 1;
+  if (run.status !== 'COMPLETED') process.exitCode = 1;
 }

@@ -5,6 +5,12 @@ import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
 import { localGate } from '../detect/guard-signals.mjs';
 import { AGENT_FRAMEWORKS, agentProjectFiles } from '../scaffold/agent-project.mjs';
 import { NEW_TEMPLATES } from '../scaffold/artifact-templates.mjs';
+import { writeFileAtomic } from '../core/json-file.mjs';
+
+function slugName(words, fallback) {
+  const slug = words.join('-').replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-{2,}/g, '-').replace(/^[.-]+|[.-]+$/g, '').slice(0, 64);
+  return slug || fallback;
+}
 
 function cmdNewAgent(flags, positional) {
   const framework = String(flags.framework || AGENT_FRAMEWORKS[0]).toLowerCase();
@@ -12,7 +18,7 @@ function cmdNewAgent(flags, positional) {
     console.error(red('✗') + ` Unknown --framework: ${framework}. Supported: ${AGENT_FRAMEWORKS.join(', ')}.`);
     process.exit(EXIT_USAGE);
   }
-  const name = (positional[0] || 'my-agent').replace(/[^a-zA-Z0-9._-]/g, '-');
+  const name = slugName(positional, 'my-agent');
   const dir = path.resolve(name);
   if (fs.existsSync(dir) && fs.readdirSync(dir).length && !flags.force) {
     console.error(red('✗') + ` ${name}/ already exists and is not empty. Use ${bold('--force')} to write into it anyway.`);
@@ -22,8 +28,7 @@ function cmdNewAgent(flags, positional) {
   const files = agentProjectFiles(name);
   for (const [rel, content] of Object.entries(files)) {
     const abs = path.join(dir, rel);
-    fs.mkdirSync(path.dirname(abs), { recursive: true });
-    fs.writeFileSync(abs, content);
+    writeFileAtomic(abs, content);
   }
 
   if (flags.json) {
@@ -48,17 +53,17 @@ export function cmdNew(flags, positional) {
     console.error(red('✗') + ` Usage: ${bold('shomra new ' + Object.keys(NEW_TEMPLATES).join('|') + '|agent [name]')}`);
     process.exit(EXIT_USAGE);
   }
-  const name = (positional[1] || (kind === 'rules' ? 'rules' : `my-${kind}`)).replace(/[^a-zA-Z0-9._-]/g, '-');
+  const name = slugName(positional.slice(1), kind === 'rules' ? 'rules' : `my-${kind}`);
   const { file, content } = tmpl(name);
   const target = path.resolve(file);
   if (fs.existsSync(target) && !flags.force) {
     console.error(red('✗') + ` ${file} already exists. Use ${bold('--force')} to overwrite.`);
     process.exit(EXIT_USAGE);
   }
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.writeFileSync(target, content);
+  writeFileAtomic(target, content);
   const g = localGate(content, { kind: kind === 'agent-card' ? 'agent-card' : kind === 'mcp' ? 'mcp' : kind === 'rules' ? 'rules' : kind, path: file });
   if (flags.json) { console.log(JSON.stringify({ created: file, kind, verdict: g.verdict }, null, 2)); return; }
   console.log(`\n  ${green('✓ Created')} ${bold(file)} ${dim(`(${kind})`)}`);
-  console.log(`  ${g.verdict === 'ALLOW' ? green('✓ gate: clean') : yellow('gate: ' + g.verdict)} ${dim('- secure-by-default template. Edit, then')} ${bold('shomra gate ' + file)}${dim('.')}\n`);
+  if (g.verdict === 'ALLOW') console.log(`  ${green('✓ gate: clean')} ${dim('- secure-by-default template. Edit, then')} ${bold('shomra gate ' + file)}${dim('.')}\n`);
+  else console.log(`  ${yellow('gate: ' + g.verdict)} ${dim('- the template did not gate clean. See why with')} ${bold('shomra gate ' + file)}${dim('.')}\n`);
 }

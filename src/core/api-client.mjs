@@ -4,7 +4,7 @@ import { readMachineSerial } from './machine-serial.mjs';
 import { clampInt } from './numbers.mjs';
 import { reportUsername } from './user-homes.mjs';
 import { VERSION } from './version.mjs';
-import { keyedFetch } from './keyed-fetch.mjs';
+import { describeFetchError, keyedFetch } from './keyed-fetch.mjs';
 
 const RETRY_STATUSES = new Set([429, 502, 503, 504]);
 const MAX_RETRIES = 2;
@@ -26,7 +26,7 @@ export function gateMachine() {
   } catch {
 
   }
-  return { ...(machineId ? { machineId } : {}), hostname: os.hostname(), username: currentUsername() };
+  return { ...(typeof machineId === 'string' && machineId ? { machineId } : {}), hostname: os.hostname(), username: currentUsername() };
 }
 
 export function machineInfo(cfg) {
@@ -42,7 +42,7 @@ export function machineInfo(cfg) {
   };
 }
 
-function errorText(json, res) {
+export function errorText(json, res) {
   const msg = json?.message ?? json?.error ?? json?.raw ?? res.statusText;
   const text = Array.isArray(msg) ? msg.join(', ') : typeof msg === 'string' ? msg : JSON.stringify(msg);
   const plain = String(text ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -61,14 +61,25 @@ function retryWaitMs(res, attempt) {
 const sleep = (ms) => new Promise((done) => { setTimeout(done, ms); });
 
 function networkError(e, url) {
-  const cause = e?.cause;
-  const code = cause?.code ? ` ${cause.code}` : '';
-  let host = '';
-  try {
-    host = ` ${new URL(url).host}`;
-  } catch {
+  return new Error(describeFetchError(e, url));
+}
+
+export function okBody(text, json, url) {
+  if (!String(text).trim()) return {};
+  if (json === undefined) {
+    if (/^\s*</.test(text)) throw new Error(`${originOf(url)} answered with a web page instead of data - a proxy or sign-in page may be in the way`);
+    return { raw: text };
   }
-  return new Error(`${e?.message ?? e}${code ? ` (${code.trim()}${host ? ` -${host}` : ''})` : ''}`);
+  if (json === null || typeof json !== 'object') throw new Error(`${originOf(url)} answered with something this version of the CLI cannot read`);
+  return json;
+}
+
+function originOf(url) {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return String(url);
+  }
 }
 
 export async function api(url, key, route, body, opts = {}) {
@@ -99,12 +110,14 @@ export async function api(url, key, route, body, opts = {}) {
       clearTimeout(timer);
     }
     let json;
+    let parsed = true;
     try {
       json = JSON.parse(text);
     } catch {
       json = { raw: text };
+      parsed = false;
     }
-    if (res.ok) return json;
+    if (res.ok) return okBody(text, parsed ? json : undefined, url);
     if (RETRY_STATUSES.has(res.status) && attempt < (opts.retries ?? MAX_RETRIES)) {
       const wait = retryWaitMs(res, attempt);
       if (Date.now() + wait < deadline) {

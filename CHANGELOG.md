@@ -20,8 +20,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   flag given no value (`init --key --url …`) is refused with exit 3, words after
   `--` are kept, and `<command> --help` shows help instead of running the
   command.
-- **The baseline counts.** A new copy of an accepted finding now fails; run
-  `shomra baseline` again to accept it.
+- **The baseline counts, line by line.** A new copy of an accepted finding now
+  fails, including a second copy of a problem in a file that was already
+  accepted once; the baseline records the lines it accepted, so moving them
+  does not matter. Run `shomra baseline` again to accept a new copy, and re-run
+  it once to upgrade a baseline written by an older version.
 - **The pre-receive hook reads pushed commits straight from git** with the new
   `shomra check --rev <sha> [--base-rev <sha>]`. It checks what a push changes,
   takes waivers only from before the push, and cannot be blinded by a pushed
@@ -39,6 +42,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rewritten to 127.0.0.1, so TLS names keep matching.
 
 ### Runtime firewall
+- **An unscreened file write is graded by the file it writes.** With no key,
+  or while the server cannot be reached, a write to a shell profile, an SSH or
+  cloud credential folder, a crontab, a systemd unit or a `.env` file now asks
+  first, and a patch that deletes a file counts as a delete. Writing code or
+  notes that merely mention "delete" or "drop" no longer asks; the on-machine
+  rules still read every write's content as before.
+- **Every hook starts faster.** On Node 22.8 and later the CLI keeps Node's
+  compiled code in `~/.shomra/compile-cache`, so a tool call spends about a
+  fifth less time in the hook (`NODE_DISABLE_COMPILE_CACHE=1` turns it off).
+  `~/.shomra` is created private (0700) before anything is written there.
 - **A flagged call never runs silently when no server answers.** On a machine
   with no key, during an outage, or when the credential is refused, a call the
   on-machine tier flags now asks the person and names what matched
@@ -75,8 +88,65 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Codex and Gemini CLI get the prompt guard**, so a pasted live credential is
   refused before it reaches the model, as in Claude Code and Cursor.
 - **The tool hook loads only what it needs**, about 55 ms faster per call.
+- **A call too large to screen asks you instead of running unscreened.** A
+  request over the server's limit used to open the outage window, so that call
+  and the next ones ran with no server check. Reconstructed files are dropped
+  first; a call still too large is put to you (`SHOMRA_GUARD_LOCAL_FLAG`
+  decides), and the outage window stays closed.
+- **The on-machine screen cannot be crashed by a large write.** It reads the
+  first and last 512 KB of very large text and flags what it did not read, and
+  a screen that cannot finish flags the call instead of exiting with an error
+  the agent ignores.
+- **A named pipe or device can no longer hang the hook.** Every file the guard
+  reads for an edit is opened without blocking and read only if it is a regular
+  file.
+- **Variable-expanded commands now reach the server's screen.** The expansion
+  was being dropped on arrival; it is now graded and can only add findings. It
+  is bounded at 16 KB, never expands a credential-named or very long variable,
+  and is masked before it is sent.
+- **Search and replace edits are read line by line**, so a large edit no longer
+  takes minutes to read, a block that deletes text is applied correctly, and a
+  Roo Code `:start_line:` hint is understood.
+- **A memory change seen during an outage is reported once the server is back.**
+  It used to be marked as delivered when the server never received it.
+- **Rollbacks write only memory and rules documents.** A rollback naming a
+  hooks file, an MCP config, a settings file, an extension manifest or a script
+  is refused, even inside a folder named "memory", and a rollback that is
+  already in place after a lost acknowledgement is reported as applied.
+- **Outage counts are never lost to a damaged ledger.** A window whose start
+  time is unreadable is still reported, with its length marked as not measured.
+- **On-machine masking covers every match**, not the first 5,000 of each kind.
+- **A very long command is graded in linear time.** Deciding whether a command
+  is high-consequence took seconds on a long one; it now takes milliseconds and
+  gives the same answers.
+- **`llm-proxy` forwards request bodies sent in chunks.** Clients that stream
+  their request body got a 502; headers meant for a single hop now stop at the
+  proxy in both directions.
 
 ### Agent installs
+- **Nothing writes through a link out of the project.** A project install,
+  `rules --write`, `new`, `pr --init`, `baseline`, `mcp add` and `fix --apply`
+  refuse a target whose link leads outside the project (a cloned repo can no
+  longer aim them at your own settings), and still follow links inside it.
+- **Machine-wide installs refuse a launcher a normal user can change.**
+  `schedule install --all-users` and `install-hook --managed` stop when Node or
+  the agent can be modified by a non-root user, since they run it as root or for
+  everyone; accept the risk with `--allow-user-writable`
+  (`SHOMRA_ALLOW_USER_NODE=1`).
+- **Backups are never overwritten.** Git hook installs keep the first backup
+  (`.bak`, then `.bak.1` …), never back up their own hook over yours, and the
+  MCP guard backup is never written through a planted link.
+- **The pre-receive hook goes in git's hooks folder,** never a `hooks/` folder
+  of your source tree.
+- **`fix --apply` refuses a fix that would empty the file or make it worse.**
+- **`rules --write` leaves a damaged Shomra block alone** and says so, instead of
+  deleting the text after it on the next run.
+- **`init` keeps your key.** A user-level `init` no longer overwrites the
+  machine-wide config or drops the key it was given.
+- **Smaller fixes:** `protect --project` works, the Cline install writes all its
+  hooks or none, the crontab keeps your blank lines and similar-looking jobs,
+  JSON settings keep their tabs and Windows line endings, `mcp add` refuses
+  `__proto__`, and the Windows MDM script escapes curly quotes.
 - **Hooks are written in the format each agent loads.** Codex reads hooks only
   under `"hooks"` in hooks.json (and asks you to trust them at its next start);
   Copilot CLI needs `{ version: 1, hooks: { preToolUse, postToolUse } }`; Cline
@@ -99,6 +169,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Copilot CLI's policy.d. It warns when the Node or Shomra install those hooks
   run could be changed by a non-root user. `shomra admin mdm-script --guard`
   adds it to the Jamf, Intune or Kandji bootstrap.
+- **The macOS and Linux bootstrap only runs a root-owned Node.** It used the
+  first `node` on PATH - on most Macs Homebrew's, which the user owns - ran npm
+  with it as root, and then stopped at the schedule step, which refuses such a
+  Node. It now picks the first Node whose file and folders root owns (links
+  followed), says so before running anything when there is none
+  (`SHOMRA_ALLOW_USER_NODE=1` accepts the risk), checks npm is there, runs every
+  step, and exits non-zero when the schedule or the managed firewall could not
+  be installed so the MDM console shows it. The Windows bootstrap now does the
+  same instead of stopping at a failed schedule or passing a failed firewall.
+- **The root-owned check follows links.** A launcher reached through a link was
+  judged by the link's folders only, so a link into a folder a user owns
+  passed; the real file's folders are now checked too.
 
 ### MCP
 - **The shim's reply-id bypass is closed.** A server could get a poisoned
@@ -128,6 +210,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   accepts arguments after `--`, and will not rewrite a commented config.
 
 ### CI gates
+- **`shomra redteam` fails when the server's gate fails.** The run's own gate
+  (an org threshold set on the server, attempts that could not be graded, a
+  guard that also blocked ordinary requests) decides the exit code, and
+  `--min` / `--fail-on-regression` travel to it. A run stopped before it
+  finished prints no score and never passes, a mistyped `--min` (`8O`, `80%`)
+  is refused with exit 3 instead of switching the gate off, `campaign --turns`
+  is held to the server's 2-12, and "All scenarios defended" needs every
+  attempt graded.
+- **`memory-scan` fails when it could not send what it found.** A store whose
+  upload failed is counted (`failed` in `--json`), the summary says nothing
+  was checked instead of "No memory poisoning found", and the exit code is 1.
+- **`shomra run` passes only a run that reports COMPLETED.** A run still
+  running, or one with no status, used to print "Completed" and exit 0.
 - **Gates fail on what they could not analyze.** Skill folders named build or
   dist, namespaced commands, oversized, unreadable or symlinked artifacts, an
   HTML page from a wrong `SHOMRA_URL`, and a mistyped target all passed before.
@@ -158,11 +253,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   YAML or frontmatter are refused), so a crafted `.mcp.json` can no longer make
   other files read as clean.
 - **`pr --json` prints JSON when nothing changed**, the Action passes every line
-  of a multi-line `args`, `secrets` skips devices like `/dev/zero` and reports
-  files too large to scan, and launching MCP servers on Windows stays fast on
+  of a multi-line `args`, and launching MCP servers on Windows stays fast on
   long runs of backslashes.
+- **`secrets` reads big files.** Files up to 64 MB are read in overlapping
+  parts, so a token in a large log is found with its line number; devices like
+  `/dev/zero` are skipped, and anything larger is reported as not scanned.
 - **Large rules files check fast.** A long paragraph no longer takes seconds to
   split into sentences.
+- **No input can stall the guard for minutes.** A YAML write of mostly blank
+  lines, a memory file of blank lines before an authority claim, and a command
+  of repeated substitutions or separators each took from seconds to hours to
+  grade, long past the hook's wait - and a guard that gives up lets the call
+  run. Five patterns that backtracked over runs of whitespace now read each
+  character once, and they agree with the old ones on every input tested.
 - **The GitHub Action no longer pastes its inputs into a shell script.**
 
 ### Detection
@@ -198,6 +301,83 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **The docs and `status` say exactly what leaves the machine without a key**:
   only pinned MCP package names, checked against osv.dev (`SHOMRA_OFFLINE=1`
   stops that).
+- **`scan` and `report` never send a credential.** Every asset and artifact is
+  masked before it is printed or uploaded, including permission allow-lists,
+  registry addresses with a login in them and files bundled with a skill.
+- **One odd file no longer stops the inventory.** A config nested thousands of
+  levels deep, a named pipe or a link to a device is skipped and listed instead
+  of crashing or hanging `scan`, `report`, `models` and `corpus`, and a failed
+  discovery step is listed as skipped instead of ending the scan.
+- **Agent folders linked from a dotfiles folder are scanned.** Links inside your
+  home (or inside the project, for project folders) are followed; a link that
+  leaves them, or points into a key or credential folder, is not read and is
+  listed as skipped, and the scan summary says why each item was skipped.
+- **A hook script in a folder whose name looks sensitive is still checked.**
+  Only the part of the path inside the project or home is judged, and a script
+  that resolves into a key folder is reported as withheld, not missing.
+- **`--all-users` reports each user's own setup.** Other users are no longer
+  credited with the guard, permissions or hook scripts of the project the scan
+  was started from, and machine-wide MCP servers are listed once.
+- **A report never exceeds what the server accepts.** Each user home had its own
+  4 MB content budget, so `report --all-users` on a shared machine could pass the
+  server's 5 MB limit and be refused whole. The largest artifacts are now left
+  out until it fits and listed as skipped (`report-size`), never as clean.
+- **The folder you scan is always covered.** It is walked first with its own
+  budget, large cache folders under your home are skipped, and a walk that
+  ran out of budget is listed as skipped instead of ending silently.
+- **A `headersHelper` command keeps its shape but never its credential.**
+- **`shomra new rules` writes a template that passes the gate.** The shipped
+  CLAUDE.md template listed the instructions it warned against and the gate
+  blocked it (risk 100/100); it now describes the project instead, every
+  template is tested to gate clean, and a template that did not is no longer
+  called "secure-by-default". Scaffold names stay inside the project: `..`,
+  `../../x` and `/etc/x` become plain folder names, and `new skill My Skill`
+  keeps both words.
+- **`<command> --help` shows that command for every command.** Admin verbs
+  (`scan-zip`, `redteam`, `mdm-script` and the rest), `agent-id`, `mcp-guard`
+  and `ledger` printed the whole manual; they now print their own lines plus
+  the longer section when there is one. `shomra mcp --help` lists every `mcp`
+  sub-command, `shomra help <typo>` suggests the closest command and exits 3,
+  and `shomra admin memory-restore` runs as the admin help says it does.
+- **`ledger` finds the pre-commit hook where git keeps it**, including
+  `core.hooksPath` and worktrees, and never stalls on a config that is not a
+  regular file.
+- **No command or hook waits on a file that is not a regular file.** A named
+  pipe, a folder or a link to a device in place of `~/.shomra/config.json`, a
+  repo's `.shomraignore`, `.shomra/policy.yml`, `.shomra/baseline.json`, an
+  agent settings file, a git hook or a file passed to `plan`, `why`, `design`,
+  `add skill` or `mcp … --config` is now named and skipped; before, every hook
+  and command could hang on it, and a repo linking `.shomraignore` to
+  `/dev/zero` held `shomra check` until the CI job timed out.
+- **A path that is not there is refused, not reported clean.** `models nope/`
+  printed "No AI model references found" and exited 0, and `rules nope
+  --write` created the folder; both now exit 3. `models` also says when its
+  walk stopped at the file cap instead of reporting the unread rest as clean.
+- **Nothing claims a result it did not measure.** A `selftest` that could not
+  send a canary no longer ends with "every canary ... reached the server", and
+  one that could not report no longer says the fleet coverage includes this
+  machine; `corpus` over a folder with no documents says nothing was covered
+  instead of "All 0 screened documents clean"; `provenance` in a repository
+  with no earlier commit says so instead of calling it "not a git repository".
+- **`doctor` no longer grades an empty machine A.** With no AI tooling found it
+  says Not Graded (and `--json` gives `score: null`, `graded: false`) instead
+  of 100/100 and "all protected" over nothing; an agent with no firewall caps
+  the grade at C and a blocking artifact at D. `status` lists a settings file
+  once when the project and the home folder are the same place.
+- **A backend that cannot be reached is named in plain words.** "fetch failed"
+  now reads as a refused connection, a name that does not resolve, a closed
+  connection, a timeout or a TLS certificate that could not be verified (with
+  the `NODE_EXTRA_CA_CERTS` fix for a company proxy), and says when
+  `HTTPS_PROXY` is set but Node is not using it (`NODE_USE_ENV_PROXY=1`). A
+  `null` answer, a sign-in page or an HTML error page is refused in words
+  instead of crashing the command or printing the page, and the GitHub token
+  used by `shomra pr` never follows a redirect to another host.
+- **A config that cannot be read is reported, never read as empty.** `mcp list`
+  says a config is broken instead of listing no servers, reads comments, and
+  skips entries that are not servers; `mcp guard` no longer claims servers were
+  guarded when no config could be read; `rules --write` never replaces an
+  instructions file it failed to read; a `config.json` with a non-text key no
+  longer crashes `status`, and one that cannot be written says so in words.
 
 
 ### Agent identity registration

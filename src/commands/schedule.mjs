@@ -6,7 +6,7 @@ import { CONFIG_FILE, MACHINE_CONFIG_FILE, loadMachineConfig } from '../core/con
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { CLI_ENTRY_PATH } from '../core/package-root.mjs';
 import {
-  CRON_MARKER, SCHEDULE_LABEL, SYSTEMD_UNIT, TASK_NAME, cronLine, launchdLogPath, launchdPlist, launchdPlistPath, mergeCrontab,
+  CRON_MARKER, SCHEDULE_LABEL, SYSTEMD_UNIT, TASK_NAME, cronLine, isCronEntry, launchdLogPath, launchdPlist, launchdPlistPath, mergeCrontab,
   parseEvery, reportArgs, schtasksCreateArgs, systemdService, systemdTimer, systemdUnitDir, windowsTaskXml,
 } from '../core/schedule-plan.mjs';
 import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
@@ -56,13 +56,33 @@ function configHint(system) {
   if (!loadMachineConfig()) console.log(`  ${yellow('⚠')} ${dim(`No machine config at ${MACHINE_CONFIG_FILE} - run`)} ${bold('shomra init --machine --key … --url …')} ${dim('so the scheduled report can authenticate.')}`);
 }
 
-export function userWritablePaths(files, { platform = process.platform, env = process.env, stat = fs.statSync } = {}) {
+export function acceptsUserWritable(flags = {}, env = process.env) {
+  return !!flags['allow-user-writable'] || env.SHOMRA_ALLOW_USER_NODE === '1';
+}
+
+export function userWritablePaths(files, { platform = process.platform, env = process.env, stat = fs.statSync, realpath = stat === fs.statSync ? fs.realpathSync : (p) => p } = {}) {
   if (platform === 'win32') {
     const users = homesRoot(platform, env).toLowerCase() + '\\';
-    return files.filter((f) => String(f).toLowerCase().startsWith(users));
+    return files.filter((f) => {
+      let real = f;
+      try {
+        real = realpath(f);
+      } catch {
+      }
+      return [f, real].some((p) => String(p).toLowerCase().startsWith(users));
+    });
   }
   const out = [];
   for (const f of files) {
+    let real = f;
+    try {
+      real = realpath(f);
+    } catch {
+    }
+    if (real !== f && userWritablePaths([real], { platform, env, stat, realpath: (p) => p }).length) {
+      out.push(f);
+      continue;
+    }
     for (let p = f; ; p = path.posix.dirname(p)) {
       let st;
       try {
@@ -170,7 +190,7 @@ function removeLinux(ctx) {
   }
   if (fs.existsSync(CRONTAB)) {
     const current = tryRun(CRONTAB, ['-l']);
-    if (current.ok && current.out.includes(CRON_MARKER)) {
+    if (current.ok && current.out.split(/\r?\n/).some(isCronEntry)) {
       run(CRONTAB, ['-'], { input: mergeCrontab(current.out, null) });
       removed.push(`crontab ${CRON_MARKER}`);
     }
@@ -189,7 +209,7 @@ function statusLinux(ctx) {
   }
   if (fs.existsSync(CRONTAB)) {
     const current = tryRun(CRONTAB, ['-l']);
-    const line = current.ok ? current.out.split(/\r?\n/).find((l) => l.includes(CRON_MARKER)) : null;
+    const line = current.ok ? current.out.split(/\r?\n/).find(isCronEntry) : null;
     if (line) return { installed: true, where: 'crontab', status: line.replace(CRON_MARKER, '').trim() };
   }
   return { installed: false, where: timer };
@@ -217,6 +237,12 @@ export async function cmdSchedule(flags, positional = []) {
       hours = parseEvery(flags.every);
     } catch (e) {
       fail(e.message);
+    }
+    const risky = ctx.system ? userWritablePaths([ctx.node, ctx.entry]) : [];
+    if (risky.length && !acceptsUserWritable(flags)) {
+      for (const f of risky) console.error(`${red('✗')} ${f} can be changed by a non-root user, and the schedule would run it with root/SYSTEM rights - nothing was installed.`);
+      console.error(dim('  Install Node and @shomra/agent to an admin-owned prefix (see shomra admin mdm-script), or accept the risk with --allow-user-writable (SHOMRA_ALLOW_USER_NODE=1).'));
+      process.exit(1);
     }
     let where;
     try {

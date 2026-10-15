@@ -1,9 +1,9 @@
 import { spawn } from 'node:child_process';
-import fs from 'node:fs';
 import path from 'node:path';
 import { shomraHookRe } from '../agents/hook-command.mjs';
 import { VENDOR_TOOLS } from '../agents/vendor-tools.mjs';
 import { clampInt } from '../core/numbers.mjs';
+import { readRegularText } from '../core/safe-read.mjs';
 
 /**
  *  THE INSTALLED HOOK, SPAWNED THE WAY THE VENDOR SPAWNS IT.
@@ -31,8 +31,7 @@ export function selftestTimeoutMs() {
 
 function readReceipts(file) {
   try {
-    return fs
-      .readFileSync(file, 'utf8')
+    return readRegularText(file)
       .split('\n')
       .filter((l) => l.trim())
       .map((l) => {

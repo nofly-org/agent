@@ -12,6 +12,8 @@ const BLOCK_PENALTY = 15;
 const FLAG_PENALTY = 5;
 const DOTENV_KEY_PENALTY = 10;
 const MAX_DOTENV_PENALTY = 30;
+const UNGUARDED_CEILING = 74;
+const BLOCK_CEILING = 59;
 
 function assetPath(asset) {
   return asset.identifier || asset.metadata?.configFile || asset.metadata?.file || asset.name;
@@ -65,6 +67,8 @@ function postureScore({ unguarded, issues, dotenvKeys }) {
   score -= Math.min(MAX_UNGUARDED_PENALTY, unguarded.length * UNGUARDED_AGENT_PENALTY);
   for (const issue of issues) score -= issue.decision === 'BLOCK' ? BLOCK_PENALTY : FLAG_PENALTY;
   score -= Math.min(MAX_DOTENV_PENALTY, dotenvKeys.length * DOTENV_KEY_PENALTY);
+  if (unguarded.length) score = Math.min(score, UNGUARDED_CEILING);
+  if (issues.some((issue) => issue.decision === 'BLOCK')) score = Math.min(score, BLOCK_CEILING);
   return Math.max(0, Math.round(score));
 }
 
@@ -104,7 +108,7 @@ function printInventoryRows({ inventory, risky, unguarded, dotenvKeys }) {
 
   printCountRow('Coding agents', agents.length, unguarded.length
     ? red(`${unguarded.length} UNGUARDED`) + dim(` · ${agents.length - unguarded.length} protected`)
-    : green('all protected'));
+    : agents.length ? green('all protected') : dim('none found'));
   printCountRow('MCP servers', mcpServers.length, riskyOfKind('mcp') ? yellow(`${riskyOfKind('mcp')} risky`) : '');
   printCountRow('Rules files', rulesFiles.length, riskyOfKind('rules') ? yellow(`${riskyOfKind('rules')} risky`) : '');
   printCountRow('Model keys', modelKeys.length, dotenvKeys.length ? yellow(`${dotenvKeys.length} in .env files`) : '');
@@ -162,10 +166,16 @@ function printEnrollmentHint() {
   console.log(`${dim(`\n  ${message}`)}\n`);
 }
 
+function foundNothing(inventory) {
+  return Object.values(inventory).every((assets) => assets.length === 0);
+}
+
 function jsonReport({ inventory, score, grade, risky, issues, unguarded, dotenvKeys }) {
+  const empty = foundNothing(inventory);
   return {
-    score,
-    grade,
+    score: empty ? null : score,
+    grade: empty ? null : grade,
+    ...(empty ? { graded: false, reason: 'No AI tooling was found on this machine, so there is nothing to grade.' } : { graded: true }),
     hostname: os.hostname(),
     codingAgents: inventory.agents.length,
     unguarded: unguarded.length,
@@ -199,11 +209,16 @@ export function cmdDoctor(flags) {
   }
 
   const colour = scoreColour(score);
-  console.log(bold(cyan('\n  Shomra doctor')) + dim(` - ${os.hostname()}`));
-  console.log(`\n  ${bold('Posture')}  ${colour(bold(`${score}/100`))} ${dim('· grade')} ${colour(bold(grade))}\n`);
+  console.log(bold(cyan('\n  Shomra Doctor')) + dim(` - ${os.hostname()}`));
+  if (foundNothing(inventory)) {
+    console.log(`\n  ${bold('Posture')}  ${yellow(bold('Not Graded'))} ${dim('- no AI tooling was found on this machine, so there is nothing to grade.')}`);
+    console.log(dim('  That is not a clean result: an agent this scan does not recognise is not counted.\n'));
+  } else {
+    console.log(`\n  ${bold('Posture')}  ${colour(bold(`${score}/100`))} ${dim('· grade')} ${colour(bold(grade))}\n`);
+  }
 
   printInventoryRows({ inventory, risky, unguarded, dotenvKeys });
   printRiskyIssues(issues);
-  printFixes(topFixes({ unguarded, issues, risky, dotenvKeys }));
+  if (!foundNothing(inventory)) printFixes(topFixes({ unguarded, issues, risky, dotenvKeys }));
   printEnrollmentHint();
 }

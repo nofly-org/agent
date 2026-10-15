@@ -15,6 +15,7 @@ import { bundledFileFindings, bundledKind, byBundledPriority, collectLocalSast, 
 import { withMcpAdvisories } from '../gate/advisories.mjs';
 import { maskSecrets } from '../detect/secret-mask.mjs';
 import { listZipEntries, normalizeZipName, readZipText } from '../core/zip-lite.mjs';
+import { readFailure, readRegularBuffer } from '../core/safe-read.mjs';
 
 const GATE_USAGE = 'shomra gate <file> [--kind mcp|skill|command|subagent|hook|rules|agent-card|memory|plugin|tool-manifest|extension|workflow|guardrail|framework] [--name x] [--strict] [--json]';
 
@@ -101,11 +102,15 @@ function readGateTarget(flags, positional) {
   
   if (/\.(?:dxt|mcpb)$/i.test(target)) {
     const bundleRel = path.relative(process.cwd(), target).split(path.sep).join('/');
-    if (fs.statSync(target).size > MAX_BUNDLE_FILE_BYTES) {
-      console.error(`${red('✗')} ${file} is larger than ${MAX_BUNDLE_FILE_BYTES / (1024 * 1024)} MB - too large to check as an extension bundle.`);
+    let bytes;
+    try {
+      bytes = readRegularBuffer(target, MAX_BUNDLE_FILE_BYTES);
+    } catch (error) {
+      const why = error.code === 'EFBIG' ? `is larger than ${MAX_BUNDLE_FILE_BYTES / (1024 * 1024)} MB - too large to check as an extension bundle` : `could not be read (${readFailure(error)})`;
+      console.error(`${red('✗')} ${file} ${why}.`);
       process.exit(EXIT_USAGE);
     }
-    const read = readBundle(fs.readFileSync(target), bundleRel);
+    const read = readBundle(bytes, bundleRel);
     if (read.content == null) {
       console.error(`${red('✗')} ${file} is not a readable extension bundle (no manifest.json at its root).`);
       process.exit(EXIT_USAGE);

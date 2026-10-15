@@ -93,7 +93,7 @@ export function redactEnv(env) {
   if (!env || typeof env !== 'object') return {};
   const out = {};
   for (const [k, v] of Object.entries(env)) {
-    const s = String(v ?? '');
+    const s = typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? String(v) : v == null ? '' : '[not a plain value]';
     if (!s || NON_SECRET_VALUE_RE.test(s)) out[k] = s;
     else out[k] = s.length >= FINGERPRINT_MIN_LENGTH ? `${s.slice(0, 3)}…${s.slice(-2)}` : '…';
   }

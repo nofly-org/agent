@@ -1,3 +1,5 @@
+import { SECRET_PATTERNS } from '../detect/signals/secrets.mjs';
+
 const MAX_LOCAL_TEXT = 512 * 1024;
 const MAX_SENT_CHARS = 4 * 1024 * 1024;
 const MAX_SENT_NODES = 50000;
@@ -6,6 +8,13 @@ const MEDIA_MIME_RE = /^(?:image|audio|video)\//i;
 const BASE64_RE = /^[A-Za-z0-9+/=_-]+$/;
 const TOKEN_RE = /^[\w.:/@+#=,-]{0,64}$/;
 const SECOND_NOTICE = '[withheld by Shomra]';
+const SECRET_SHAPES = SECRET_PATTERNS.map(({ re }) => new RegExp(re.source, re.flags.replace(/[gy]/g, '')));
+
+function structuralToken(value) {
+  if (!TOKEN_RE.test(value)) return false;
+  if (value.length >= 16 && /\d/.test(value)) return false;
+  return !SECRET_SHAPES.some((re) => re.test(value));
+}
 
 function windowText(text, max) {
   if (text.length <= max) return text;
@@ -87,7 +96,7 @@ export function withheldOutput(response, notice) {
   };
   const walk = (value, key, parent, depth) => {
     if (typeof value === 'string') {
-      if (TOKEN_RE.test(value) || mediaPayload(parent, key, value)) return value;
+      if (structuralToken(value) || mediaPayload(parent, key, value)) return value;
       return mark();
     }
     if (!value || typeof value !== 'object') return value;

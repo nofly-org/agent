@@ -4,6 +4,7 @@ import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
 import { isPrivileged } from '../core/user-homes.mjs';
 import { PROMPT_HOOK_AGENTS } from '../guard/prompt-guard.mjs';
+import { acceptsUserWritable } from './schedule.mjs';
 
 function requestedAgents(flags, fallback) {
   const requested = flags.agent
@@ -47,6 +48,12 @@ function managedHooks(flags) {
     process.exit(EXIT_USAGE);
   }
   const targets = flags.agent ? requestedAgents(flags, 'all') : MANAGED_AGENTS;
+  const writableLauncher = flags.uninstall ? null : userWritableLauncher();
+  if (writableLauncher && !acceptsUserWritable(flags)) {
+    console.error(red('✗') + ` The managed hooks would run ${bold(process.execPath)} for every user of this machine, but ${bold(writableLauncher)} can be changed by a non-root user - nothing was installed.`);
+    console.error(dim('  Install Shomra in a root-owned location (the script from shomra admin mdm-script does), or accept the risk with --allow-user-writable (SHOMRA_ALLOW_USER_NODE=1).'));
+    process.exit(1);
+  }
   let failed = 0;
   let done = 0;
   for (const agent of targets) {

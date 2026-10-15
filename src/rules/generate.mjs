@@ -64,6 +64,21 @@ export function rulesBlock(body) {
   return `${RULES_BEGIN}\n${RULES_NOTE}\n\n${body}\n${RULES_END}\n`;
 }
 
+const countOf = (text, needle) => {
+  let n = 0;
+  for (let at = text.indexOf(needle); at !== -1; at = text.indexOf(needle, at + needle.length)) n++;
+  return n;
+};
+
+export function rulesBlockDamage(text) {
+  const begins = countOf(text, RULES_BEGIN);
+  const ends = countOf(text, RULES_END);
+  if (!begins && !ends) return null;
+  if (begins === 1 && ends === 1 && text.indexOf(RULES_END) > text.indexOf(RULES_BEGIN)) return null;
+  if (begins !== ends) return `its ${begins > ends ? 'end' : 'start'} marker is missing`;
+  return 'its start and end markers are repeated or out of order';
+}
+
 export function mergeRulesBlock(existing, block, target) {
   const head = target.owned ? target.header || '' : '';
   if (target.owned && !existing.trim()) return head + block;

@@ -11,6 +11,7 @@ import { isInstructionPath } from '../detect/signals/instruction-paths.mjs';
 import { MACHINE_MEMORY_ROOTS, SERVER_SIDE_MEMORY, classifyMemoryPath, sniffMemoryJsonl } from '../detect/signals/memory-locations.mjs';
 import { outOfBandChange, recordLedger, sha256 } from '../guard/memory-write.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
+import { readFailure, readRegularText } from '../core/safe-read.mjs';
 
 export function memoryLocation(p) {
   return classifyMemoryPath(String(p || '').split(path.sep).join('/'));
@@ -112,18 +113,22 @@ export function machineMemoryFiles() {
 }
 
 export async function reportMemoryWrite(url, apiKey, body) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), guardTimeoutMs());
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), guardTimeoutMs());
-    await keyedFetch(`${url}/memory/ingest`, {
+    const res = await keyedFetch(`${url}/memory/ingest`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Shomra-Key': apiKey, Connection: 'close' },
       body: JSON.stringify(body),
       signal: ctrl.signal,
     });
-    clearTimeout(timer);
+    res.body?.cancel?.().catch(() => {});
+    if (res.ok) return 'sent';
+    return res.status >= 500 || res.status === 429 || res.status === 408 ? 'failed' : 'rejected';
   } catch {
-    return;
+    return 'failed';
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -153,11 +158,10 @@ function readStore(file) {
   const loc = memoryLocation(file.full) ?? memoryLocation(file.rel);
   if (loc?.format === 'binary') return { content: '', unreadable: `${path.extname(file.full).slice(1) || 'binary'} store`, format: 'binary' };
   try {
-    const size = fs.statSync(file.full).size;
-    if (size > MAX_ARTIFACT_BYTES) return { content: '', unreadable: `larger than ${Math.round(MAX_ARTIFACT_BYTES / 1_000_000)} MB`, format: loc?.format ?? null };
-    return { content: fs.readFileSync(file.full, 'utf8'), unreadable: null, format: loc?.format ?? null };
+    return { content: readRegularText(file.full, MAX_ARTIFACT_BYTES), unreadable: null, format: loc?.format ?? null };
   } catch (error) {
-    return { content: '', unreadable: `could not be opened (${error.code || 'error'})`, format: loc?.format ?? null };
+    if (error.code === 'EFBIG') return { content: '', unreadable: `larger than ${Math.round(MAX_ARTIFACT_BYTES / 1_000_000)} MB`, format: loc?.format ?? null };
+    return { content: '', unreadable: `could not be opened (${readFailure(error)})`, format: loc?.format ?? null };
   }
 }
 
@@ -225,6 +229,7 @@ export async function cmdMemoryScan(flags, positional) {
 
   let worst = 'PASS';
   let unread = 0;
+  let failed = 0;
   const stores = [];
   for (const file of files) {
     const { content, unreadable, format } = readStore(file);
@@ -247,6 +252,7 @@ export async function cmdMemoryScan(flags, positional) {
         ...(format ? { format } : {}),
       });
     } catch (error) {
+      failed++;
       console.error(`  ${red('✗')} ${file.rel} ${red(`ingest error: ${error.message}`)}`);
       continue;
     }
@@ -258,13 +264,15 @@ export async function cmdMemoryScan(flags, positional) {
   }
 
   if (flags.json) {
-    console.log(JSON.stringify({ scanned: stores.length, unread, worst, stores, serverSide: SERVER_SIDE_MEMORY }, null, 2));
+    console.log(JSON.stringify({ scanned: stores.length, unread, failed, worst, stores, serverSide: SERVER_SIDE_MEMORY }, null, 2));
   } else {
     if (unread) console.log(`\n  ${yellow('⚠')} ${unread} store${unread > 1 ? 's were' : ' was'} found but not read - reported as not looked inside, never as clean.`);
+    if (failed) console.log(`\n  ${red('✗')} ${failed} of ${files.length} store${files.length > 1 ? 's' : ''} could not be sent for checking - ${failed === files.length ? 'nothing was checked' : 'the result below covers only the rest'}.`);
     console.log(dim(`\n  Not scannable from this machine: ${SERVER_SIDE_MEMORY.map((s) => s.vendor).join(', ')} keep memory server-side.`));
-    console.log(`\n  ${summaryLine(worst)}${dim(' Full timeline + rollback in the Shomra dashboard → Memory.\n')}`);
+    if (stores.length) console.log(`\n  ${summaryLine(worst)}${dim(' Full timeline + rollback in the Shomra dashboard → Memory.\n')}`);
+    else console.log('');
   }
 
-  if (worst === 'FAIL') process.exitCode = 1;
+  if (worst === 'FAIL' || failed) process.exitCode = 1;
   else if (worst === 'REVIEW' && flags.strict) process.exitCode = 2;
 }

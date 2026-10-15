@@ -4,6 +4,7 @@ import { readTextBounded } from './fs-read.mjs';
 import { redactEnv } from './model-keys.mjs';
 import { PLAT, userDirs } from './platform.mjs';
 import { walkWorkspace } from './workspace.mjs';
+import { boundedJson } from '../../core/wire-limits.mjs';
 import { maskServerSecrets, parseConfigDoc, readMcpServers } from '../../detect/signals/mcp-config.mjs';
 import { claudeDataDir, jetbrainsOptionFiles, readClaudeExtensions, readJetbrainsMcpServers, readSqliteMcpServers, warpDatabases } from './mcp-stores.mjs';
 
@@ -47,12 +48,12 @@ function managedClaudeMcp() {
 
 
 function globalMcpCandidates(home) {
-  const { HOME, APPDATA, LOCALAPPDATA, vscodeUserDir } = userDirs(home);
+  const { HOME, APPDATA, LOCALAPPDATA, vscodeUserDir, own } = userDirs(home);
   const c = [];
   c.push({ vendor: 'claude', file: appSupport(home, 'Claude', 'claude_desktop_config.json') });
   for (const file of claudeMsixConfigs(home)) c.push({ vendor: 'claude', file });
   c.push({ vendor: 'claude-code', file: path.join(HOME, '.claude.json') }); // user + per-project (projects.*.mcpServers)
-  c.push({ vendor: 'claude-code', file: managedClaudeMcp() });
+  if (own) c.push({ vendor: 'claude-code', file: managedClaudeMcp() });
   c.push({ vendor: 'cursor', file: path.join(HOME, '.cursor', 'mcp.json') });
   c.push({ vendor: 'windsurf', file: path.join(HOME, '.codeium', 'windsurf', 'mcp_config.json') });
   c.push({ vendor: 'continue', file: path.join(HOME, '.continue', 'config.json') });
@@ -171,7 +172,7 @@ export function discoverMcpServers(roots = [process.cwd()], files = null, opts =
           ...(s.scope ? { projectScope: s.scope } : {}),
           ...(s.disabled ? { disabled: true } : {}),
         },
-        content: JSON.stringify({ command, url: s.url, env: s.env || {}, server: s }),
+        content: boundedJson({ command, url: s.url, env: s.env || {}, server: s }),
       });
     }
   }

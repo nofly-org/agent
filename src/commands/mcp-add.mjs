@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { readJsonFile, writeJsonFile } from '../core/json-file.mjs';
+import { parseJsonc } from '../core/jsonc.mjs';
+import { readFailure, readRegularText } from '../core/safe-read.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { SEV_COLOR, bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { localGate } from '../detect/guard-signals.mjs';
@@ -89,13 +91,24 @@ function printVettingReport(name, localVerdict, index) {
   printIndexSummary(index);
 }
 
-function readConfigOrEmpty(configFile) {
+const isMap = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
+
+function readConfigForList(configFile) {
   if (!fs.existsSync(configFile)) return {};
+  let text;
   try {
-    return JSON.parse(fs.readFileSync(configFile, 'utf8'));
-  } catch {
-    return {};
+    text = readRegularText(configFile);
+  } catch (error) {
+    return usageExit(`${configFile} could not be read (${readFailure(error)}).`);
   }
+  if (!text.trim()) return {};
+  let config;
+  try {
+    config = parseJsonc(text);
+  } catch {
+    return usageExit(`${configFile} is not valid JSON.`);
+  }
+  return isMap(config) ? config : usageExit(`${configFile} does not hold a JSON object.`);
 }
 
 function readConfigOrExit(configFile) {
@@ -132,6 +145,7 @@ function outcomeNote(verdict) {
 export async function cmdMcpAdd(flags, positional, configFile) {
   const name = positional[1];
   if (!name) usageExit(`Usage: ${bold('shomra mcp add <name> <command…>')}`);
+  if (['__proto__', 'constructor', 'prototype'].includes(name)) usageExit(`"${name}" cannot be used as a server name - pick another name.`);
 
   const { server, tokens } = buildServerEntry(flags, positional);
   if (!server.url && !server.command) usageExit('Provide a launch command or --url.');
@@ -169,8 +183,8 @@ export async function cmdMcpAdd(flags, positional, configFile) {
 }
 
 export function cmdMcpList(flags, configFile) {
-  const config = readConfigOrEmpty(configFile);
-  const servers = config.mcpServers || config.servers || {};
+  const config = readConfigForList(configFile);
+  const servers = [config.mcpServers, config.servers].find(isMap) ?? {};
   const names = Object.keys(servers);
 
   if (flags.json) {
@@ -185,8 +199,8 @@ export function cmdMcpList(flags, configFile) {
     return;
   }
   for (const name of names) {
-    const entry = servers[name];
-    const launch = entry.url || [entry.command, ...(entry.args || [])].filter(Boolean).join(' ');
+    const entry = isMap(servers[name]) ? servers[name] : {};
+    const launch = entry.url || [entry.command, ...(Array.isArray(entry.args) ? entry.args : [])].filter(Boolean).join(' ');
     console.log(`  ${green('●')} ${bold(name)} ${dim(launch)}`);
   }
   console.log('');

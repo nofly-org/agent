@@ -8,10 +8,11 @@ ${bold(cyan('Shomra'))} ${dim('- adversarial assurance for AI agents · v' + VER
 
 const USAGE = () => `${bold('USAGE')}
   shomra <command> [options]
+  shomra <command> --help     ${dim("one command's options and details")}
 `;
 
 const MODES = () => `${bold('MODES')}  ${dim('- local-first: everything that can run on your machine does, with no account')}
-  ${cyan('Local')}     ${dim('(no key)')}  check · gate · doctor · protect · design · plan · corpus · rules · add · secrets · models · new · mcp
+  ${cyan('Local')}     ${dim('(no key)')}  check · gate · doctor · ledger · protect · design · plan · corpus · rules · add · secrets · models · new · mcp
                         ${dim('Fully on-machine. Nothing leaves your machine. Your lead-in - no signup.')}
   ${green('Enrolled')}  ${dim('(shm_live_)')} adds org policy, AI ${bold('fix')}/${bold('why')}, deep scans (zip/model/memory) & the dashboard
   ${green('CI')}        ${dim('(shm_ci_)')}   scoped, revocable pipeline key for ${bold('pr')} / ${bold('check')} in CI
@@ -35,6 +36,7 @@ const COMMANDS = () => `${bold('COMMANDS')}
   ${dim('Setup - run once per machine / repo')}
   ${cyan('init')}          Configure + enroll this machine       ${dim('--key shm_live_… [--url <backend>]  ·  --machine for a root-only machine-wide config')}
   ${cyan('schedule')}      Re-report on a timer (launchd / Task Scheduler / systemd / cron) ${dim('install [--every 6h] [--all-users] · remove · status')}
+                ${dim('A machine-wide schedule refuses a Node or Shomra a normal user can change (--allow-user-writable accepts it).')}
   ${cyan('protect')}       Wire the runtime firewall for every coding agent ${dim('[--project] [--force]')}
   ${cyan('install-hook')}  Wire the runtime firewall into ONE agent ${dim('[--agent claude|cursor|windsurf|gemini|codex|copilot|cline|aider|all] [--global|--managed] [--uninstall]')}
   ${cyan('selftest')}      ${bold('Prove the firewall is really in path')} ${dim('[--agent <name>|all] [--json] [--strict]')}
@@ -45,6 +47,8 @@ const COMMANDS = () => `${bold('COMMANDS')}
   ${cyan('provenance')}    Which changed files an AI agent wrote   ${dim('[--staged | --base main] [--trailer] [--fail-on-blocked] [--json]')}
   ${cyan('install-precommit')} Gate staged AI artifacts on git commit ${dim('[dir] [--force]  ·  --pre-receive for the un-skippable server-side hook')}
   ${cyan('doctor')}        ${bold('Am I safe?')} Posture of this machine's AI setup ${dim('[--json]')}
+  ${cyan('ledger')}        What each control on this machine has actually been shown to do ${dim('[--json]')}
+                ${dim('Installed is not proven: a control nothing has tested reads as untested here.')}
 
   ${dim('Prevention - get in front of the model, not just behind it')}
   ${cyan('design')}        ${bold('Threat-model a system before it exists')} ${dim('<file|dir|-> [--save --subject KIND:id] [--checklist] [--strict] [--json]')}
@@ -279,7 +283,9 @@ const RUNTIME_FIREWALL = () => `${bold('RUNTIME FIREWALL (multi-agent)')}
   ${bold('--managed')} (root or Administrator) installs the hooks machine-wide, where a
   developer cannot remove or switch them off: Claude Code managed settings
   (managed-settings.d/50-shomra.json), /etc/codex/hooks.json, and Copilot CLI's
-  policy.d. ${bold('shomra admin mdm-script --guard')} adds it to the MDM bootstrap.
+  policy.d. ${bold('shomra admin mdm-script --guard')} adds it to the MDM bootstrap. It
+  refuses a Node or Shomra install a normal user can change, since every user's
+  agent would then run that user's code; ${bold('--allow-user-writable')} accepts the risk.
 
   Risky calls/results are blocked and every decision lands in Gate Activity,
   tagged with which agent triggered it.
@@ -341,7 +347,29 @@ const ENV = () => `${bold('ENV')}
   SHOMRA_MODEL_GUARD=0        Disable the model-load screen in the PreToolUse hook
   SHOMRA_MODEL_CACHE=0        Disable the on-machine model-index verdict cache
   SHOMRA_MODEL_CACHE_TTL_MS   Model-cache freshness window (default 7 days)
+  SHOMRA_ALLOW_USER_NODE=1    Let a machine-wide schedule or managed hook run a Node or Shomra a normal user
+                              can change (same as --allow-user-writable)
+  NODE_USE_ENV_PROXY=1        Send the CLI's requests through HTTPS_PROXY / HTTP_PROXY, honouring NO_PROXY
+                              (Node releases whose \`node --help\` lists --use-env-proxy)
+  NODE_EXTRA_CA_CERTS=<file>  Trust a company CA bundle, e.g. for a proxy that inspects HTTPS
 `;
+
+export const HELP_DETAILS = {
+  gate: GATE,
+  check: CHECK,
+  baseline: BASELINE_AND_SUPPRESSION,
+  fix: FIX,
+  why: WHY,
+  'install-precommit': INSTALL_PRECOMMIT,
+  'model-scan': MODEL_SCAN,
+  'memory-scan': MEMORY_SCAN,
+  redteam: REDTEAM,
+  harden: HARDEN,
+  'agent-identity': AGENT_IDENTITY,
+  'llm-proxy': LLM_PROXY,
+  'install-hook': RUNTIME_FIREWALL,
+  protect: RUNTIME_FIREWALL,
+};
 
 export const HELP_SECTIONS = [
   BANNER,
