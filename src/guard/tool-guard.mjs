@@ -33,6 +33,7 @@ import { buildGuardBody, flushQueuedReports, reportGuardDecision } from './repor
 import { guardHookTamper, guardStateTamper, hookTamperReason, refuseOrAsk, tamperReason } from './self-protect.mjs';
 import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
 import { readRegularText } from '../core/safe-read.mjs';
+import { gatewayEntryKey } from './gateway-entry.mjs';
 
 const ALLOW_VERDICT = { verdict: 'ALLOW', top: null, findings: [] };
 
@@ -409,6 +410,8 @@ export async function cmdToolGuard(flags) {
   const normalized = normalizeGuardInput(agent, readHookPayload());
   const tool = String(normalized.tool_name ?? '').trim();
   const input = normalized.tool_input ?? {};
+  const viaGateway = agent === 'claude' ? gatewayEntryKey(tool, { url, cwd: normalized.cwd }) : null;
+  if (viaGateway) normalized.mcp_gateway = viaGateway;
 
   const local = localTierDisabled() ? ALLOW_VERDICT : screenLocally(normalized, tool, input);
   if (local.verdict === 'BLOCK') {

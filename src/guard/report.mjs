@@ -13,6 +13,7 @@ export function buildGuardBody(norm, agent, clientDecision, clientReason) {
   return {
     tool_name: norm.tool_name,
     tool_input: norm.tool_input,
+    ...(norm.mcp_gateway ? { mcp_gateway: norm.mcp_gateway } : {}),
     ...(resolved ? { resolved } : {}),
     cwd: norm.cwd,
     session_id: norm.session_id,

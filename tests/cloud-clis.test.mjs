@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
-import { __test } from '../src/inventory/discovery/cloud-clis.mjs';
+import { __test, discoverCloudClis } from '../src/inventory/discovery/cloud-clis.mjs';
 
-const { parseIni, shallowYaml, safeValue, SECRET_KEYS } = __test;
+const { parseIni, safeValue, SECRET_KEYS } = __test;
 
 /**
  *  THE INVARIANT THIS FILE EXISTS FOR: A SECRET NEVER LEAVES THE MACHINE.
@@ -62,33 +65,206 @@ region = eu-west-1
   assert.equal(ini['profile prod'].sso_role_name, 'AdministratorAccess');
 });
 
-test('⚠ a gh hosts file yields the user and never the token', () => {
-  const y = shallowYaml(`
-github.com:
-    user: james.reed
-    oauth_token: gho_16C7e42F292c6912E7710c838347Ae178B4a
+function withHome(files, run) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cloud-clis-'));
+  try {
+    for (const [rel, body] of Object.entries(files)) {
+      const file = path.join(home, rel);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, body);
+    }
+    return run(discoverCloudClis({ home }));
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+const GH_HOSTS = `github.com:
     git_protocol: https
-`);
-  assert.equal(y.user, 'james.reed');
-  assert.equal(y.oauth_token, null);
-  assert.ok(!JSON.stringify(y).includes('gho_16C7'), 'no token may reach a payload');
+    users:
+        james.reed:
+        jr-admin:
+            oauth_token: gho_16C7e42F292c6912E7710c838347Ae178B4a
+    user: james.reed
+ghe.acme.io:
+    user: jreed
+    oauth_token: gho_ENTERPRISEfe7710c838347Ae178B4aXX
+`;
+
+test('⚠ gh on Windows lives under AppData, and every host and account is reported without a token', () => {
+  withHome({ [path.join('AppData', 'Roaming', 'GitHub CLI', 'hosts.yml')]: GH_HOSTS }, (rows) => {
+    const gh = rows.filter((r) => r.vendor === 'github');
+    assert.deepEqual(gh.map((r) => r.metadata.account), ['github.com', 'ghe.acme.io']);
+    assert.equal(gh[0].metadata.principal, 'james.reed');
+    assert.deepEqual(gh[0].metadata.accounts, ['james.reed', 'jr-admin']);
+    assert.equal(gh[0].metadata.hasStaticKey, true);
+    assert.equal(gh[1].metadata.principal, 'jreed');
+    assert.equal(gh[1].metadata.hasStaticKey, true);
+    assert.ok(!JSON.stringify(rows).includes('gho_'), 'no token may reach a payload');
+  });
 });
 
-test('a kubeconfig yields the current context', () => {
-  const y = shallowYaml(`
-apiVersion: v1
-current-context: prod-cluster
+test('gh under ~/.config is still read, and a keyring-only login holds no file token', () => {
+  withHome({ [path.join('.config', 'gh', 'hosts.yml')]: 'github.com:\n    user: octo\n    git_protocol: ssh\n' }, (rows) => {
+    const gh = rows.find((r) => r.vendor === 'github');
+    assert.equal(gh.metadata.principal, 'octo');
+    assert.deepEqual(gh.metadata.accounts, ['octo']);
+    assert.equal(gh.metadata.hasStaticKey, false);
+  });
+});
+
+const KUBECONFIG_TWO = `apiVersion: v1
+clusters:
+- cluster:
+    server: https://prod-abc.hcp.westeurope.azmk8s.io:443
+    certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t
+  name: prod
+- cluster:
+    server: https://10.0.0.5:6443
+  name: dev
+contexts:
+- context:
+    cluster: prod
+    user: clusterUser_rg_prod
+    namespace: payments
+  name: prod
+- context:
+    cluster: dev
+    user: dev-admin
+  name: dev
+current-context: prod
 kind: Config
-`);
-  assert.equal(y['current-context'], 'prod-cluster');
+users:
+- name: clusterUser_rg_prod
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      command: kubelogin
+      args:
+      - get-token
+- name: dev-admin
+  user:
+    token: eyJhbGciOiJSUzI1NiIsImtpZCI6IkRFVi1TRUNSRVQifQ
+`;
+
+test('⚠ a kubeconfig names the user of the CURRENT context, not the last user line in the file', () => {
+  withHome({ [path.join('.kube', 'config')]: KUBECONFIG_TWO }, (rows) => {
+    const k = rows.find((r) => r.vendor === 'kubernetes');
+    assert.equal(k.metadata.currentContext, 'prod');
+    assert.equal(k.metadata.principal, 'clusterUser_rg_prod');
+    assert.equal(k.metadata.cluster, 'prod');
+    assert.equal(k.metadata.server, 'prod-abc.hcp.westeurope.azmk8s.io');
+    assert.equal(k.metadata.namespace, 'payments');
+    assert.equal(k.metadata.authVia, 'kubelogin');
+    assert.equal(k.metadata.contextCount, 2);
+    assert.equal(k.metadata.hasStaticKey, false);
+    const wire = JSON.stringify(rows);
+    assert.ok(!wire.includes('eyJhbGci'), 'no token may reach a payload');
+    assert.ok(!wire.includes('LS0tLS1CRUdJTi'), 'no certificate may reach a payload');
+  });
+});
+
+test('a kubeconfig whose current user carries a token reports the static key and not the token', () => {
+  withHome({ [path.join('.kube', 'config')]: KUBECONFIG_TWO.replace('current-context: prod', 'current-context: dev') }, (rows) => {
+    const k = rows.find((r) => r.vendor === 'kubernetes');
+    assert.equal(k.metadata.principal, 'dev-admin');
+    assert.equal(k.metadata.server, '10.0.0.5');
+    assert.equal(k.metadata.hasStaticKey, true);
+    assert.equal(k.metadata.authVia, null);
+    assert.ok(!JSON.stringify(rows).includes('eyJhbGci'));
+  });
+});
+
+test('⚠ gcloud on Windows lives under AppData, and the ACTIVE configuration is the default one', () => {
+  const root = path.join('AppData', 'Roaming', 'gcloud');
+  withHome(
+    {
+      [path.join(root, 'active_config')]: 'prod\n',
+      [path.join(root, 'configurations', 'config_default')]: '[core]\naccount = dev@acme.com\nproject = acme-dev\n',
+      [path.join(root, 'configurations', 'config_prod')]: '[core]\naccount = admin@acme.com\nproject = acme-prod\n',
+    },
+    (rows) => {
+      const g = rows.filter((r) => r.vendor === 'gcp');
+      assert.deepEqual(g.map((r) => r.metadata.configuration), ['prod', 'default']);
+      assert.equal(g[0].metadata.isDefault, true);
+      assert.equal(g[0].metadata.principal, 'admin@acme.com');
+      assert.equal(g[0].metadata.accountId, 'acme-prod');
+      assert.equal(g[1].metadata.isDefault, false);
+    },
+  );
+});
+
+const AWS_CONFIG = `[default]
+region = eu-west-1
+
+[sso-session acme]
+sso_start_url = https://acme.awsapps.com/start
+sso_region = eu-west-1
+
+[profile admin]
+sso_session = acme
+sso_account_id = 111122223333
+sso_role_name = AdministratorAccess
+
+[profile deploy]
+role_arn = arn:aws:iam::444455556666:role/Deployer
+source_profile = default
+
+[services local]
+endpoint_url = http://localhost:4566
+`;
+
+test('⚠ an AWS sso-session block is not a profile, and an assumed role names its account', () => {
+  withHome(
+    {
+      [path.join('.aws', 'config')]: AWS_CONFIG,
+      [path.join('.aws', 'credentials')]: '[default]\naws_access_key_id = AKIAIOSFODNN7EXAMPLE\naws_secret_access_key = wJalrXUtnFEMI/K7MDENG\n',
+    },
+    (rows) => {
+      const a = rows.filter((r) => r.vendor === 'aws');
+      assert.deepEqual(a.map((r) => r.metadata.profile).sort(), ['admin', 'default', 'deploy']);
+      const admin = a.find((r) => r.metadata.profile === 'admin');
+      assert.equal(admin.metadata.accountId, '111122223333');
+      assert.equal(admin.metadata.account, '111122223333');
+      assert.equal(admin.metadata.ssoStartUrl, 'https://acme.awsapps.com/start');
+      const deploy = a.find((r) => r.metadata.profile === 'deploy');
+      assert.equal(deploy.metadata.accountId, '444455556666');
+      assert.equal(deploy.metadata.sourceProfile, 'default');
+      const def = a.find((r) => r.metadata.profile === 'default');
+      assert.equal(def.metadata.hasStaticKey, true);
+      assert.equal(def.metadata.region, 'eu-west-1');
+      assert.ok(!JSON.stringify(rows).includes('wJalrXUtnFEMI'));
+    },
+  );
 });
 
 test('⚠ a malformed file degrades to nothing rather than throwing', () => {
   assert.deepEqual(parseIni(''), {});
   assert.deepEqual(parseIni(null), {});
-  assert.deepEqual(shallowYaml(undefined), {});
   // A key outside any section belongs to no profile and is discarded.
   assert.deepEqual(parseIni('orphan = 1'), {});
+  withHome(
+    {
+      [path.join('.kube', 'config')]: ':::: not yaml [',
+      [path.join('.config', 'gh', 'hosts.yml')]: '- just\n- a list\n',
+      [path.join('.config', 'gcloud', 'configurations', 'config_default')]: '',
+    },
+    (rows) => {
+      assert.equal(rows.find((r) => r.vendor === 'kubernetes').metadata.principal, null);
+      assert.equal(rows.find((r) => r.vendor === 'github').metadata.principal, null);
+      assert.equal(rows.find((r) => r.vendor === 'gcp').metadata.principal, null);
+    },
+  );
+});
+
+test('an exec credential is named by its program, never its arguments', () => {
+  const { programOf, hostOf } = __test;
+  assert.equal(programOf('/usr/local/bin/aws'), 'aws');
+  assert.equal(programOf('C:\\tools\\kubelogin.exe'), 'kubelogin');
+  assert.equal(programOf('gke-gcloud-auth-plugin --use_application_default_credentials'), 'gke-gcloud-auth-plugin');
+  assert.equal(programOf(''), null);
+  assert.equal(hostOf('https://user:pw@api.acme.io:6443/x'), 'api.acme.io');
+  assert.equal(hostOf('not a url'), null);
 });
 
 /*
@@ -126,6 +302,24 @@ test('the env scan covers the auth paths a config file cannot record', () => {
     ENV_CRED_NAMES.lastIndex = 0;
     assert.ok(ENV_CRED_NAMES.test(v), `${v} must be recognised`);
   }
+});
+
+test('⚠ a docker login held by a credential store is not a key on disk', () => {
+  const config = JSON.stringify({
+    auths: { 'ghcr.io': {}, 'registry.acme.io': { auth: 'c2VjcmV0OnBhc3N3b3Jk' }, 'acr.azurecr.io': { identitytoken: 'eyJ0eXAi' } },
+    credsStore: 'desktop',
+    credHelpers: { 'ghcr.io': 'osxkeychain' },
+  });
+  withHome({ [path.join('.docker', 'config.json')]: config }, (rows) => {
+    const d = Object.fromEntries(rows.filter((r) => r.vendor === 'docker').map((r) => [r.metadata.account, r.metadata]));
+    assert.equal(d['ghcr.io'].hasStaticKey, false);
+    assert.equal(d['ghcr.io'].credsStore, 'osxkeychain');
+    assert.equal(d['registry.acme.io'].hasStaticKey, true);
+    assert.equal(d['acr.azurecr.io'].hasStaticKey, true);
+    assert.equal(d['acr.azurecr.io'].credsStore, 'desktop');
+    const wire = JSON.stringify(rows);
+    assert.ok(!wire.includes('c2VjcmV0') && !wire.includes('eyJ0eXAi'), 'no auth blob may reach a payload');
+  });
 });
 
 test('a docker config yields registry hostnames and no auth blob', () => {

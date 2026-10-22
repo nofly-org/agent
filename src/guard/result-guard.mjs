@@ -11,6 +11,7 @@ import { envFlag, guardWait, resolveAgentFlag } from './options.mjs';
 import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
 import { resultText, sendableResponse, withheldOutput } from './result-shape.mjs';
 import { readHookPayload as readPayload } from './payload.mjs';
+import { gatewayEntryKey } from './gateway-entry.mjs';
 
 function readHookPayload() {
   return readPayload() ?? process.exit(0);
@@ -59,6 +60,7 @@ function buildRequestBody(normalized, response, agent) {
   return {
     tool_name: normalized.tool_name,
     tool_input: normalized.tool_input,
+    ...(normalized.mcp_gateway ? { mcp_gateway: normalized.mcp_gateway } : {}),
     tool_response: sendableResponse(response),
     cwd: normalized.cwd,
     session_id: normalized.session_id,
@@ -121,6 +123,8 @@ export async function cmdResultGuard(flags) {
   const payload = readHookPayload();
   const normalized = normalizeGuardInput(agent, payload);
   const response = normalized.tool_response ?? payload.tool_response;
+  const viaGateway = agent === 'claude' ? gatewayEntryKey(normalized.tool_name, { url, cwd: normalized.cwd }) : null;
+  if (viaGateway) normalized.mcp_gateway = viaGateway;
 
   const mcp = String(normalized.tool_name ?? '').startsWith('mcp__');
   const refuse = (reason) => emitResultBlock(agent, reason, { output: withheldOutput(response, `[${reason}]`), mcp });

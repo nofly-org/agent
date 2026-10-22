@@ -1,5 +1,7 @@
+import { readdirSync } from 'node:fs';
 import path from 'node:path';
-import { exists, readJson, readText } from './fs-read.mjs';
+import { parseYaml } from '../../core/yaml-lite.mjs';
+import { exists, firstExisting, readJson, readText } from './fs-read.mjs';
 import { userDirs } from './platform.mjs';
 
 /**
@@ -67,16 +69,42 @@ function parseIni(text) {
   return out;
 }
 
-/** `key: value` out of a shallow YAML file, values sanitised. Never a parser. */
-function shallowYaml(text) {
-  const out = {};
-  for (const raw of String(text ?? '').split(/\r?\n/)) {
-    const m = /^\s{0,4}([A-Za-z0-9_.-]+):\s*(.*)$/.exec(raw);
-    if (!m) continue;
-    const v = m[2].replace(/^["']|["']$/g, '');
-    out[m[1]] = safeValue(m[1], v);
+function readYaml(file) {
+  try {
+    const doc = parseYaml(readText(file) ?? '');
+    return doc && typeof doc === 'object' && !Array.isArray(doc) ? doc : null;
+  } catch {
+    return null;
   }
-  return out;
+}
+
+const isMap = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+
+const listOf = (v) => (Array.isArray(v) ? v.filter(isMap) : []);
+
+const scalar = (key, v) => (typeof v === 'string' || typeof v === 'number' ? safeValue(key, v) || null : null);
+
+const envPath = (own, name) => (own && process.env[name] ? process.env[name] : null);
+
+function hostOf(url) {
+  try {
+    return new URL(String(url)).hostname || null;
+  } catch {
+    return null;
+  }
+}
+
+function programOf(command) {
+  if (typeof command !== 'string' || !command.trim()) return null;
+  return command.trim().split(/\s+/)[0].split(/[\\/]/).pop().replace(/\.(exe|cmd|bat|ps1)$/i, '') || null;
+}
+
+function listDir(dir) {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -114,8 +142,8 @@ const asset = (name, vendor, identifier, metadata) => ({
  * Azure. `azureProfile.json` names every subscription the CLI is logged into
  * AND the principal it authenticated as - `user` or `servicePrincipal`.
  */
-function azure(HOME) {
-  const file = path.join(HOME, '.azure', 'azureProfile.json');
+function azure(HOME, own) {
+  const file = path.join(envPath(own, 'AZURE_CONFIG_DIR') || path.join(HOME, '.azure'), 'azureProfile.json');
   if (!exists(file)) return [];
   const profile = readJson(file);
   const subs = Array.isArray(profile?.subscriptions) ? profile.subscriptions : [];
@@ -138,27 +166,41 @@ function azure(HOME) {
 }
 
 /** AWS. Profiles, the account/role they assume, and whether a static key sits here. */
-function aws(HOME) {
-  const cfgFile = path.join(HOME, '.aws', 'config');
-  const credFile = path.join(HOME, '.aws', 'credentials');
+const ARN_ACCOUNT = /^arn:aws[a-z-]*:iam::(\d{12}):/;
+
+function awsProfileOf(section) {
+  if (section === 'default') return 'default';
+  const m = /^profile\s+(.+)$/.exec(section);
+  return m ? m[1].trim() : null;
+}
+
+function aws(HOME, own) {
+  const cfgFile = envPath(own, 'AWS_CONFIG_FILE') || path.join(HOME, '.aws', 'config');
+  const credFile = envPath(own, 'AWS_SHARED_CREDENTIALS_FILE') || path.join(HOME, '.aws', 'credentials');
   if (!exists(cfgFile) && !exists(credFile)) return [];
 
   const cfg = parseIni(readText(cfgFile) ?? '');
   const creds = parseIni(readText(credFile) ?? '');
   const names = new Set([
-    ...Object.keys(cfg).map((k) => k.replace(/^profile\s+/, '')),
+    ...Object.keys(cfg).map(awsProfileOf).filter(Boolean),
     ...Object.keys(creds),
   ]);
 
   return [...names].slice(0, 20).map((profileName) => {
-    const c = cfg[`profile ${profileName}`] ?? cfg[profileName] ?? {};
+    const c = cfg[`profile ${profileName}`] ?? (profileName === 'default' ? cfg.default : null) ?? {};
     const k = creds[profileName] ?? {};
+    const session = c.sso_session ? cfg[`sso-session ${c.sso_session}`] ?? {} : {};
+    const accountId = c.sso_account_id ?? ARN_ACCOUNT.exec(c.role_arn ?? '')?.[1] ?? null;
+    const ssoStartUrl = c.sso_start_url ?? session.sso_start_url ?? null;
     return asset('AWS CLI', 'aws', `${credFile}#${profileName}`, {
       provider: 'aws',
       profile: profileName,
       principal: c.role_arn ?? c.sso_role_name ?? null,
-      accountId: c.sso_account_id ?? null,
-      account: c.sso_start_url ?? c.region ?? null,
+      accountId,
+      account: accountId ?? ssoStartUrl ?? null,
+      region: c.region ?? null,
+      ssoStartUrl,
+      sourceProfile: c.source_profile ?? null,
       ssoSession: c.sso_session ?? null,
       /*
        * ⚠ A LONG-LIVED STATIC KEY, reported as a PRESENCE and never as a value.
@@ -171,62 +213,98 @@ function aws(HOME) {
 }
 
 /** Google Cloud. The active account and project out of the config file. */
-function gcp(HOME) {
-  const file = path.join(HOME, '.config', 'gcloud', 'configurations', 'config_default');
-  if (!exists(file)) return [];
-  const ini = parseIni(readText(file) ?? '');
-  const core = ini.core ?? {};
+function gcp(HOME, APPDATA, own) {
+  const dir = firstExisting([envPath(own, 'CLOUDSDK_CONFIG'), path.join(APPDATA, 'gcloud'), path.join(HOME, '.config', 'gcloud')]);
+  if (!dir) return [];
+  const cfgDir = path.join(dir, 'configurations');
+  const active = (readText(path.join(dir, 'active_config')) ?? '').trim() || 'default';
+  const names = listDir(cfgDir)
+    .filter((n) => n.startsWith('config_') && n.length > 7)
+    .map((n) => n.slice(7))
+    .sort((a, b) => Number(b === active) - Number(a === active) || a.localeCompare(b))
+    .slice(0, 10);
   /*
    *  `gcp`, NOT `google`. The shadow-AI vocabulary aliases `google` to
    * `google-ai`, so emitting it here would have turned "this host has gcloud
    * logged in" into "this org uses Google AI" - an AI-usage claim manufactured
    * from a cloud CLI that has never served a token.
    */
-  return [
-    asset('gcloud CLI', 'gcp', file, {
+  return names.map((name) => {
+    const file = path.join(cfgDir, `config_${name}`);
+    const core = parseIni(readText(file) ?? '').core ?? {};
+    return asset('gcloud CLI', 'gcp', file, {
       provider: 'gcp',
       principal: core.account ?? null,
       account: core.project ?? null,
       accountId: core.project ?? null,
-    }),
-  ];
+      configuration: name,
+      isDefault: name === active,
+    });
+  });
 }
 
 /**
  * Kubernetes. The CURRENT context is the one a bare `kubectl` acts on, which is
  * the only one an agent reaches without naming anything.
  */
-function kubernetes(HOME) {
-  const file = path.join(HOME, '.kube', 'config');
-  if (!exists(file)) return [];
-  const y = shallowYaml(readText(file) ?? '');
-  const current = y['current-context'] ?? null;
+const KUBE_STATIC_KEYS = ['token', 'tokenFile', 'client-key-data', 'client-key', 'password'];
+
+function kubernetes(HOME, own) {
+  const fromEnv = (envPath(own, 'KUBECONFIG') ?? '').split(path.delimiter).find((p) => p && exists(p));
+  const file = fromEnv || firstExisting([path.join(HOME, '.kube', 'config')]);
+  if (!file) return [];
+  const doc = readYaml(file) ?? {};
+  const current = scalar('current-context', doc['current-context']);
+  const contexts = listOf(doc.contexts);
+  const ctx = contexts.find((c) => c.name === current)?.context;
+  const context = isMap(ctx) ? ctx : {};
+  const userName = scalar('user', context.user);
+  const clusterName = scalar('cluster', context.cluster);
+  const entry = listOf(doc.users).find((u) => u.name === userName)?.user;
+  const user = isMap(entry) ? entry : {};
+  const cluster = listOf(doc.clusters).find((c) => c.name === clusterName)?.cluster;
+  const authProvider = isMap(user['auth-provider']) ? scalar('name', user['auth-provider'].name) : null;
   return [
     asset('kubectl', 'kubernetes', file, {
       provider: 'kubernetes',
-      principal: y.user ?? null,
+      principal: userName,
       account: current,
       accountId: current,
       // ⚠ A context this file names but does not point at is reach the agent has
       // only if it asks for it - a weaker claim, and reported as one.
       currentContext: current,
+      cluster: clusterName,
+      server: isMap(cluster) ? hostOf(cluster.server) : null,
+      namespace: scalar('namespace', context.namespace),
+      authVia: (isMap(user.exec) ? programOf(user.exec.command) : null) ?? authProvider,
+      contextCount: contexts.length,
+      hasStaticKey: KUBE_STATIC_KEYS.some((k) => k in user),
     }),
   ];
 }
 
 /** GitHub CLI. The user it is logged in as; never the token. */
-function github(HOME) {
-  const file = path.join(HOME, '.config', 'gh', 'hosts.yml');
-  if (!exists(file)) return [];
-  const y = shallowYaml(readText(file) ?? '');
-  return [
-    asset('GitHub CLI', 'github', file, {
+function github(HOME, APPDATA, own) {
+  const file = firstExisting([
+    envPath(own, 'GH_CONFIG_DIR') && path.join(envPath(own, 'GH_CONFIG_DIR'), 'hosts.yml'),
+    envPath(own, 'XDG_CONFIG_HOME') && path.join(envPath(own, 'XDG_CONFIG_HOME'), 'gh', 'hosts.yml'),
+    path.join(APPDATA, 'GitHub CLI', 'hosts.yml'),
+    path.join(HOME, '.config', 'gh', 'hosts.yml'),
+  ]);
+  if (!file) return [];
+  const hosts = Object.entries(readYaml(file) ?? {}).filter(([, h]) => isMap(h));
+  if (!hosts.length) return [asset('GitHub CLI', 'github', file, { provider: 'github', principal: null, account: null, hasStaticKey: false })];
+  return hosts.slice(0, 10).map(([host, h]) => {
+    const users = isMap(h.users) ? Object.keys(h.users) : [];
+    const principal = scalar('user', h.user);
+    return asset('GitHub CLI', 'github', `${file}#${host}`, {
       provider: 'github',
-      principal: y.user ?? null,
-      account: y.git_protocol ? 'github.com' : null,
-      hasStaticKey: /oauth_token:/.test(readText(file) ?? ''),
-    }),
-  ];
+      principal,
+      account: host,
+      accounts: [...new Set([principal, ...users].filter(Boolean))].slice(0, 20),
+      hasStaticKey: 'oauth_token' in h || users.some((u) => isMap(h.users[u]) && 'oauth_token' in h.users[u]),
+    });
+  });
 }
 
 /**
@@ -256,10 +334,22 @@ function docker(HOME) {
   const file = path.join(HOME, '.docker', 'config.json');
   if (!exists(file)) return [];
   const j = readJson(file);
-  const regs = Object.keys(j?.auths ?? {}).slice(0, 15);
-  if (!regs.length) return [asset('Docker', 'docker', file, { provider: 'registry', principal: null })];
+  const auths = isMap(j?.auths) ? j.auths : {};
+  const helpers = isMap(j?.credHelpers) ? j.credHelpers : {};
+  const store = typeof j?.credsStore === 'string' ? j.credsStore : null;
+  const regs = Object.keys(auths).slice(0, 15);
+  if (!regs.length) return [asset('Docker', 'docker', file, { provider: 'registry', principal: null, credsStore: store })];
+  const inline = (e) => isMap(e) && ((typeof e.auth === 'string' && e.auth.length > 0) || (typeof e.identitytoken === 'string' && e.identitytoken.length > 0));
   // ⚠ A registry login is a PUBLISH path - the supply chain, outbound.
-  return regs.map((r) => asset('Docker registry', 'docker', file + '#' + r, { provider: 'registry', account: r, principal: null, hasStaticKey: true }));
+  return regs.map((r) =>
+    asset('Docker registry', 'docker', file + '#' + r, {
+      provider: 'registry',
+      account: r,
+      principal: null,
+      credsStore: typeof helpers[r] === 'string' ? helpers[r] : store,
+      hasStaticKey: inline(auths[r]),
+    }),
+  );
 }
 
 /**
@@ -420,11 +510,24 @@ function otherClouds(HOME) {
  * captures the variable NAME and never looks right of the `=`.
  */
 const ENV_CRED_NAMES =
-  /\b(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|AWS_PROFILE|AZURE_CLIENT_ID|AZURE_CLIENT_SECRET|AZURE_TENANT_ID|GOOGLE_APPLICATION_CREDENTIALS|GCLOUD_PROJECT|KUBECONFIG|VAULT_TOKEN|DATABRICKS_TOKEN|SNOWFLAKE_ACCOUNT|DIGITALOCEAN_ACCESS_TOKEN|GITHUB_TOKEN|GH_TOKEN|NPM_TOKEN|DOCKER_PASSWORD)\b/g;
+  /\b(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|AWS_PROFILE|AZURE_CLIENT_ID|AZURE_CLIENT_SECRET|AZURE_TENANT_ID|GOOGLE_APPLICATION_CREDENTIALS|GCLOUD_PROJECT|KUBECONFIG|VAULT_TOKEN|DATABRICKS_TOKEN|SNOWFLAKE_ACCOUNT|DIGITALOCEAN_ACCESS_TOKEN|GITHUB_TOKEN|GH_TOKEN|NPM_TOKEN|DOCKER_PASSWORD|ARM_CLIENT_ID|ARM_CLIENT_SECRET|ARM_SUBSCRIPTION_ID|AZURE_SUBSCRIPTION_ID|AWS_ROLE_ARN|AWS_WEB_IDENTITY_TOKEN_FILE|GOOGLE_CREDENTIALS|CLOUDSDK_CONFIG)\b/g;
+
+const SHELL_PROFILES = [
+  '.bashrc',
+  '.bash_profile',
+  '.zshrc',
+  '.profile',
+  '.zprofile',
+  path.join('.config', 'fish', 'config.fish'),
+  ...['Documents', path.join('OneDrive', 'Documents')].flatMap((d) => [
+    path.join(d, 'PowerShell', 'Microsoft.PowerShell_profile.ps1'),
+    path.join(d, 'WindowsPowerShell', 'Microsoft.PowerShell_profile.ps1'),
+  ]),
+];
 
 function envAuth(HOME, own = true) {
   const names = new Set();
-  for (const f of ['.bashrc', '.bash_profile', '.zshrc', '.profile', '.zprofile'].map((n) => path.join(HOME, n))) {
+  for (const f of SHELL_PROFILES.map((n) => path.join(HOME, n))) {
     if (!exists(f)) continue;
     for (const m of (readText(f) ?? '').matchAll(ENV_CRED_NAMES)) names.add(m[1]);
   }
@@ -454,13 +557,13 @@ function envAuth(HOME, own = true) {
  * here - the collector reports what it read, and the surface says so.
  */
 export function discoverCloudClis(opts = {}) {
-  const { HOME, own } = userDirs(opts.home);
+  const { HOME, APPDATA, own } = userDirs(opts.home);
   return [
-    ...azure(HOME),
-    ...aws(HOME),
-    ...gcp(HOME),
-    ...kubernetes(HOME),
-    ...github(HOME),
+    ...azure(HOME, own),
+    ...aws(HOME, own),
+    ...gcp(HOME, APPDATA, own),
+    ...kubernetes(HOME, own),
+    ...github(HOME, APPDATA, own),
     ...terraform(HOME),
     ...docker(HOME),
     ...packageRegistries(HOME),
@@ -472,4 +575,4 @@ export function discoverCloudClis(opts = {}) {
   ];
 }
 
-export const __test = { parseIni, shallowYaml, safeValue, SECRET_KEYS, ENV_CRED_NAMES };
+export const __test = { parseIni, safeValue, SECRET_KEYS, ENV_CRED_NAMES, programOf, hostOf };
