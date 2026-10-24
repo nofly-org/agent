@@ -3,7 +3,7 @@ import path from 'node:path';
 import { readJsonFile, writeJsonFile } from '../core/json-file.mjs';
 import { SELF_PATH, hookCommand } from './hook-command.mjs';
 import { LEGACY_HOOK_NAME, managedFile } from './hook-files.mjs';
-import { AGENT_UNINSTALLERS_AT, TOOL_GUARD_MATCHERS, copilotHooks, installCodexAt } from './installers.mjs';
+import { AGENT_UNINSTALLERS_AT, RESULT_GUARD_MATCHERS, TOOL_GUARD_MATCHERS, copilotHooks, installCodexAt } from './installers.mjs';
 
 export { managedFile };
 
@@ -17,7 +17,7 @@ function claudeManaged() {
         { matcher: TOOL_GUARD_MATCHERS.claude, hooks: run('tool-guard') },
         { matcher: 'ExitPlanMode', hooks: run('plan-guard') },
       ],
-      PostToolUse: [{ matcher: 'WebFetch|WebSearch|Read|NotebookRead|mcp__.*', hooks: run('result-guard') }],
+      PostToolUse: [{ matcher: RESULT_GUARD_MATCHERS.claude, hooks: run('result-guard') }],
       UserPromptSubmit: [{ hooks: run('prompt-guard') }],
       SessionStart: [{ hooks: run('session-guard') }],
     },

@@ -4,6 +4,7 @@ import { listProcesses } from './coding-agents.mjs';
 import { firstExisting } from './fs-read.mjs';
 import { ollamaVersionMeta } from './installed-versions.mjs';
 import { userDirs } from './platform.mjs';
+import { collectListenContext, runtimeListen } from './runtime-listen.mjs';
 
 export function discoverLocalRuntimes(opts = {}) {
   const { HOME, APPDATA, LOCALAPPDATA, own } = userDirs(opts.home);
@@ -16,14 +17,24 @@ export function discoverLocalRuntimes(opts = {}) {
     { vendor: 'localai', name: 'LocalAI', dirs: [path.join(HOME, '.localai')], proc: ['local-ai', 'localai'] },
     { vendor: 'textgen', name: 'Text Generation WebUI', dirs: [], proc: ['text-generation', 'oobabooga'] },
     { vendor: 'vllm', name: 'vLLM', dirs: [], proc: ['vllm'] },
+    { vendor: 'comfyui', name: 'ComfyUI', dirs: [path.join(HOME, 'ComfyUI'), path.join(HOME, 'Documents', 'ComfyUI'), path.join(APPDATA, 'ComfyUI')], proc: ['comfyui'] },
+    { vendor: 'langflow', name: 'Langflow', dirs: [], proc: ['langflow'], role: 'agent-platform' },
+    { vendor: 'flowise', name: 'Flowise', dirs: [path.join(HOME, '.flowise')], proc: ['flowise'], role: 'agent-platform' },
+    { vendor: 'n8n', name: 'n8n', dirs: [path.join(HOME, '.n8n')], proc: ['n8n'], role: 'agent-platform' },
+    { vendor: 'ruflo', name: 'Ruflo', dirs: [], proc: ['ruflo'], role: 'agent-platform' },
   ];
-  const procs = own ? listProcesses() : [];
+  const procs = opts.processes ?? (own ? listProcesses() : []);
   const assets = [];
+  let listenCtx;
   for (const r of runtimes) {
     const at = firstExisting(r.dirs);
     const running = r.proc.some((tok) => procs.some((p) => p.includes(tok)));
     if (!at && !running) continue;
-    const meta = { category: 'local-runtime', detectedAt: at || null, running };
+    const meta = { category: 'local-runtime', detectedAt: at || null, running, ...(r.role ? { role: r.role } : {}) };
+    if (running) {
+      if (listenCtx === undefined) listenCtx = opts.listen ?? (own ? collectListenContext() : null);
+      if (listenCtx) meta.listen = runtimeListen(r, listenCtx);
+    }
     if (r.vendor === 'ollama') Object.assign(meta, ollamaVersionMeta(opts.home));
     if (r.vendor === 'ollama' && r.modelsDir) meta.models = ollamaModels(r.modelsDir);
     assets.push({ type: 'AI_TOOL', name: r.name, identifier: at || `proc:${r.vendor}`, vendor: r.vendor, metadata: meta });

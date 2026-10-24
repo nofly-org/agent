@@ -4,6 +4,7 @@ export const ARTIFACT_PATHS                                               = [
   { re: /(^|\/)\.(?:vscode|cursor|roo|kilocode|trae|windsurf|kiro|amazonq|zed|gemini|qwen|junie)\/mcp\.json$/i, kind: 'mcp' },
   { re: /(^|\/)\.kiro\/settings\/mcp\.json$/i, kind: 'mcp' },
   { re: /(^|\/)claude_desktop_config\.json$/i, kind: 'mcp' },
+  { re: /(^|\/)\.claude\.json$/i, kind: 'mcp' },
   { re: /(^|\/)(?:cline_mcp_settings|mcp_settings)\.json$/i, kind: 'mcp' },
   { re: /(^|\/)\.codeium\/windsurf\/mcp_config\.json$/i, kind: 'mcp' },
 
@@ -46,6 +47,10 @@ export const ARTIFACT_PATHS                                               = [
   { re: /(^|\/)cline\/rules\/.+\.(?:md|txt)$/i, kind: 'rules' },
   { re: /(^|\/)\.(?:kilocode|roo|trae|junie|windsurf|augment|kiro|devin|amp|zed|goose|opencode|crush)\/memories(?:\/.+)?\.(?:md|mdc|txt)$/i, kind: 'agent-memory' },
   { re: /(^|\/)\.qwen\/team-memory\/.+\.(?:md|txt)$/i, kind: 'agent-memory' },
+  { re: /(^|\/)\.claude\/plans\/[^/]+\.md$/i, kind: 'agent-memory' },
+  { re: /(^|\/)\.gemini\/tmp\/[^/]+\/plans\/[^/]+\.md$/i, kind: 'agent-memory' },
+  { re: /(^|\/)\.cursor\/plans\/[^/]+\.md$/i, kind: 'agent-memory' },
+  { re: /(^|\/)\.kiro\/specs\/[^/]+\/(?:requirements|design|tasks|bugfix)\.md$/i, kind: 'rules' },
   { re: /(^|\/)\.(?:kilocode|roo|trae|junie|windsurf|augment|kiro|devin|amp|zed|goose|opencode|crush)\/(?:rules?|guidelines?|steering)(?:\/.+)?\.(?:md|mdc|txt)$/i, kind: 'rules' },
   { re: /(^|\/)\.(?:roo|kilocode)\/rules-[\w-]+\/.+\.(?:md|mdc|txt)$/i, kind: 'rules' },
   { re: /(^|\/)\.continue\/rules\/.+\.(?:md|ya?ml)$/i, kind: 'rules' },
@@ -77,7 +82,6 @@ export const ARTIFACT_PATHS                                               = [
 export const CONTENT_ONLY_KINDS                                  = [
   'automation', 'guardrail', 'tool-manifest', 'prompt-template',
   'exec-script', 'env-secret-file', 'other-artifact',
-
   'workflow',
 ];
 

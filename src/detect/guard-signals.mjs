@@ -4,7 +4,7 @@ export { classifyConsequence, isPersistenceTarget } from './signals/consequence.
 export { detectCredentialHarvest } from './signals/credential-harvest.mjs';
 export { claimSeverity, detectDurableClaims } from './signals/durable-claims.mjs';
 export { SUSPICIOUS_EGRESS_HOSTS, egressHost } from './signals/egress.mjs';
-export { detectExecutionHijack } from './signals/execution-hijack.mjs';
+export { detectExecutionHijack, gitConfigFileExec, vscodeTaskAutorun } from './signals/execution-hijack.mjs';
 export { localGate } from './signals/gate.mjs';
 export { INJECTION_PHRASES, INJECTION_REGEXES, INVISIBLE_CHARS_RE } from './signals/injection.mjs';
 export { localMemory } from './signals/memory.mjs';

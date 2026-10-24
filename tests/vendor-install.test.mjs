@@ -172,7 +172,7 @@ test('a hook left pointing at a removed install is repaired by the next install,
     const command = read(file).hooks.PreToolUse[0].hooks[0].command;
     assert.ok(command.startsWith('NOFLY_GUARD_STRICT=1 '), command);
     assert.ok(!command.includes(gone), command);
-    assert.ok(command.includes(CLI), command);
+    assert.ok(command.replace(/\\/g, '/').includes(CLI.replace(/\\/g, '/')), command);
   } finally {
     fs.rmSync(box.root, { recursive: true, force: true });
   }

@@ -75,13 +75,24 @@ const EGRESS_CMD_RE = /\b(curl|wget|nc|ncat|http|https|invoke-restmethod|invoke-
 const REDIRECT_RE = /(?:>>?|\btee\b(?:\s+-\S+)*)\s*("[^"]+"|'[^']+'|[^\s;|&()<>]+)/g;
 const COPY_VERB_RE = /\b(?:cp|mv|install|rsync|ln|sed|perl|python3?|tee|curl|wget|set-content|add-content|out-file|new-item|copy-item|move-item)\b/i;
 
+const SHELL_FETCH_RE = /\b(?:curl|wget|Invoke-WebRequest|Invoke-RestMethod|iwr|irm|lynx)\b[^|;&\n]*\bhttps?:\/\//i;
+const SHELL_READ_RE = /(?:^|[\s;&|(])(?:cat|less|more|head|tail|type|Get-Content|gc|xxd|od|strings|base64)\b/i;
+
+export function shellFetchesUrl(cmd) {
+  return typeof cmd === 'string' && SHELL_FETCH_RE.test(cmd);
+}
+
+export function shellReturnsContent(cmd) {
+  return typeof cmd === 'string' && (SHELL_FETCH_RE.test(cmd) || SHELL_READ_RE.test(cmd));
+}
+
 export function shellWritePaths(cmd) {
   const out = [];
   const text = String(cmd ?? '');
   for (const m of text.matchAll(REDIRECT_RE)) {
     const target = m[1].replace(/^["']|["']$/g, '');
     if (!target || target.startsWith('&') || target.startsWith('/dev/')) continue;
-    out.push(target);
+    out.push(target.replace(/\\/g, '/'));
   }
 
   /**
@@ -93,7 +104,7 @@ export function shellWritePaths(cmd) {
     for (const tok of text.split(/[\s;|&()]+/)) {
       const t = tok.replace(/^["']|["']$/g, '');
       if (!t || t.startsWith('-')) continue;
-      if (t.includes('/') || /^[\w.-]+\.(?:json|jsonc|toml|ya?ml|md|mdc)$/i.test(t)) out.push(t);
+      if (t.includes('/') || t.includes('\\') || /^[\w.-]+\.(?:json|jsonc|toml|ya?ml|md|mdc)$/i.test(t)) out.push(t.replace(/\\/g, '/'));
     }
   }
   return [...new Set(out)].slice(0, 40);

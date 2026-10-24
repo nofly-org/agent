@@ -25,6 +25,8 @@ import { guardPathAllowlisted } from './ignore.mjs';
 import { screenModelLoad } from './model-load.mjs';
 import { screenSkillInvocation } from './skill-check.mjs';
 import { activeArtifactsField } from './active-artifacts.mjs';
+import { priorMcpServersField } from './prior-mcp.mjs';
+import { planFilesField } from './plans-dir.mjs';
 import { normalizeGuardInput } from './normalize.mjs';
 import { readHookPayload as readPayload } from './payload.mjs';
 import { envFlag, guardWait, resolveAgentFlag } from './options.mjs';
@@ -513,6 +515,8 @@ export async function cmdToolGuard(flags) {
     body: {
       ...buildGuardBody(normalized, agent, flagged ? 'FLAG' : undefined, flagged ? local.top?.label : undefined),
       ...post,
+      ...priorMcpServersField(tool, input, normalized),
+      ...planFilesField(tool, input, normalized),
       ...activeArtifactsField(agent, normalized),
       ...(run.targets.length ? { run_targets: run.targets.map(({ kind, name, path: p, text, unread }) => ({ kind, name, path: p, text, unread })) } : {}),
       ...selftest,

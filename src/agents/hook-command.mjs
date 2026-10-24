@@ -27,17 +27,8 @@ export function psQuote(argument) {
   return `'${String(argument).replace(/'/g, "''")}'`;
 }
 
-function nodeOnPath(dir) {
-  const want = path.resolve(dir).toLowerCase();
-  const raw = process.env.PATH ?? process.env.Path ?? '';
-  return String(raw).split(path.delimiter).some((d) => d && path.resolve(d).toLowerCase() === want);
-}
-
 export function launcher(platform = process.platform) {
-  if (platform === 'win32') {
-    const node = nodeOnPath(path.dirname(process.execPath)) ? 'node' : winQuote(process.execPath);
-    return `${node} ${winQuote(SELF_PATH)}`;
-  }
+  if (platform === 'win32') return `${winQuote(process.execPath)} ${winQuote(SELF_PATH)}`;
   return `${shQuote(process.execPath)} ${shQuote(SELF_PATH)}`;
 }
 

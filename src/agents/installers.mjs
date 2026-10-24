@@ -55,11 +55,21 @@ export const TOOL_GUARD_MATCHERS = {
  * forever. Every missing required name is appended to the NoFly group's
  * matcher; names the user added are kept, and a match-all matcher is left alone.
  */
+export const RESULT_GUARD_MATCHERS = {
+  claude: 'WebFetch|WebSearch|Read|NotebookRead|Bash|PowerShell|mcp__.*',
+  codex: 'WebFetch|WebSearch|web_search|Read|Bash|shell|local_shell|exec_command|mcp__.*',
+};
+
 export function widenToolGuardMatcher(list, required) {
+  return widenGroupMatcher(list, required, 'tool-guard');
+}
+
+export function widenGroupMatcher(list, required, verb) {
   if (!Array.isArray(list)) return false;
+  const verbRe = new RegExp(`\\b${verb}\\b`);
   let changed = false;
   for (const g of list) {
-    if (!Array.isArray(g?.hooks) || !g.hooks.some((h) => /\btool-guard\b/.test(String(h?.command || '')) && /nofly|shomra/i.test(String(h?.command || '')))) continue;
+    if (!Array.isArray(g?.hooks) || !g.hooks.some((h) => verbRe.test(String(h?.command || '')) && /nofly|shomra/i.test(String(h?.command || '')))) continue;
     const cur = typeof g.matcher === 'string' ? g.matcher : '';
     if (!cur || cur === '*' || cur === '.*') continue;
     const have = new Set(cur.split('|').map((s) => s.trim()));
@@ -127,9 +137,9 @@ export function installCodexAt(file, portable) {
     changed = true;
   } else if (widenToolGuardMatcher(pre, TOOL_GUARD_MATCHERS.codex)) changed = true;
   if (!hasGroupedHook(post, 'result-guard')) {
-    post.push({ matcher: 'WebFetch|WebSearch|web_search|Read|mcp__.*', hooks: [{ type: 'command', command: hookCommand('result-guard --agent codex', { portable }) }] });
+    post.push({ matcher: RESULT_GUARD_MATCHERS.codex, hooks: [{ type: 'command', command: hookCommand('result-guard --agent codex', { portable }) }] });
     changed = true;
-  }
+  } else if (widenGroupMatcher(post, RESULT_GUARD_MATCHERS.codex, 'result-guard')) changed = true;
   if (!hasGroupedHook(prompt, 'prompt-guard')) {
     prompt.push({ hooks: [{ type: 'command', command: hookCommand('prompt-guard --agent codex', { portable }) }] });
     changed = true;
@@ -158,9 +168,9 @@ export const AGENT_INSTALLERS = {
       changed = true;
     } else if (widenToolGuardMatcher(pre, TOOL_GUARD_MATCHERS.claude)) changed = true;
     if (!hasGroupedHook(post, 'result-guard')) {
-      post.push({ matcher: 'WebFetch|WebSearch|Read|NotebookRead|mcp__.*', hooks: [{ type: 'command', command: hookCommand('result-guard --agent claude', { portable }) }] });
+      post.push({ matcher: RESULT_GUARD_MATCHERS.claude, hooks: [{ type: 'command', command: hookCommand('result-guard --agent claude', { portable }) }] });
       changed = true;
-    }
+    } else if (widenGroupMatcher(post, RESULT_GUARD_MATCHERS.claude, 'result-guard')) changed = true;
 
     if (!hasGroupedHook(prompt, 'prompt-guard')) {
       prompt.push({ hooks: [{ type: 'command', command: hookCommand('prompt-guard --agent claude', { portable }) }] });
@@ -236,6 +246,7 @@ export const AGENT_INSTALLERS = {
     wire('beforeMCPExecution', hookCommand('tool-guard --agent cursor', { portable }));
     wire('afterFileEdit', hookCommand('result-guard --agent cursor', { portable }));
     wire('afterMCPExecution', hookCommand('result-guard --agent cursor', { portable }));
+    wire('afterShellExecution', hookCommand('result-guard --agent cursor', { portable }));
 
     wire('beforeSubmitPrompt', hookCommand('prompt-guard --agent cursor', { portable }));
     if (refreshFlat(hooks)) changed = true;

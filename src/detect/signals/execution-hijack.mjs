@@ -35,6 +35,8 @@ const GIT_EXEC_KEYS =
 
 const GIT_ALIAS_KEY = /\balias\.[\w-]+\b/i;
 
+const GIT_INCLUDE_BASE_KEY = /^include(?:if)?\.path$/i;
+
 const HIJACK_PLAIN_PROGRAM = /^(?:[A-Za-z]:[\\/])?[\w.\\/-]{1,64}(?:\s+-{1,2}[\w-]{1,32}){0,4}$/;
 
 const HIJACK_SHELLY = /[;&|`$(){}<>]|\s-c\s|(?<![.\w])(?:sh|bash|zsh|dash|python\d?|node|perl|ruby|eval)\b/i;
@@ -46,6 +48,18 @@ const HIJACK_ASSIGN =
 
 const HIJACK_GIT_CONFIG =
   /\bgit\s+config\s+(?:--(?:global|system|local|worktree|add|replace-all)\s+|--file\s+\S+\s+)*([\w.*-]+)\s+("[^"]*"|'[^']*'|\S+)/i;
+
+const HIJACK_GIT_INCLUDE =
+  /\bgit\s+config\s+(?:--(?:global|system|local|worktree|add|replace-all)\s+|--file\s+\S+\s+)*["']?(include(?:if\.[^\s"']+)?\.path)["']?\s+("[^"]*"|'[^']*'|\S+)/i;
+
+function hijackIncludeSignal(key, value, lead) {
+  return {
+    vector: 'git-config', key,
+    governs: 'every git command that reads this config',
+    severity: 'HIGH', value,
+    detail: `${lead} Every setting in that file applies as if it were written here, and that file was not screened.`,
+  };
+}
 
 const hijackUnquote = (raw) => String(raw ?? '').replace(/^["']|["']$/g, '');
 
@@ -110,6 +124,12 @@ export function detectExecutionHijack(command) {
     }
   }
   for (const line of text.split(/[\n;]|&&|\|\|/)) {
+    const inc = HIJACK_GIT_INCLUDE.exec(line);
+    if (inc) {
+      const value = hijackConfigValue(inc[2]);
+      out.push(hijackIncludeSignal(inc[1], value, `git config "${inc[1]}" pulls in "${value}".`));
+      continue;
+    }
     const m = HIJACK_GIT_CONFIG.exec(line);
     if (!m) continue;
     const key = m[1];
@@ -123,6 +143,128 @@ export function detectExecutionHijack(command) {
       governs: isAlias ? `git ${key.split('.')[1]}` : 'every later git command that reaches this hook',
       severity: shelly ? 'CRITICAL' : 'HIGH', value,
       detail: `git config "${key}" is set to "${value}". Git executes this value, so every later git command - including ones an allowlist names - runs it. The configuration outlives the session.`,
+    });
+  }
+  const seen = new Set();
+  return out.filter((s) => (seen.has(`${s.vector}:${s.key}`) ? false : (seen.add(`${s.vector}:${s.key}`), true)));
+}
+
+const HIJACK_GIT_SECTION = /^\[\s*([A-Za-z0-9.-]+)\s*(?:"([^"]*)")?\s*\]\s*$/;
+const HIJACK_GIT_ENTRY = /^([A-Za-z][\w-]*)\s*=\s*(.*)$/;
+
+function hijackGitFileValue(raw) {
+  const s = String(raw ?? '').trim();
+  if (s.startsWith('"')) {
+    const end = s.indexOf('"', 1);
+    return end > 0 ? s.slice(1, end) : s.slice(1);
+  }
+  return s.replace(/\s*[;#].*$/, '').trim();
+}
+
+function hijackGitConfigEntries(content) {
+  const out = [];
+  let section = null;
+  let sub = null;
+  for (const raw of content.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#') || line.startsWith(';')) continue;
+    const sec = HIJACK_GIT_SECTION.exec(line);
+    if (sec) { section = sec[1].toLowerCase(); sub = sec[2] ?? null; continue; }
+    if (!section) continue;
+    const kv = HIJACK_GIT_ENTRY.exec(line);
+    if (!kv) continue;
+    const name = kv[1].toLowerCase();
+    out.push({
+      key: sub != null ? `${section}.${sub}.${name}` : `${section}.${name}`,
+      baseKey: `${section}.${name}`,
+      value: hijackConfigValue(hijackGitFileValue(kv[2])),
+    });
+  }
+  return out;
+}
+
+export function gitConfigFileExec(content) {
+  const text = String(content ?? '');
+  if (!text.includes('[') || !text.includes('=')) return [];
+  const out = [];
+  for (const { key, baseKey, value } of hijackGitConfigEntries(text)) {
+    if (!value) continue;
+    if (GIT_INCLUDE_BASE_KEY.test(baseKey)) {
+      out.push(hijackIncludeSignal(key, value, `A committed git config pulls in "${value}" through "${key}".`));
+      continue;
+    }
+    const isAlias = GIT_ALIAS_KEY.test(key) && /^!/.test(value);
+    const bang = /^!/.test(value);
+    if (!GIT_EXEC_KEYS.test(key) && !GIT_EXEC_KEYS.test(baseKey) && !isAlias) continue;
+    const shelly = HIJACK_SHELLY.test(value) || HIJACK_WORLD_WRITABLE.test(value) || isAlias || bang;
+    if (!shelly && HIJACK_PLAIN_PROGRAM.test(value)) continue;
+    out.push({
+      vector: 'git-config', key,
+      governs: isAlias ? `git ${key.split('.')[1]}` : 'every later git command that reaches this hook',
+      severity: shelly ? 'CRITICAL' : 'HIGH', value,
+      detail: `A committed git config sets "${key}" to "${value}". Git runs this value itself, so cloning or opening this repository and issuing any later git command runs it - no dangerous command is ever typed, and the setting travels inside the repo.`,
+    });
+  }
+  const seen = new Set();
+  return out.filter((s) => (seen.has(`${s.vector}:${s.key}`) ? false : (seen.add(`${s.vector}:${s.key}`), true)));
+}
+
+function hijackStripJsonc(text) {
+  let out = '';
+  let inStr = false, esc = false, line = false, block = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    const n = text[i + 1];
+    if (line) { if (c === '\n') { line = false; out += c; } continue; }
+    if (block) { if (c === '*' && n === '/') { block = false; i++; } continue; }
+    if (inStr) { out += c; if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') { inStr = true; out += c; continue; }
+    if (c === '/' && n === '/') { line = true; i++; continue; }
+    if (c === '/' && n === '*') { block = true; i++; continue; }
+    out += c;
+  }
+  return out.replace(/,(\s*[}\]])/g, '$1');
+}
+
+function hijackParseJsonc(text) {
+  try { return JSON.parse(text); } catch { return hijackParseStripped(text); }
+}
+
+function hijackParseStripped(text) {
+  try { return JSON.parse(hijackStripJsonc(text)); } catch { return null; }
+}
+
+function hijackTaskCommand(t) {
+  if (!t || typeof t.command !== 'string' || !t.command.trim()) return null;
+  const args = Array.isArray(t.args)
+    ? t.args.map((a) => (typeof a === 'string' ? a : a && typeof a === 'object' ? String(a.value ?? '') : '')).join(' ')
+    : '';
+  return `${t.command} ${args}`.trim();
+}
+
+function hijackRunsOnFolderOpen(runOptions) {
+  const on = runOptions && runOptions.runOn;
+  return on === 'folderOpen' || (Array.isArray(on) && on.includes('folderOpen'));
+}
+
+export function vscodeTaskAutorun(content) {
+  const text = String(content ?? '');
+  if (!text.includes('folderOpen')) return [];
+  const doc = hijackParseJsonc(text);
+  const tasks = doc && Array.isArray(doc.tasks) ? doc.tasks : null;
+  if (!tasks) return [];
+  const out = [];
+  for (const t of tasks) {
+    if (!t || typeof t !== 'object' || !hijackRunsOnFolderOpen(t.runOptions)) continue;
+    const command = hijackTaskCommand(t);
+    if (!command) continue;
+    out.push({
+      vector: 'task-autorun',
+      key: String(t.label ?? command).slice(0, 80),
+      governs: 'the editor, the moment this folder is opened',
+      severity: HIJACK_SHELLY.test(command) || HIJACK_WORLD_WRITABLE.test(command) ? 'CRITICAL' : 'HIGH',
+      value: command.slice(0, 200),
+      detail: `A task in this folder runs on folderOpen and executes "${command.slice(0, 120)}". Opening the repository runs it with no prompt - the run-on-open shape used by the npm-worm waves to execute from a cloned repo.`,
     });
   }
   const seen = new Set();

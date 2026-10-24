@@ -167,7 +167,7 @@ test('a repo .noflyignore never silences screening of a path outside the repo', 
   try {
     fs.mkdirSync(path.join(root, 'test', 'fixtures'), { recursive: true });
     fs.writeFileSync(path.join(root, '.noflyignore'), '*\ntest/fixtures/**\n');
-    fs.symlinkSync(outside, path.join(root, 'test', 'fixtures', 'link'));
+    fs.symlinkSync(outside, path.join(root, 'test', 'fixtures', 'link'), process.platform === 'win32' ? 'junction' : 'dir');
     assert.equal(guardPathAllowlisted(root, 'test/fixtures/sample.js'), true);
     assert.equal(guardPathAllowlisted(root, 'src/app.js'), true);
     assert.equal(guardPathAllowlisted(root, path.join(os.homedir(), '.bashrc')), false);

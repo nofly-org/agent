@@ -93,7 +93,7 @@ test('matcher coverage is read as the vendor reads it - a regex, not a list of l
   assert.equal(matcherCovers('*', 'anything'), true);
   assert.equal(matcherCovers('Bash', 'PowerShell'), false);
   assert.equal(matcherCovers('Bash|[unclosed', 'PowerShell'), false, 'a matcher that cannot compile covers nothing');
-  assert.deepEqual(missingTools('claude', 'Bash|Write|Edit|MultiEdit|NotebookEdit|mcp__.*').map((m) => m.name), ['PowerShell', 'Monitor', 'Skill']);
+  assert.deepEqual(missingTools('claude', 'Bash|Write|Edit|MultiEdit|NotebookEdit|mcp__.*').map((m) => m.name), ['PowerShell', 'Monitor', 'Skill', 'Task', 'Agent']);
   assert.deepEqual(missingTools('claude', TOOL_GUARD_MATCHERS.claude), []);
   assert.deepEqual(missingTools('gemini', '.*'), [], 'match-all covers every required name');
   assert.deepEqual(missingTools('gemini', 'run_shell_command').map((m) => m.name), ['write_file', 'replace', 'mcp__.*']);
@@ -105,10 +105,11 @@ test('an old install that never learned PowerShell is POROUS, names it, and carr
   const home = fakeHome(claudeSettings('Bash|Write|Edit|MultiEdit|NotebookEdit|mcp__.*'));
   const row = withHome(home, () => staticCheck('claude'));
   assert.equal(row.state, 'porous');
-  assert.deepEqual(row.missing.map((m) => m.name), ['PowerShell', 'Monitor', 'Skill']);
+  assert.deepEqual(row.missing.map((m) => m.name), ['PowerShell', 'Monitor', 'Skill', 'Task', 'Agent']);
   assert.match(row.statement, /PowerShell/);
   assert.match(row.statement, /shell commands/);
   assert.match(row.statement, /skill invocations/);
+  assert.match(row.statement, /sub-agent starts/);
   assert.equal(row.fix, 'nofly install-hook --agent claude');
   fs.rmSync(home, { recursive: true, force: true });
 });
@@ -533,4 +534,18 @@ test('a self-test that sent no canary never says the server answered one', async
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
+});
+
+test('a sub-agent start reaches the guard on Claude Code, and an older install is widened to cover it', () => {
+  const matcher = matcherFor('claude');
+  for (const tool of ['Task', 'Agent']) {
+    assert.ok(matcherCovers(matcher, tool, tool), `${tool} is covered by ${matcher}`);
+    assert.equal(guardNeedsServer(tool, { prompt: 'summarise the repo' }, false), true, `${tool} escalates to the server`);
+  }
+  const older = 'Bash|PowerShell|Monitor|Write|Edit|MultiEdit|NotebookEdit|Skill|mcp__.*';
+  assert.deepEqual(missingTools('claude', older).map((t) => t.name), ['Task', 'Agent']);
+  const group = { matcher: older, hooks: [{ type: 'command', command: 'nofly tool-guard --agent claude' }] };
+  assert.equal(widenToolGuardMatcher([group], TOOL_GUARD_MATCHERS.claude), true);
+  const after = group.matcher;
+  assert.ok(matcherCovers(after, 'Task', 'Task') && matcherCovers(after, 'Agent', 'Agent'), `widened matcher covers sub-agent starts: ${after}`);
 });

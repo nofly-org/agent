@@ -3,7 +3,7 @@ import { breakerOpen, breakerReset, breakerTrip, guardTimeoutMs } from '../core/
 import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { boundedLocalScan, downrankCodeContext, grade } from '../detect/guard-signals.mjs';
 import { detectEnv } from '../gate/environment.mjs';
-import { WRITE_TOOLS, guardTargetPath } from './classify.mjs';
+import { SHELL_TOOLS_RE, WRITE_TOOLS, guardTargetPath, shellCommandOf, shellReturnsContent } from './classify.mjs';
 import { emitResultBlock, emitResultContext } from './emit.mjs';
 import { guardPathAllowlisted } from './ignore.mjs';
 import { normalizeGuardInput } from './normalize.mjs';
@@ -15,6 +15,13 @@ import { gatewayEntryKey } from './gateway-entry.mjs';
 
 function readHookPayload() {
   return readPayload() ?? process.exit(0);
+}
+
+export function unscreenedShellResult(normalized, response) {
+  const tool = String(normalized?.tool_name ?? '');
+  if (!SHELL_TOOLS_RE.test(tool)) return false;
+  if (!shellReturnsContent(shellCommandOf(normalized?.tool_input ?? {}))) return true;
+  return !String(resultText(response) ?? '').trim();
 }
 
 const RESULT_DECISIONS = new Set(['ALLOW', 'FLAG', 'BLOCK']);
@@ -129,6 +136,7 @@ export async function cmdResultGuard(flags) {
   const mcp = String(normalized.tool_name ?? '').startsWith('mcp__');
   const refuse = (reason) => emitResultBlock(agent, reason, { output: withheldOutput(response, `[${reason}]`), mcp });
 
+  if (unscreenedShellResult(normalized, response)) process.exit(0);
   const screen = screenResponse(normalized, response);
   if (!localTierDisabled() && !screen.suppressBlock && screen.verdict === 'BLOCK') {
     const worst = screen.findings.find((f) => f.severity === 'CRITICAL') || screen.findings[0];

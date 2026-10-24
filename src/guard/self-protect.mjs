@@ -17,6 +17,7 @@ const HOOK_FILE_RE = /(?:^|[\\/])(?:\.claude[\\/]settings(?:\.local)?\.json|\.co
 const CLINE_MARK_RE = /\/\/ (?:nofly|shomra) cline hook/;
 const ours = (text) => NOFLY_ANY_HOOK_RE.test(text) || CLINE_MARK_RE.test(text);
 const IGNORE_FILE_RE = /(?:^|[\\/])\.(?:nofly|shomra)ignore$/i;
+const PROFILE_FILE_RE = /(?:^|[\\/])(?:\.bashrc|\.bash_profile|\.bash_login|\.profile|\.zshrc|\.zprofile|\.zshenv|\.kshrc|\.cshrc|\.tcshrc|\.config[\\/]fish[\\/]config\.fish|\.env(?:\.[\w.-]+)?|\.envrc)$|(?:^|[\\/])(?:Microsoft\.PowerShell_profile\.ps1|profile\.ps1)$/i;
 const DISABLE_HOOKS_RE = /["']?disableAllHooks["']?\s*:\s*true\b/i;
 const GUARD_ENV_RE = /["']?(?:NOFLY|SHOMRA)_(?:GUARD_LOCAL|GUARD_IGNORE|MODEL_GUARD|MCP_SCREEN|URL|GUARD_TIMEOUT_MS|GUARD_BREAKER_MS)["']?\s*:|\b(?:NOFLY|SHOMRA)_(?:GUARD_LOCAL|GUARD_IGNORE|MODEL_GUARD|MCP_SCREEN|URL|GUARD_TIMEOUT_MS|GUARD_BREAKER_MS)=/gi;
 const HOOK_COMMAND_RE = /"command"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
@@ -138,10 +139,16 @@ export function guardHookTamper(tool, input = {}, { cwd = process.cwd(), home = 
     if (!hits.some((h) => h.path === p)) hits.push({ path: p, why });
   };
   if (selfUninstall(command)) note('the coding agents\' hook settings', 'uninstall');
+  const setsGuardEnv = (body) => typeof body === 'string' && new RegExp(GUARD_ENV_RE.source, 'i').test(body);
   for (const p of [...direct, ...viaShell]) {
     const target = abs(p);
     if (IGNORE_FILE_RE.test(target)) {
       note(p, 'ignore-list');
+      continue;
+    }
+    if (PROFILE_FILE_RE.test(target)) {
+      const body = direct.includes(p) ? proposedText(tool, input, target, cwd, read) : command;
+      if (setsGuardEnv(body)) note(p, 'guard-env-persist');
       continue;
     }
     if (!HOOK_FILE_RE.test(target)) continue;
@@ -170,6 +177,7 @@ const HOOK_TAMPER_WHY = {
   'chains-hook': 'wraps the NoFly guard hook in other commands, which then run on every screened call, in',
   rewrites: 'rewrites, with no way to check the NoFly guard hook survives,',
   'ignore-list': 'edits the list of paths the NoFly guard skips,',
+  'guard-env-persist': 'writes a NOFLY_ guard variable into a shell profile or environment file, which switches off or re-points the guard for every later session, through',
   uninstall: 'runs `nofly install-hook --uninstall`, which removes the NoFly guard hook from',
 };
 

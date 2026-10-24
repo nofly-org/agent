@@ -1,7 +1,7 @@
 import { RISKY_CONFIG_MARKERS, riskyConfigHit } from './config-markers.mjs';
 import { detectCredentialHarvest } from './credential-harvest.mjs';
 import { egressHost } from './egress.mjs';
-import { detectExecutionHijack } from './execution-hijack.mjs';
+import { detectExecutionHijack, gitConfigFileExec, vscodeTaskAutorun } from './execution-hijack.mjs';
 import { DESCRIBED_VERB_PHRASES, INJECTION_PHRASES, INJECTION_REGEXES, bulkDeleteIsRoutine, describedVerb, disguisedWords, precededByNegation, describesRatherThanInstructs } from './injection.mjs';
 import { INVISIBLE_CHARS_GLOBAL_RE, suspiciousInvisible } from './invisible-chars.mjs';
 import { invisibleInjectionFindings, invisibleSecretFindings } from './invisible-smuggling.mjs';
@@ -69,6 +69,10 @@ export function localScan(text, opts = {}) {
     for (const sig of scanStagedFetchExec(aug.text)) findings.push({ label: sig.name, severity: sig.severity, category: 'shell', ...locate(t, sig.re, mask) });
     for (const h of detectExecutionHijack(aug.text))
       findings.push({ label: `Installs an execution hook that governs ${h.governs} (${h.key})`, severity: h.severity, category: 'shell' });
+    for (const h of gitConfigFileExec(aug.text))
+      findings.push({ label: `Installs an execution hook that governs ${h.governs} (${h.key})`, severity: h.severity, category: 'shell' });
+    for (const h of vscodeTaskAutorun(aug.text))
+      findings.push({ label: `Runs a task when the folder opens (${h.key})`, severity: h.severity, category: 'shell' });
     for (const c of detectCredentialHarvest(aug.text))
       findings.push({ label: `${c.label} - credential harvest`, severity: c.severity, category: 'shell' });
   }

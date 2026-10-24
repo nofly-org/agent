@@ -104,6 +104,30 @@ const PROFILE_FILE_RE = /(?:>>?|\btee\b(?:\s{1,4}-a)?)\s{0,4}["']?(?:~\/|\$HOME\
 const HARMLESS_PROFILE_LINE_RE = /^\s{0,8}(?:echo|printf)\s{1,4}(?:-e\s{1,4})?["']\s{0,4}(?:export\s{1,4}[A-Za-z_]\w{0,63}=(?:"(?:[^"$`\\]|\$\{?(?:HOME|PATH|PWD|USER|GOPATH|CARGO_HOME|PYENV_ROOT|NVM_DIR|BUN_INSTALL|PNPM_HOME)\}?){0,200}"|'[^']{0,200}'|[^\s"'$`;|&]{0,200})\s{0,4}["']|autoload\s{1,4}-U\s{1,4}compinit|compinit|source\s{1,4}<\(\s{0,4}[\w.-]{1,40}\s{1,4}completion\b|eval\s{1,4}"\$\(\s{0,4}[\w.-]{1,40}\s{1,4}(?:init|shellenv|hook|shell-init|activate)\b)|^\s{0,8}[\w.-]{1,40}\s{1,4}(?:shell-init|init\s{1,4}(?:bash|zsh|fish)|completion\s{1,4}(?:bash|zsh|fish)|shellenv)\b/i;
 const RISKY_PROFILE_PAYLOAD_RE = /\b(?:LD_PRELOAD|DYLD_\w{1,40}|PROMPT_COMMAND|BASH_ENV|NODE_OPTIONS|PYTHONSTARTUP|PERL5OPT|RUBYOPT)\b|\b\w{0,40}(?:BASE_URL|API_BASE|API_URL|ENDPOINT|PROXY)\b|https?:\/\/|\balias\b|curl|wget|\bnc\b|\/tmp\/|\/dev\/shm|base64|authorized_keys|id_rsa|crontab/i;
 
+const HOME_MOUNT_SOURCE = String.raw`(?:~|\$\{?HOME\}?|\/home\/[\w.-]+|\/Users\/[\w.-]+|\/root)(?:\/\.(?:bashrc|zshrc|profile|bash_profile|zprofile|ssh)\b)?\/?`;
+const HOME_VOLUME_RE = new RegExp(String.raw`(?:-v|--volume)[= ]\s*["']?${HOME_MOUNT_SOURCE}["']?:(\S*)`, 'gi');
+const MOUNT_SPEC_RE = /--mount[= ](\S+)/gi;
+const HOME_BIND_SOURCE_RE = new RegExp(String.raw`(?:^|,)(?:src|source)=["']?${HOME_MOUNT_SOURCE}["']?(?:,|$)`, 'i');
+const OTHER_CONTAINER_ESCAPE_RE = /--privileged\b|--pid[= ]host\b|--userns[= ]host\b|--security-opt[= ]\S{0,40}(?:seccomp[=:]unconfined|apparmor[=:]unconfined)|--cap-add[= ](?:ALL|SYS_ADMIN|SYS_PTRACE|SYS_MODULE)\b|-v\s+\/(?:\s|:)|--volume[= ]\/:|(?:-v|--volume)[= ]\s*\/var\/run\/docker\.sock/i;
+
+function volumeIsReadOnly(rest) {
+  const opts = rest.replace(/["']+$/, '').split(':').slice(1).join(':').toLowerCase().split(',');
+  return opts.includes('ro') && !opts.includes('rw');
+}
+
+function mountIsReadOnly(spec) {
+  const parts = spec.replace(/["']/g, '').toLowerCase().split(',');
+  return parts.some((p) => p === 'readonly' || p === 'ro' || p === 'readonly=true' || p === 'ro=true' || p === 'readonly=1' || p === 'ro=1');
+}
+
+function containerEscapeRefine(line) {
+  if (OTHER_CONTAINER_ESCAPE_RE.test(line)) return true;
+  const volumes = [...line.matchAll(HOME_VOLUME_RE)].map((m) => m[1] ?? '');
+  const binds = [...line.matchAll(MOUNT_SPEC_RE)].map((m) => m[1] ?? '').filter((spec) => HOME_BIND_SOURCE_RE.test(spec));
+  if (!volumes.length && !binds.length) return true;
+  return volumes.some((rest) => !volumeIsReadOnly(rest)) || binds.some((spec) => !mountIsReadOnly(spec));
+}
+
 function harmlessProfileAppend(line) {
   return PROFILE_FILE_RE.test(line) && HARMLESS_PROFILE_LINE_RE.test(line) && !RISKY_PROFILE_PAYLOAD_RE.test(line);
 }
@@ -281,7 +305,11 @@ export const DANGEROUS_SHELL = [
   { name: 'Locally decoded or decrypted blob piped to a shell', re: /\b(?:gpg|openssl\s+enc|xxd\s+-r|uudecode|zcat|gunzip|bunzip2|unxz)\b[^\n|]{0,160}\|\s*(?:sudo\s+)?(?:ba|z|k)?sh\b/i, severity: 'CRITICAL' },
   { name: 'Removes or switches off the NoFly guard that screens this agent (guard tamper)', re: /\bnpm\s+(?:uninstall|remove|rm|un|r)\b[^\n;&|]{0,40}@(?:nofly|shomra)\/agent\b|\b(?:nofly|shomra)\s+mcp\s+guard\b[^\n;&|]{0,40}--uninstall\b|disableAllHooks["']?\s*[:=]\s*true\b|(?:>>?|\btee\b(?:\s+-a)?)\s*['"]?[^\s'"|;&]{0,80}\.(?:nofly|shomra)ignore\b/i, severity: 'HIGH' },
   { name: 'A git object piped into a shell (a payload stored as a git blob, SkillCloak)', re: /\bgit\s+(?:cat-file|show|unpack-file)\b[^\n|]{0,160}\|\s*(?:sudo\s+)?(?:(?:ba|z|k|da)?sh|python3?|node|perl|ruby)\b/i, severity: 'HIGH' },
-  { name: 'Container escape to the host (privileged / host mount / host namespace)', re: /\b(?:docker|podman|nerdctl)\s+(?:run|create|exec)\b[^\n]{0,200}?(?:--privileged\b|--pid[= ]host\b|--userns[= ]host\b|--security-opt[= ]\S{0,40}(?:seccomp[=:]unconfined|apparmor[=:]unconfined)|--cap-add[= ](?:ALL|SYS_ADMIN|SYS_PTRACE|SYS_MODULE)\b|-v\s+\/(?:\s|:)|--volume[= ]\/:|(?:-v|--volume)[= ]\s*\/var\/run\/docker\.sock)/i, severity: 'CRITICAL' },
+  { name: 'Container escape to the host (privileged / host mount / host namespace)', re: /\b(?:(?:docker|podman|nerdctl)\s+(?:container\s+|compose\s+)?|(?:docker|podman)-compose\s+)(?:run|create|exec)\b[^\n]{0,200}?(?:--privileged\b|--pid[= ]host\b|--userns[= ]host\b|--security-opt[= ]\S{0,40}(?:seccomp[=:]unconfined|apparmor[=:]unconfined)|--cap-add[= ](?:ALL|SYS_ADMIN|SYS_PTRACE|SYS_MODULE)\b|-v\s+\/(?:\s|:)|--volume[= ]\/:|(?:-v|--volume)[= ]\s*\/var\/run\/docker\.sock|(?:-v|--volume)[= ]\s*["']?(?:~|\$\{?HOME\}?|\/home\/[\w.-]+|\/Users\/[\w.-]+|\/root)(?:\/\.(?:bashrc|zshrc|profile|bash_profile|zprofile|ssh)\b)?\/?["']?:|--mount[= ]\S*?\b(?:src|source)=["']?(?:~|\$\{?HOME\}?|\/home\/[\w.-]+|\/Users\/[\w.-]+|\/root)(?:\/\.(?:bashrc|zshrc|profile|bash_profile|zprofile|ssh)\b)?\/?["']?(?=[,\s"']|$))/i, severity: 'CRITICAL', refine: containerEscapeRefine },
+  { name: 'Sends a state-changing request straight to the container daemon socket', re: /\bcurl\b[^\n]{0,200}--unix-socket[= ]\s*["']?\S*(?:docker|podman|containerd|nerdctl)[\w.-]*\.sock\b[^\n]{0,200}?(?:-X\s*["']?(?:POST|PUT|DELETE)\b|--request[= ]\s*["']?(?:POST|PUT|DELETE)\b|\s-d\b|\s--data(?:-\w+)?\b)|\bcurl\b[^\n]{0,200}(?:-X\s*["']?(?:POST|PUT|DELETE)\b|--request[= ]\s*["']?(?:POST|PUT|DELETE)\b|\s-d\b|\s--data(?:-\w+)?\b)[^\n]{0,200}?--unix-socket[= ]\s*["']?\S*(?:docker|podman|containerd|nerdctl)[\w.-]*\.sock\b|\bsocat\b[^\n]{0,160}UNIX-(?:CONNECT|CLIENT):\S*(?:docker|podman|containerd)[\w.-]*\.sock\b/i, severity: 'CRITICAL' },
+  { name: 'Talks to the container daemon socket directly, bypassing the CLI', re: /\bcurl\b[^\n]{0,200}--unix-socket[= ]\s*["']?\S*(?:docker|podman|containerd|nerdctl)[\w.-]*\.sock\b/i, severity: 'HIGH' },
+  { name: 'Points the container CLI at a remote daemon over TCP', re: /\bDOCKER_HOST\s*=\s*["']?tcp:\/\/|\b(?:docker|podman|nerdctl)\s+(?:-H|--host)[= ]\s*["']?tcp:\/\//i, severity: 'HIGH' },
+  { name: 'Plants a developer-tool executable in the working directory (binary planting)', re: /(?:\s(?:-o|--output|-OutFile|-Destination)[= ]\s*|>\s*|\b(?:cp|copy|mv|move|Copy-Item|Move-Item)\b[^\n;&|]{0,200}\s)["']?(?:\.[\\/])?(?:git|rg|node|npm|npx|pnpm|yarn|python3?|py|pip3?|uvx?|deno|bun|gh|code|cursor|claude|codex|gemini|docker|kubectl|ssh|curl|where|cmd|powershell|pwsh|bash|sh|tar|make|go|cargo|java|dotnet|conda)\.(?:exe|com|bat|cmd)["']?(?=$|[\s;&|)])/im, severity: 'HIGH' },
   { name: 'Shares the host IPC namespace with a container (--ipc=host)', re: /\b(?:docker|podman|nerdctl)\s+(?:run|create)\b[^\n]{0,200}?--ipc[= ]host\b/i, severity: 'MEDIUM' },
   { name: 'Enters the host namespace from a container (nsenter / chroot onto a host mount)', re: /\bnsenter\b[^\n]{0,80}(?:-t\s*1\b|--target\s*1\b)|\bchroot\s+\/(?:host|mnt|proc\/1\/root)\b/i, severity: 'CRITICAL' },
   { name: 'Grants cluster-admin in Kubernetes', re: /\bkubectl\b[^\n]{0,120}\b(?:create|apply)\b[^\n]{0,120}\b(?:cluster)?rolebinding\b[^\n]{0,160}(?:--clusterrole[= ]\s*cluster-admin|cluster-admin)\b/i, severity: 'HIGH' },

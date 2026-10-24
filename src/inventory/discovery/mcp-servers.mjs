@@ -7,6 +7,31 @@ import { walkWorkspace } from './workspace.mjs';
 import { boundedJson } from '../../core/wire-limits.mjs';
 import { maskServerSecrets, parseConfigDoc, readMcpServers } from '../../detect/signals/mcp-config.mjs';
 import { claudeDataDir, jetbrainsOptionFiles, readClaudeExtensions, readJetbrainsMcpServers, readSqliteMcpServers, warpDatabases } from './mcp-stores.mjs';
+import { listenScope, readListeners } from './runtime-listen.mjs';
+
+const LOCAL_HOSTS = new Set(['localhost', '::1', '0.0.0.0', '::']);
+
+export function localPortOf(url) {
+  try {
+    const u = new URL(String(url ?? ''));
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (!LOCAL_HOSTS.has(host) && !/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return null;
+    const port = Number(u.port || (u.protocol === 'https:' ? 443 : 80));
+    return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
+  } catch {
+    return null;
+  }
+}
+
+export function mcpListen(url, listeners) {
+  const port = localPortOf(url);
+  if (!port || !Array.isArray(listeners)) return null;
+  const onPort = listeners.filter((l) => l && l.port === port);
+  if (!onPort.length) return null;
+  const pick = onPort.find((l) => listenScope(l.address) !== 'loopback') ?? onPort[0];
+  return { address: pick.address, port, scope: listenScope(pick.address), basis: 'socket', ...(pick.command ? { process: pick.command } : {}) };
+}
 
 export function vendorFromPath(file) {
   if (/[\\/]\.cursor[\\/]/.test(file)) return 'cursor';
@@ -174,6 +199,14 @@ export function discoverMcpServers(roots = [process.cwd()], files = null, opts =
         },
         content: boundedJson({ command, url: s.url, env: s.env || {}, server: s }),
       });
+    }
+  }
+  const local = assets.filter((a) => localPortOf(a.metadata.url));
+  if (local.length) {
+    const listeners = opts.listeners !== undefined ? opts.listeners : userDirs(opts.home).own ? readListeners() : null;
+    for (const a of local) {
+      const listen = mcpListen(a.metadata.url, listeners);
+      if (listen) a.metadata.listen = listen;
     }
   }
   return assets;

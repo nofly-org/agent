@@ -28,7 +28,7 @@ export const VENDOR_TOOLS = {
     settings: { file: 'settings.json', dirs: ['~/.claude', './.claude'], shape: 'claude' },
     probes: ['~/.claude', '~/.claude.json'],
     event: 'PreToolUse',
-    matcher: 'Bash|PowerShell|Monitor|Write|Edit|MultiEdit|NotebookEdit|Skill|mcp__.*',
+    matcher: 'Bash|PowerShell|Monitor|Write|Edit|MultiEdit|NotebookEdit|Skill|Task|Agent|mcp__.*',
     required: [
       { name: 'Bash', kind: 'shell' },
       /** ⚠ The shell on Windows. Missing here once, so every `npm install` an agent ran there reached no hook. */
@@ -39,6 +39,8 @@ export const VENDOR_TOOLS = {
       { name: 'MultiEdit', kind: 'edit' },
       { name: 'NotebookEdit', kind: 'edit' },
       { name: 'Skill', kind: 'skill' },
+      { name: 'Task', kind: 'spawn' },
+      { name: 'Agent', kind: 'spawn' },
       mcp,
     ],
     env: (cwd) => ({ CLAUDE_PROJECT_DIR: cwd }),
@@ -203,5 +205,6 @@ export const KIND_LABEL = {
   patch: 'patches',
   mcp: 'MCP calls',
   skill: 'skill invocations',
+  spawn: 'sub-agent starts',
   all: 'every tool',
 };

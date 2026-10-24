@@ -63,7 +63,7 @@ function normalizeGuardShape(agent, payload) {
         return { tool_name: name.startsWith('mcp__') ? name : `mcp__${server}__${name}`, tool_input: payload.tool_input ?? payload.arguments, tool_response: payload.tool_response ?? payload.result ?? jsonOrText(payload.result_json), cwd: payload.cwd || payload.workspace_roots?.[0], session_id: payload.conversation_id };
       }
       if (typeof payload.command === 'string') {
-        return { tool_name: 'Bash', tool_input: { command: payload.command }, cwd: payload.cwd || payload.workspace_roots?.[0], session_id: payload.conversation_id };
+        return { tool_name: 'Bash', tool_input: { command: payload.command }, tool_response: typeof payload.output === 'string' ? payload.output : undefined, cwd: payload.cwd || payload.workspace_roots?.[0], session_id: payload.conversation_id };
       }
       if (payload.tool_name || payload.tool) {
         const name = payload.tool_name || payload.tool;
