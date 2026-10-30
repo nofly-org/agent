@@ -131,6 +131,15 @@ export function canariesFor(vendor, { marker, dir, pkg, docker, session = `selft
         make('mcp-connect', { hook_event_name: 'BeforeTool', session_id: session, cwd, tool_name: 'run_shell_command', tool_input: { command: connect } }),
       ];
 
+    case 'qwen-code':
+      return [
+        make('shell-install', { hook_event_name: 'PreToolUse', session_id: session, cwd, tool_name: 'run_shell_command', tool_input: { command: install } }),
+        make('write-dockerfile', { hook_event_name: 'PreToolUse', session_id: session, cwd, tool_name: 'write_file', tool_input: { file_path: dockerPath, content: dockerfileText(marker) } }),
+        make('edit-manifest', { hook_event_name: 'PreToolUse', session_id: session, cwd, tool_name: 'edit', tool_input: { file_path: pkgPath, old_string: edit.old, new_string: edit.new } }),
+        make('mcp-exec', { hook_event_name: 'PreToolUse', session_id: session, cwd, tool_name: mcpTool, tool_input: { command: install } }),
+        make('mcp-connect', { hook_event_name: 'PreToolUse', session_id: session, cwd, tool_name: 'run_shell_command', tool_input: { command: connect } }),
+      ];
+
     case 'cline': {
       const call = (name, input) => ({ hookName: 'tool_call', taskId: session, workspaceRoots: [cwd], tool_call: { id: `${marker}-${name}`, name, input }, preToolUse: { toolName: name, parameters: Object.fromEntries(Object.entries(input).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)])) } });
       return [

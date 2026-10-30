@@ -5,7 +5,7 @@ const BOOLEAN_FLAGS = new Set([
   'fail-on-regression', 'fail-on-blocked', 'write', 'yes', 'stdin', 'quiet', 'help',
   'check', 'checklist', 'pre-receive', 'uninstall', 'save', 'list', 'machine',
   'all-users', 'no-owner', 'static', 'no-save', 'print-credential', 'managed', 'guard',
-  'allow-user-writable',
+  'allow-user-writable', 'trust-new-key', 'hash-only',
 ]);
 
 const VALUE_FLAGS = new Set([
@@ -24,7 +24,7 @@ const VALUE_FLAGS = new Set([
 
   'every', 'os',
 
-  'owner', 'purpose', 'workload', 'audience', 'for',
+  'owner', 'purpose', 'workload', 'audience', 'for', 'role',
 ]);
 
 export const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, ...VALUE_FLAGS]);

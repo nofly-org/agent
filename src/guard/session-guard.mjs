@@ -4,8 +4,10 @@ import { envFlag, resolveAgentFlag } from './options.mjs';
 import { baselineSessionContext } from './memory-report.mjs';
 import { applyPendingRestores, restoreSummary } from './memory-restore.mjs';
 import { readHookPayload as readPayload } from './payload.mjs';
+import { refreshRulePacksIfStale } from '../core/rule-packs.mjs';
 
 const PROBE_TIMEOUT_MS = 1500;
+const PACKS_WAIT_MS = 5000;
 
 export function sessionPosture(env, settings, reachable) {
   const remote = env.environment === 'REMOTE';
@@ -65,6 +67,8 @@ export async function cmdSessionGuard(flags) {
     const up = settings.apiKey ? await reachable(settings.url) : null;
     const posture = sessionPosture(env, settings, up);
     if (posture.message) process.stderr.write(`[nofly] ${posture.message}\n`);
+
+    if (up) await refreshRulePacksIfStale({ url: settings.url, apiKey: settings.apiKey, waitMs: PACKS_WAIT_MS });
 
     if (up && !envFlag('NOFLY_SESSION_MEMORY_OFF')) {
       const restored = await applyPendingRestores({ url: settings.url, apiKey: settings.apiKey });

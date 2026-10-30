@@ -64,9 +64,18 @@ function hookFileCandidates(agent) {
     case 'copilot': return [managedFile('copilot'), managedFile('copilot', process.platform, process.env, LEGACY_HOOK_NAME), copilotHookFile(true), copilotHookFile(false), copilotHookFile(true, LEGACY_HOOK_NAME), copilotHookFile(false, LEGACY_HOOK_NAME)].filter(Boolean);
     case 'cline': return [...clineHookDirs(true), ...clineHookDirs(false)].flatMap((d) => Object.keys(CLINE_EVENTS).map((e) => path.join(d, e)));
     case 'aider': return [path.join(home, '.aider.conf.yml'), path.join(cwd, '.aider.conf.yml')];
+    case 'qwen-code': return [path.join(home, '.qwen', 'settings.json'), path.join(cwd, '.qwen', 'settings.json')];
+    case 'augment': return [path.join(home, '.augment', 'settings.json'), path.join(cwd, '.augment', 'settings.json')];
+    case 'kiro': return [path.join(home, '.kiro', 'hooks', 'nofly.json'), path.join(cwd, '.kiro', 'hooks', 'nofly.json')];
+    case 'goose': return [path.join(home, '.agents', 'plugins', 'nofly', 'hooks', 'hooks.json'), path.join(cwd, '.agents', 'plugins', 'nofly', 'hooks', 'hooks.json')];
+    case 'opencode': return [path.join(home, '.config', 'opencode', 'plugins', 'nofly.js'), path.join(cwd, '.opencode', 'plugins', 'nofly.js')];
+    case 'amp': return [path.join(process.env.XDG_CONFIG_HOME ? path.resolve(process.env.XDG_CONFIG_HOME) : path.join(home, '.config'), 'amp', 'plugins', 'nofly.ts'), path.join(cwd, '.amp', 'plugins', 'nofly.ts')];
     default: return [];
   }
 }
+
+const AUGMENT_HOOK_RE = /nofly-(?:tool|result|session)-guard\.(?:sh|cmd)/;
+const PLUGIN_RE = /const NOFLY_PLUGIN = 'nofly (?:opencode|amp) plugin'/;
 
 export function agentHookInstalled(agent) {
   return agentHookFiles(agent).filter((f) => {
@@ -74,6 +83,8 @@ export function agentHookInstalled(agent) {
       const text = readRegularText(f);
       if (agent === 'aider') return /(?:nofly|shomra) llm guard/i.test(text);
       if (agent === 'cline') return CLINE_SCRIPT_MARK.test(text);
+      if (agent === 'augment') return AUGMENT_HOOK_RE.test(text);
+      if (agent === 'opencode' || agent === 'amp') return PLUGIN_RE.test(text);
       return NOFLY_ANY_HOOK_RE.test(text);
     } catch {
       return false;

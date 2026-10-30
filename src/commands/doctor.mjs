@@ -87,7 +87,7 @@ function scoreColour(score) {
 }
 
 function collectInventory() {
-  const assets = discoverAll();
+  const assets = discoverAll([process.cwd()], { extensions: false });
   const ofType = (type) => assets.filter((asset) => asset.type === type);
   return {
     agents: ofType('AI_AGENT'),

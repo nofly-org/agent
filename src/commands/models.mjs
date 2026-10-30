@@ -78,6 +78,12 @@ function printModel(model) {
   const more = model.locations.length > MAX_LOCATIONS_SHOWN ? ` (+${model.locations.length - MAX_LOCATIONS_SHOWN})` : '';
   console.log(`      ${dim(`used in ${shown}${more}`)}`);
 
+  if (model.lookalike) {
+    console.log(`      ${(SEV_COLOR.HIGH || dim)('HIGH'.padEnd(8))} Lookalike publisher: "${model.id.split('/')[0]}" imitates "${model.lookalike.org}" (read from the name - confirm the publisher on the hub)`);
+  }
+  if (model.safetyRemoved) {
+    console.log(`      ${(SEV_COLOR.MEDIUM || dim)('MEDIUM'.padEnd(8))} Refusal training removed: ${model.safetyRemoved} (read from the name - confirm on the model card)`);
+  }
   for (const finding of model.findings.slice(0, MAX_FINDINGS_SHOWN)) {
     console.log(`      ${(SEV_COLOR[finding.severity] || dim)(String(finding.severity).padEnd(8))} ${finding.title}`);
   }

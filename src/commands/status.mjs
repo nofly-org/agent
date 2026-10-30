@@ -8,8 +8,18 @@ import { bold, cyan, dim, gray, green, red, yellow } from '../core/terminal.mjs'
 import { VERSION } from '../core/version.mjs';
 import { envFlag } from '../guard/options.mjs';
 import { identityStatus } from './agent-identity.mjs';
+import { RULE_PACKS_STALE_MS, readRulePacks } from '../core/rule-packs.mjs';
 
-export function cmdStatus() {
+async function rulePackLine(url) {
+  const read = await readRulePacks({ url }).catch((e) => ({ error: e?.message ?? String(e) }));
+  if (!read) return `${yellow('none')}${dim(url ? ' - run: nofly packs sync' : ' - they come from a NoFly server')}`;
+  if ('error' in read) return `${red('refused')}${dim(` - ${read.error}`)}`;
+  const rules = read.packs.reduce((n, p) => n + p.rules.length, 0);
+  const stale = Date.now() - Date.parse(read.fetchedAt ?? '') > RULE_PACKS_STALE_MS;
+  return `${green(`${rules} rules`)}${dim(` in ${read.packs.length} packs, issued ${read.issuedAt}`)}${stale ? yellow(' stale') : ''}`;
+}
+
+export async function cmdStatus() {
   const cfg = loadConfig();
   const { apiKey, url } = resolveSettings(cfg);
   const enrolled = !!apiKey;
@@ -49,6 +59,8 @@ export function cmdStatus() {
     console.log(`  ${dim('Hooks    ')} ${yellow('not installed for any agent')}${dim('  (run: nofly install-hook --agent all  or  nofly protect)')}`);
   }
   console.log(`  ${dim('Tier 0   ')} ${localOff ? yellow('off') + dim(' (server-only)') : green('on') + dim(' - dangerous calls blocked on-machine, zero network')}`);
+  if (!localOff) console.log(`  ${dim('         ')} ${dim(enrolled ? 'reworded instructions are checked by your NoFly server; while it is unreachable only the on-machine rules run' : 'on-machine rules only - instructions reworded to slip past them need a NoFly server')}`);
+  console.log(`  ${dim('Rules    ')} ${await rulePackLine(url)}`);
   console.log(`  ${dim('Mode     ')} ${strict ? 'fail-closed (strict)' : 'fail-open'}${dim(` · server timeout ${guardTimeoutMs()}ms · breaker ${breakerCooldownMs()}ms`)}`);
   console.log(`  ${dim('Breaker  ')} ${breakerOpen() ? red('OPEN') + dim(' - backend recently unreachable; server tier is being skipped') : green('closed')}\n`);
 }

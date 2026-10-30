@@ -3,9 +3,12 @@ import fs from 'node:fs';
 import module from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
+import v8 from 'node:v8';
 import { adoptLegacyEnv, stateDir } from './src/core/legacy.mjs';
 
 adoptLegacyEnv();
+
+if (process.platform === 'win32') v8.setFlagsFromString('--wasm-tiering-budget=2000000000');
 
 if (typeof module.enableCompileCache === 'function') {
   try {

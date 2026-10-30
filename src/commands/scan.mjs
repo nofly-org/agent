@@ -12,6 +12,7 @@ import { discoverAll, discoveryFailures } from '../inventory/discovery.mjs';
 import { unreadMcpStores } from '../inventory/discovery/mcp-servers.mjs';
 import { mergeHomeArtifacts, mergeHomeAssets } from '../inventory/multi-home.mjs';
 import { consoleUser, isPrivileged, listUserHomes, orderHomes } from '../core/user-homes.mjs';
+import { syncRulePacks } from '../core/rule-packs.mjs';
 
 function discover(flags) {
 
@@ -74,6 +75,10 @@ export async function cmdScan(flags) {
 
   if (flags.report) {
     await sendReport(cfg, assets, flags, { artifacts, capped, available });
+    const packs = await syncRulePacks(resolveSettings(cfg)).catch((e) => ({ ok: false, error: e?.message ?? String(e) }));
+    if (!flags.json) {
+      console.log(packs.ok ? dim(`  Rule packs: ${packs.rules} rules in ${packs.packs} packs, issued ${packs.issuedAt}\n`) : yellow(`  ⚠ Rule packs not updated: ${packs.error}\n`));
+    }
   } else {
     console.log(
       dim('\n  Run ') + bold('nofly report') + dim(' to analyze these on the platform and see findings.\n'),

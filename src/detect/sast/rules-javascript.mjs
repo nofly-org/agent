@@ -1,4 +1,4 @@
-import { coinMiner, startupPersistence } from './rules-persistence.mjs';
+import { clientExposedAiKey, coinMiner, startupPersistence } from './rules-persistence.mjs';
 import { isNotAModuleLoad, isStaticPathExpr } from './path-expressions.mjs';
 import { callArgText } from './source-lines.mjs';
 import { agencyRules } from './rules-agency.mjs';
@@ -115,6 +115,7 @@ export const JS_RULES = [
     remediation: 'Remove the literal and load the key from an environment variable / secret manager at runtime. Rotate the exposed key immediately.',
     cwe: 'CWE-798',
   },
+  clientExposedAiKey(),
   ...startupPersistence('js'),
   coinMiner('js'),
   ...agencyRules('js'),

@@ -82,6 +82,21 @@ export const VENDOR_TOOLS = {
     env: (cwd) => ({ GEMINI_PROJECT_DIR: cwd }),
   },
 
+  'qwen-code': {
+    label: 'Qwen Code',
+    settings: { file: 'settings.json', dirs: ['~/.qwen', './.qwen'], shape: 'claude' },
+    probes: ['~/.qwen'],
+    event: 'PreToolUse',
+    matcher: '.*',
+    required: [
+      { name: 'run_shell_command', kind: 'shell' },
+      { name: 'write_file', kind: 'write' },
+      { name: 'edit', kind: 'edit' },
+      mcp,
+    ],
+    env: () => ({}),
+  },
+
   cline: {
     label: 'Cline',
     settings: { file: 'PreToolUse', dirs: ['~/Documents/Cline/Hooks', '~/.cline/hooks', './.clinerules/hooks', './.cline/hooks'], shape: 'cline-scripts' },

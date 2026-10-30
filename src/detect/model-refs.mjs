@@ -5,6 +5,7 @@ const QUOTED_ID = /['"]([A-Za-z0-9][\w.-]*\/[A-Za-z0-9][\w.-]*)['"]/g;
 
 const FROM_PRETRAINED_ARG = /\bfrom_pretrained\s*\(\s*(?:[A-Za-z_][\w.]*\s*,\s*)?['"]([\w./-]+)['"]/g;
 const ST_ARG = /\b(?:SentenceTransformer|CrossEncoder)\s*\(\s*['"]([\w./-]+)['"]/g;
+const LOAD_ADAPTER_ARG = /\b(load_adapter|load_lora_weights|load_textual_inversion)\s*\(\s*['"]([\w./-]+)['"]/g;
 
 const KW_ID = /\b(?:model|repo_id|model_name|model_id|model_name_or_path|pretrained_model_name_or_path|checkpoint|base_model)\s*[=:]\s*['"]([\w./-]+)['"]/gi;
 
@@ -108,6 +109,7 @@ export function scanModelRefs(text, file = '') {
 
     for (const m of raw.matchAll(FROM_PRETRAINED_ARG)) add(m[1], { revision: rev, source: 'hf', line: ln, via: 'from_pretrained', bare: true });
     for (const m of raw.matchAll(ST_ARG)) add(m[1], { revision: rev, source: 'hf', line: ln, via: 'sentence-transformers', bare: true });
+    for (const m of raw.matchAll(LOAD_ADAPTER_ARG)) add(m[2], { revision: rev, source: 'hf', line: ln, via: m[1], bare: true });
     for (const m of raw.matchAll(KW_ID)) add(m[1], { revision: rev, source: 'hf', line: ln, via: 'model= keyword', bare: true });
 
     for (const m of raw.matchAll(YAML_KW)) {

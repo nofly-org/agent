@@ -6,13 +6,13 @@ import { redactLocally } from '../detect/local-redact.mjs';
 
 const LISTING_REPORT_TIMEOUT_MS = 2000;
 
-async function postJson(url, apiKey, body, timeoutMs) {
+async function postJson(url, apiKey, body, timeoutMs, agentId) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await keyedFetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-NoFly-Key': apiKey, Connection: 'close' },
+      headers: { 'Content-Type': 'application/json', 'X-NoFly-Key': apiKey, ...(agentId ? { 'X-NoFly-Agent': agentId } : {}), Connection: 'close' },
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -55,7 +55,7 @@ export function maskedLaunchArgs(args) {
 
 const VERDICTS = new Set(['ALLOW', 'FLAG', 'BLOCK']);
 
-export async function requestConnectVerdict({ url, apiKey, server, agent, projectId }) {
+export async function requestConnectVerdict({ url, apiKey, server, agent, projectId, agentId }) {
   try {
     const response = await postJson(`${url}/gate/mcp-connect`, apiKey, {
       server: { ...server, args: maskedLaunchArgs(server.args) },
@@ -64,7 +64,7 @@ export async function requestConnectVerdict({ url, apiKey, server, agent, projec
       agent,
       projectId,
       sessionId: process.env.NOFLY_SESSION_ID || undefined,
-    }, guardTimeoutMs());
+    }, guardTimeoutMs(), agentId);
     if (!response.ok) {
       const error = new Error(`HTTP ${response.status}`);
       if (response.status >= 400 && response.status < 500 && response.status !== 401 && response.status !== 403) return { error };

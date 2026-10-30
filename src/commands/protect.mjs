@@ -1,9 +1,9 @@
-import { AGENT_INSTALLERS, AGENT_LABELS } from '../agents/installers.mjs';
+import { AGENT_INSTALLERS, AGENT_LABELS, NO_HOOK_AGENTS, noHookNote } from '../agents/installers.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { discoverAll } from '../inventory/discovery.mjs';
 
 export function cmdProtect(flags) {
-  const assets = discoverAll();
+  const assets = discoverAll([process.cwd()], { extensions: false });
   const labelToKey = Object.fromEntries(Object.entries(AGENT_LABELS).map(([k, v]) => [v, k]));
   const vendorKey = (a) => (a.vendor === 'claude-code' ? 'claude' : AGENT_INSTALLERS[a.vendor] ? a.vendor : labelToKey[a.name]);
   const seen = new Set();
@@ -34,6 +34,8 @@ export function cmdProtect(flags) {
       console.log(`  ${red('✗')} ${AGENT_LABELS[a.key]} ${dim('- ' + e.message)}`);
     }
   }
+  const hookless = [...new Set(assets.filter((a) => a.type === 'AI_AGENT' && noHookNote(a.vendor)).map((a) => a.vendor))];
+  for (const key of hookless) console.log(`  ${yellow('!')} ${NO_HOOK_AGENTS[key].label} ${dim('- ' + noHookNote(key))}`);
   if (failed) {
     process.exitCode = 1;
     console.log(red(`\n  ✗ ${failed} agent${failed > 1 ? 's were' : ' was'} NOT protected - fix the file named above and re-run.`));

@@ -24,11 +24,13 @@ const COMMANDS = () => `${bold('COMMANDS')}
   ${cyan('check')}         ${bold('Is my repo safe?')} Gate every AI artifact  ${dim('[dir] [--staged|--changed|--rev <sha>] [--fix] [--strict] [--json]')}
   ${cyan('fix')}           Remediate an artifact in place (AI)    ${dim('<file> [--apply] [--kind …] [--json]')}
   ${cyan('why')}           Explain a finding + false-positive read ${dim('<file> [--kind …] [--json]')}
-  ${cyan('gate')}          Vet ONE AI artifact before install     ${dim('<file> [--kind …] [--strict] [--json]  ·  --all for a whole repo (CI)')}
+  ${cyan('gate')}          Vet ONE AI artifact before install     ${dim('<file> [--kind …] [--strict] [--hash-only] [--json]  ·  --all for a whole repo (CI)')}
   ${cyan('scan')}          Discover AI tooling on this machine    ${dim('[--report] [--json] [--path <dir>] [--all-users]')}
   ${cyan('report')}        Discover + send inventory to your NoFly org ${dim('(alias: scan --report) [--json] [--all-users]')}
                 ${dim('--all-users (as root/SYSTEM, e.g. from an MDM) walks every OS account home into ONE report.')}
   ${cyan('status')}        Show config, enrollment + firewall health
+  ${cyan('packs')}         Keep this machine's rules in step with your NoFly server ${dim('sync [--trust-new-key] [--quiet] · status [--json]')}
+                ${dim('Learned, customer and feed rules, signed by the server and checked here, so they apply offline too.')}
   ${cyan('run')}           ${bold('Run a whole assurance playbook')} ${dim('<id> [--input k=v]… [--project <id>] [--json]  ·  --list for the catalog')}
                 ${dim('scan → red-team → harden → compliance → gate, as one command. Exits')}
                 ${dim('non-zero when a gate holds, so a pipeline can block the release.')}
@@ -104,6 +106,10 @@ const GATE = () => `${bold('GATE')}
   When enrolled + reachable, the backend layers your ORG POLICY + governance on
   top. If the backend is down it falls back to the local verdict (and says so);
   ${bold('--strict')} instead fails closed (exit 1) because org policy couldn't be verified.
+
+  ${bold('--hash-only')} (or ${bold('NOFLY_UPLOAD_CONTENT=0')}) never sends the file: the CLI sends its
+  sha256 and gets back the AI review NoFly already holds for those exact bytes,
+  if any, on top of the on-machine verdict. Org policy is not applied that way.
 
   ${bold('--all')} walks a repo/dir and gates every AI artifact at once - drop it in
   a CI job to fail the build on risky artifacts. CI environment (provider, repo,
@@ -235,11 +241,13 @@ const AGENT_IDENTITY = () => `${bold('AGENT IDENTITY')}
   servers it may invoke, whether it may run shell. Every call is authorized
   against its policy at the runtime chokepoints on top of content screening.
 
-  ${bold('On a developer machine')}: ${bold('agent-identity register --name "…" --purpose "…"')} mints
-  its shm_agt_ credential and saves it to ~/.nofly/config.json (0600); the
-  runtime firewall, ${bold('llm-proxy')} and the MCP shim present it from the next call.
-  ${bold('--for claude')} keeps one per coding agent, ${bold('--no-save')} prints it instead, and
-  ${bold('NOFLY_AGENT')} still overrides it.
+  ${bold('On a developer machine')}: ${bold('agent-identity register --name "…" --purpose "…"')} binds
+  the agent to this enrolled machine. No long-lived credential is stored: the runtime
+  firewall and the MCP shim ask for an hour-long session as they need one, and
+  suspending the agent or unbinding the machine ends it. ${bold('--static')} saves a
+  long-lived shm_agt_ credential instead, ${bold('--for claude')} keeps one per coding agent,
+  ${bold('--no-save')} prints a credential instead, and ${bold('NOFLY_AGENT')} still overrides it. Without ${bold('--role <saved role>')} the agent starts
+  Pending and every call is flagged until someone activates it in the dashboard.
 
   ${bold('In CI or a cluster')}: the workload registers ITSELF with its own identity
   token, so the agent never holds a stored credential. It is automatic in GitHub
@@ -320,7 +328,10 @@ const ENV = () => `${bold('ENV')}
   NOFLY_API_TIMEOUT_MS=30000 Per-request backend timeout for scan/gate/report (never hangs)
   NOFLY_AGENT                Agent credential (shm_agt_…) presented as x-nofly-agent (llm-proxy + firewall);
                               overrides the one \`agent-identity register\` saved
-  NOFLY_WORKLOAD             Keyless sign-in: github | gitlab | kubernetes | entra | okta. The firewall trades
+  NOFLY_GRANT                A single-use grant (shm_grt_…) for the next screened call, sent as x-nofly-grant
+  NOFLY_USER                 The person the agent acts for (email). Defaults to git user.email off CI; a claim
+  NOFLY_USER_TOKEN           That person's sign-in token, so the claim is verified rather than taken on its word
+  NOFLY_WORKLOAD            Keyless sign-in: github | gitlab | kubernetes | entra | okta. The firewall trades
                               the workload's own identity token for an hour-long agent credential and needs no
                               stored key. entra asks the Azure managed identity (AKS workload identity, App
                               Service, Container Apps, VMs); okta reads NOFLY_TOKEN_FILE or NOFLY_ID_TOKEN

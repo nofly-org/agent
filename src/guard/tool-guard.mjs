@@ -14,7 +14,9 @@ import { gateMachine } from '../core/api-client.mjs';
 import { VERSION } from '../core/version.mjs';
 import { loadConfig, resolveSettings, storedAgentCredential } from '../core/config.mjs';
 import { clearCachedCredential, workloadCredential } from '../core/workload-identity.mjs';
-import { boundedLocalScan, classifyConsequence, downrankCodeContext, grade, isPersistenceTarget, localScan } from '../detect/guard-signals.mjs';
+import { machineSessionCredential, storedMachineBinding } from '../core/machine-session.mjs';
+import { boundedLocalScan, classifyConsequence, downrankCodeContext, grade, installFindings, isPersistenceTarget, localScan } from '../detect/guard-signals.mjs';
+import { argPayloadFindings } from '../detect/signals/arg-payloads.mjs';
 import { SEV_RANK } from '../detect/signals/severity.mjs';
 import { SHELL_TOOLS_RE, WRITE_TOOLS, callSubjectTypes, guardNeedsServer, guardTargetPath, guardText, guardTouchedPaths } from './classify.mjs';
 import { patchTextOf, shellCommandOf } from './command-text.mjs';
@@ -32,10 +34,13 @@ import { readHookPayload as readPayload } from './payload.mjs';
 import { envFlag, guardWait, resolveAgentFlag } from './options.mjs';
 import { recordSelftest, selftestField } from './selftest-marker.mjs';
 import { buildGuardBody, flushQueuedReports, reportGuardDecision } from './report.mjs';
+import { grantHeader } from './presented-agent.mjs';
 import { guardHookTamper, guardStateTamper, hookTamperReason, refuseOrAsk, tamperReason } from './self-protect.mjs';
 import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
 import { readRegularText } from '../core/safe-read.mjs';
 import { gatewayEntryKey } from './gateway-entry.mjs';
+import { refreshRulePacksIfStale } from '../core/rule-packs.mjs';
+import { judgeCall, noteWrittenInjection } from './session-record.mjs';
 
 const ALLOW_VERDICT = { verdict: 'ALLOW', top: null, findings: [] };
 
@@ -133,14 +138,41 @@ function localTierDisabled() {
     || String(process.env.NOFLY_GUARD_LOCAL).toLowerCase() === 'false';
 }
 
-function screenLocally(normalized, tool, input) {
+function localInstallFindings(tool, input) {
+  if (!SHELL_TOOLS_RE.test(tool || '')) return [];
+  try {
+    return installFindings(shellCommandOf(input));
+  } catch {
+    return [];
+  }
+}
+
+function localFlowFindings(agent, normalized, tool, input) {
+  try {
+    const verdict = judgeCall({ agent, sessionId: normalized.session_id, tool, input });
+    return verdict ? [{ label: verdict.label, severity: verdict.block ? 'CRITICAL' : 'HIGH', category: 'flow' }] : [];
+  } catch {
+    return [];
+  }
+}
+
+export function markedWrite(findings, { agent, normalized, tool }) {
+  const target = guardTargetPath(normalized);
+  if (target && artifactKindFor(String(target).replace(/\\/g, '/'))) return findings;
+  const injected = findings.filter((f) => f.category === 'injection' && f.severity !== 'CRITICAL');
+  if (!injected.length) return findings;
+  noteWrittenInjection({ agent, sessionId: normalized?.session_id, tool, target });
+  return findings.filter((f) => !injected.includes(f));
+}
+
+function screenLocally(normalized, tool, input, agent) {
   const scan = boundedLocalScan(guardText(tool, input));
   const isWrite = WRITE_TOOLS.has(tool);
   const allowlisted = isWrite && guardPathAllowlisted(normalized.cwd, guardTargetPath(normalized));
 
-  let findings = scan.findings;
+  let findings = [...scan.findings, ...localInstallFindings(tool, input), ...localFlowFindings(agent, normalized, tool, input), ...argPayloadFindings(tool, input)];
   if (allowlisted) findings = [];
-  else if (isWrite) findings = downrankCodeContext(scan.findings);
+  else if (isWrite) findings = markedWrite(downrankCodeContext(scan.findings), { agent, normalized, tool });
 
   const top = findings.reduce((worst, f) => ((SEV_RANK[f.severity] ?? 0) > (SEV_RANK[worst?.severity] ?? 0) ? f : worst), null);
   return { ...grade(findings), top, findings };
@@ -281,6 +313,7 @@ async function requestServerDecision({ url, apiKey, agentId, body, agent, strict
         'Content-Type': 'application/json',
         'X-NoFly-Key': apiKey,
         ...(agentId ? { 'X-NoFly-Agent': agentId } : {}),
+        ...grantHeader(),
         Connection: 'close',
       },
       body: raw,
@@ -405,7 +438,9 @@ export async function cmdToolGuard(flags) {
   const fromWorkload = presented
     ? null
     : await workloadCredential({ url, onError: (e) => process.stderr.write(`nofly: keyless sign-in failed - ${e?.message ?? e}\n`) });
-  const agentId = presented ?? fromWorkload ?? storedAgentCredential(cfg, agent, url);
+  const binding = presented || fromWorkload ? null : storedMachineBinding(cfg, agent, url);
+  const fromMachine = binding ? await machineSessionCredential({ cfg, url, binding, onError: (e) => process.stderr.write(`nofly: machine session failed - ${e?.message ?? e}\n`) }) : null;
+  const agentId = presented ?? fromWorkload ?? fromMachine ?? storedAgentCredential(cfg, agent, url);
   const onRejected = fromWorkload ? () => clearCachedCredential() : undefined;
   const apiKey = settings.apiKey || (agentId?.startsWith('shm_agt_') ? agentId : undefined);
 
@@ -415,7 +450,7 @@ export async function cmdToolGuard(flags) {
   const viaGateway = agent === 'claude' ? gatewayEntryKey(tool, { url, cwd: normalized.cwd }) : null;
   if (viaGateway) normalized.mcp_gateway = viaGateway;
 
-  const local = localTierDisabled() ? ALLOW_VERDICT : screenLocally(normalized, tool, input);
+  const local = localTierDisabled() ? ALLOW_VERDICT : screenLocally(normalized, tool, input, agent);
   if (local.verdict === 'BLOCK') {
     recordSelftest({ stage: 'local-block', tool, reason: local.top?.label ?? 'dangerous tool call' });
     await reportGuardDecision(url, apiKey, agentId, buildGuardBody(normalized, agent, 'BLOCK', local.top?.label));
@@ -487,7 +522,7 @@ export async function cmdToolGuard(flags) {
     if (tooLarge) settleTooLarge(agent, flaggedBy);
     if (severe) askUnscreened(agent, why, flaggedBy);
     settleFlagged(agent, flaggedBy, `No NoFly verdict arrived (${why})`);
-    if (failOpenNoticeDue()) emitGuardNotice(agent, `NoFly could not reach its server (${why}), so tool calls are screened on this machine only and org policy is not applied until it answers again. Set NOFLY_GUARD_STRICT=1 to refuse calls instead.`);
+    if (failOpenNoticeDue()) emitGuardNotice(agent, `NoFly could not reach its server (${why}), so tool calls are screened on this machine only: org policy is not applied and instructions reworded to slip past the rules are not looked for until it answers again. Set NOFLY_GUARD_STRICT=1 to refuse calls instead.`);
     return process.exit(0);
   };
 
@@ -537,8 +572,10 @@ export async function cmdToolGuard(flags) {
     outcome: decision?.selftest ?? null,
   });
 
-  if (decision && typeof decision === 'object') rememberSubjectTypes(decision.subjectTypes, { url });
+  const answered = !!decision && typeof decision === 'object';
+  if (answered) rememberSubjectTypes(decision.subjectTypes, { url });
   enforceServerDecision(agent, decision);
   await recordMemoryWrite({ url, apiKey, tool, input, normalized });
+  if (answered) await refreshRulePacksIfStale({ url, apiKey: settings.apiKey });
   process.exit(0);
 }

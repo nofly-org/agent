@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { SettingsFileError, readJsonFile, writeFileAtomic, writeJsonFile } from '../core/json-file.mjs';
 import { LLM_PROXY_BASE, PACKAGE_SPEC, NOFLY_ANY_HOOK_RE, SELF_PATH, hookCommand, powershellCommand, refreshedHookCommand } from './hook-command.mjs';
+import { VERSION } from '../core/version.mjs';
 import { CLINE_EVENTS, LEGACY_HOOK_NAME, clineHookDirs, copilotHookFile, hasFlatHook, hasGroupedHook } from './hook-files.mjs';
 import { matcherFor } from './vendor-tools.mjs';
 import { readFailure, readRegularText } from '../core/safe-read.mjs';
@@ -16,9 +17,26 @@ export const AGENT_LABELS = {
   copilot: 'GitHub Copilot CLI',
   cline: 'Cline',
   aider: 'Aider',
+  'qwen-code': 'Qwen Code',
+  augment: 'Augment',
+  kiro: 'Kiro',
+  goose: 'Goose',
+  opencode: 'OpenCode',
+  amp: 'Amp',
 };
 
 export const AGENT_KEYS = Object.keys(AGENT_LABELS);
+
+export const NO_HOOK_AGENTS = {
+  zed: { label: 'Zed', why: 'Zed has no tool hook - only fixed allow, confirm and deny rules - so NoFly cannot screen its tool calls.' },
+  continue: { label: 'Continue', why: 'Continue has no tool hook - only fixed allow, ask and exclude rules in ~/.continue/permissions.yaml - so NoFly cannot screen its tool calls.' },
+  roo: { label: 'Roo Code', why: 'Roo Code has no tool hook, so NoFly cannot screen its tool calls.' },
+};
+
+export function noHookNote(key) {
+  const a = NO_HOOK_AGENTS[key];
+  return a ? `${a.why} Route its model traffic through the LLM Guard instead: start nofly llm-proxy and set its OpenAI-compatible base URL to ${LLM_PROXY_BASE}.` : null;
+}
 
 function readSettingsText(file) {
   try {
@@ -350,7 +368,232 @@ export const AGENT_INSTALLERS = {
     writeFileAtomic(file, (text.endsWith('\n') || !text ? text : text + '\n') + block);
     return { file, changed: true };
   },
+
+  'qwen-code'(global) {
+    const portable = !global;
+    const file = homeOrCwd(global, '.qwen', 'settings.json');
+    const settings = readJsonFile(file);
+    const hooks = hooksOf(settings, file);
+    let changed = false;
+    for (const [event, verb, matcher] of QWEN_EVENTS) {
+      const list = eventList(hooks, event, file);
+      if (hasGroupedHook(list, verb)) continue;
+      list.push({ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command: hookCommand(`${verb} --agent qwen-code`, { portable }), name: `nofly-${verb}`, timeout: HOOK_TIMEOUT_SEC }] });
+      changed = true;
+    }
+    if (refreshGrouped(hooks)) changed = true;
+    if (changed) writeJsonFile(file, settings);
+    return { file, changed, ...(global ? {} : { note: 'Qwen Code loads project hooks only in a folder you have trusted.' }) };
+  },
+
+  augment(global) {
+    const portable = !global;
+    const base = homeOrCwd(global, '.augment');
+    const file = path.join(base, 'settings.json');
+    const settings = readJsonFile(file);
+    const hooks = hooksOf(settings, file);
+    let changed = false;
+    for (const [event, verb, matcher] of AUGMENT_EVENTS) {
+      const script = augmentScript(base, verb);
+      if (writeIfChanged(script, augmentScriptBody(verb, portable))) changed = true;
+      const list = eventList(hooks, event, file);
+      if (list.some((g) => Array.isArray(g?.hooks) && g.hooks.some((h) => samePath(h?.command, script)))) continue;
+      list.push({ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command: script, timeout: HOOK_TIMEOUT_SEC * 1000 }] });
+      changed = true;
+    }
+    if (changed) writeJsonFile(file, settings);
+    return { file, changed, note: 'Restart Auggie so it reads the new hooks. Augment cannot pause a call for approval, so a call NoFly would ask about is refused with the reason.' };
+  },
+
+  kiro(global) {
+    const file = homeOrCwd(global, '.kiro', 'hooks', 'nofly.json');
+    return { ...writeOwnedJson(file, kiroHooks(!global)), note: 'Kiro cannot pause a call for approval, so a call NoFly would ask about is refused with the reason.' };
+  },
+
+  goose(global) {
+    const dir = homeOrCwd(global, '.agents', 'plugins', 'nofly');
+    const manifest = writeOwnedJson(path.join(dir, 'plugin.json'), { name: 'nofly', version: VERSION, description: 'NoFly runtime firewall - screens every tool call and tool result.' });
+    const hooks = writeOwnedJson(path.join(dir, 'hooks', 'hooks.json'), gooseHooks(!global));
+    return {
+      file: hooks.file,
+      changed: manifest.changed || hooks.changed,
+      note: 'Restart Goose to load the plugin. Goose runs plugin hooks with sh on every platform, so on Windows it needs Git Bash (or another sh) on PATH.',
+    };
+  },
+
+  opencode(global) {
+    const file = global ? path.join(os.homedir(), '.config', 'opencode', 'plugins', 'nofly.js') : path.join(process.cwd(), '.opencode', 'plugins', 'nofly.js');
+    return { ...writeOwnedText(file, opencodePlugin(!global)), note: 'Restart OpenCode to load the plugin.' };
+  },
+
+  amp(global) {
+    const file = global ? path.join(ampConfigDir(), 'plugins', 'nofly.ts') : path.join(process.cwd(), '.amp', 'plugins', 'nofly.ts');
+    return { ...writeOwnedText(file, ampPlugin(!global)), note: 'Amp runs plugins in the CLI - run "plugins: reload" from its command palette, or restart it.' };
+  },
 };
+
+const HOOK_TIMEOUT_SEC = 30;
+
+const QWEN_EVENTS = [
+  ['PreToolUse', 'tool-guard', '.*'],
+  ['PostToolUse', 'result-guard', '.*'],
+  ['UserPromptSubmit', 'prompt-guard', null],
+  ['SessionStart', 'session-guard', null],
+];
+
+const AUGMENT_EVENTS = [
+  ['PreToolUse', 'tool-guard', '.*'],
+  ['PostToolUse', 'result-guard', '.*'],
+  ['SessionStart', 'session-guard', null],
+];
+
+export const AUGMENT_SCRIPT_RE = /nofly-(?:tool|result|session)-guard\.(?:sh|cmd)/;
+
+export function augmentScript(base, verb, platform = process.platform) {
+  return path.join(base, 'hooks', `nofly-${verb}.${platform === 'win32' ? 'cmd' : 'sh'}`);
+}
+
+export function augmentScriptBody(verb, portable, platform = process.platform) {
+  const args = `${verb} --agent augment`;
+  if (platform !== 'win32') return `#!/bin/sh\nexec ${hookCommand(args, { portable })}\n`;
+  const run = portable ? `npx -y ${PACKAGE_SPEC} ${args}` : `"${process.execPath}" "${SELF_PATH}" ${args}`;
+  return `@echo off\r\n${run}\r\nexit /b %ERRORLEVEL%\r\n`;
+}
+
+function samePath(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const norm = (p) => path.resolve(p).replace(/\\/g, '/').toLowerCase();
+  return norm(a) === norm(b);
+}
+
+function writeIfChanged(file, body) {
+  let current = null;
+  try {
+    current = readRegularText(file);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw new SettingsFileError(`${file} could not be read (${readFailure(error)}) - nothing was changed.`);
+  }
+  if (current === body) return false;
+  writeFileAtomic(file, body);
+  if (process.platform !== 'win32') fs.chmodSync(file, 0o755);
+  return true;
+}
+
+function ownsJson(cfg) {
+  return NOFLY_ANY_HOOK_RE.test(JSON.stringify(cfg ?? {})) || cfg?.name === 'nofly';
+}
+
+function writeOwnedJson(file, desired) {
+  let current = null;
+  if (fs.existsSync(file)) {
+    current = readJsonFile(file);
+    if (!ownsJson(current)) throw new SettingsFileError(`${file} already exists and is not NoFly's - nothing was changed.`);
+  }
+  if (current && JSON.stringify(current) === JSON.stringify(desired)) return { file, changed: false };
+  writeJsonFile(file, desired);
+  return { file, changed: true };
+}
+
+export const PLUGIN_MARK_RE = /const NOFLY_PLUGIN = 'nofly (?:opencode|amp) plugin'/;
+
+function writeOwnedText(file, body) {
+  let current = null;
+  try {
+    current = readRegularText(file);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw new SettingsFileError(`${file} could not be read (${readFailure(error)}) - nothing was changed.`);
+  }
+  if (current === body) return { file, changed: false };
+  if (current != null && !PLUGIN_MARK_RE.test(current)) throw new SettingsFileError(`${file} already exists and is not NoFly's - nothing was changed.`);
+  writeFileAtomic(file, body);
+  return { file, changed: true };
+}
+
+function kiroHook(name, trigger, verb, portable) {
+  return { name, trigger, action: { type: 'command', command: hookCommand(`${verb} --agent kiro`, { portable }) }, timeout: HOOK_TIMEOUT_SEC, enabled: true };
+}
+
+export function kiroHooks(portable) {
+  return {
+    version: 'v1',
+    hooks: [
+      kiroHook('NoFly Tool Guard', 'PreToolUse', 'tool-guard', portable),
+      kiroHook('NoFly Result Guard', 'PostToolUse', 'result-guard', portable),
+      kiroHook('NoFly Session Guard', 'SessionStart', 'session-guard', portable),
+    ],
+  };
+}
+
+export function gooseHooks(portable) {
+  const entry = (verb) => [{ hooks: [{ type: 'command', command: hookCommand(`${verb} --agent goose`, { portable }), timeout: HOOK_TIMEOUT_SEC }] }];
+  return { hooks: { PreToolUse: entry('tool-guard'), PostToolUse: entry('result-guard'), SessionStart: entry('session-guard') } };
+}
+
+export function ampConfigDir(env = process.env) {
+  return env.XDG_CONFIG_HOME ? path.join(path.resolve(env.XDG_CONFIG_HOME), 'amp') : path.join(os.homedir(), '.config', 'amp');
+}
+
+const PLUGIN_TIMEOUT_MS = 30_000;
+
+function pluginRunner(agent, portable) {
+  const run = portable ? { cmd: 'npx', args: ['-y', PACKAGE_SPEC], shell: true } : { cmd: process.execPath, args: [SELF_PATH], shell: false };
+  return [
+    "import { spawnSync } from 'node:child_process';",
+    `const NOFLY_PLUGIN = 'nofly ${agent} plugin';`,
+    `const RUN = ${JSON.stringify(run)};`,
+    'function nofly(verb, payload) {',
+    `  const r = spawnSync(RUN.cmd, [...RUN.args, verb, '--agent', '${agent}'], { input: JSON.stringify(payload), encoding: 'utf8', timeout: ${PLUGIN_TIMEOUT_MS}, windowsHide: true, shell: RUN.shell && process.platform === 'win32' });`,
+    '  try {',
+    "    return JSON.parse(String(r.stdout || '').trim() || '{}');",
+    '  } catch {',
+    '    return {};',
+    '  }',
+    '}',
+    "const refused = (res) => res.decision === 'deny' || res.decision === 'ask';",
+  ].join('\n');
+}
+
+export function opencodePlugin(portable) {
+  return `${pluginRunner('opencode', portable)}
+const pending = new Map();
+export const NoFly = async ({ directory }) => ({
+  'tool.execute.before': async (input, output) => {
+    if (pending.size > 1000) pending.clear();
+    pending.set(input.callID, output.args);
+    const res = nofly('tool-guard', { tool_name: input.tool, tool_input: output.args, session_id: input.sessionID, cwd: directory });
+    if (refused(res)) throw new Error(String(res.reason || 'Blocked by NoFly.'));
+  },
+  'tool.execute.after': async (input, output) => {
+    const args = pending.get(input.callID);
+    pending.delete(input.callID);
+    if (typeof output.output !== 'string') return;
+    const res = nofly('result-guard', { tool_name: input.tool, tool_input: args ?? {}, tool_response: output.output, session_id: input.sessionID, cwd: directory });
+    if (res.decision === 'block') output.output = String(res.output ?? \`[\${res.reason}]\`);
+    else if (res.decision === 'context' && res.note) output.output = \`\${output.output}\\n\\n[NoFly] \${res.note}\`;
+  },
+});
+`;
+}
+
+export function ampPlugin(portable) {
+  return `${pluginRunner('amp', portable)}
+export default function (amp: any) {
+  amp.on('tool.call', async (event: any) => {
+    const command = amp.helpers?.shellCommandFromToolCall?.(event);
+    const shell = typeof command === 'string' && command.trim() !== '';
+    const res = nofly('tool-guard', { tool_name: shell ? 'Bash' : event.tool, tool_input: shell ? { command } : event.input, session_id: event.thread?.id, cwd: process.cwd() });
+    if (refused(res)) return { action: 'reject-and-continue', message: String(res.reason || 'Blocked by NoFly.') };
+    return { action: 'allow' };
+  });
+  amp.on('tool.result', async (event: any) => {
+    if (event.status !== 'done' || typeof event.output !== 'string') return;
+    const res = nofly('result-guard', { tool_name: event.tool, tool_input: event.input, tool_response: event.output, session_id: event.thread?.id, cwd: process.cwd() });
+    if (res.decision === 'block') return { status: 'done', output: String(res.output ?? \`[\${res.reason}]\`) };
+    if (res.decision === 'context' && res.note) return { status: 'done', output: \`\${event.output}\\n\\n[NoFly] \${res.note}\` };
+  });
+}
+`;
+}
 
 const CODEX_TRUST_NOTE = 'Codex runs a new hook only after you trust it - approve the NoFly hooks in the review Codex shows at its next start, or they will not run.';
 
@@ -525,4 +768,64 @@ export const AGENT_UNINSTALLERS = {
     else writeFileAtomic(file, next);
     return { file, changed: true, removed: 1 };
   },
+  'qwen-code': (global) => uninstallJson(homeOrCwd(global, '.qwen', 'settings.json'), nestedStrip(stripGrouped)),
+  augment(global) {
+    const base = homeOrCwd(global, '.augment');
+    const isOurs = (h) => AUGMENT_SCRIPT_RE.test(String(h?.command ?? ''));
+    const strip = (list) => {
+      let removed = 0;
+      for (let i = list.length - 1; i >= 0; i--) {
+        const g = list[i];
+        if (!Array.isArray(g?.hooks)) continue;
+        const kept = g.hooks.filter((h) => !isOurs(h));
+        removed += g.hooks.length - kept.length;
+        if (!kept.length) list.splice(i, 1);
+        else if (kept.length !== g.hooks.length) g.hooks = kept;
+      }
+      return removed;
+    };
+    const res = uninstallJson(path.join(base, 'settings.json'), nestedStrip(strip));
+    let scripts = 0;
+    for (const [, verb] of AUGMENT_EVENTS) scripts += removeOwned(augmentScript(base, verb), (t) => NOFLY_ANY_HOOK_RE.test(t));
+    return { ...res, changed: res.changed || scripts > 0, removed: res.removed + scripts };
+  },
+  kiro(global) {
+    const file = homeOrCwd(global, '.kiro', 'hooks', 'nofly.json');
+    const removed = removeOwned(file, (t) => NOFLY_ANY_HOOK_RE.test(t));
+    return { file, changed: removed > 0, removed };
+  },
+  goose(global) {
+    const dir = homeOrCwd(global, '.agents', 'plugins', 'nofly');
+    const hooks = path.join(dir, 'hooks', 'hooks.json');
+    const removed = removeOwned(hooks, (t) => NOFLY_ANY_HOOK_RE.test(t)) + removeOwned(path.join(dir, 'plugin.json'), (t) => /"name"\s*:\s*"nofly"/.test(t));
+    for (const d of [path.join(dir, 'hooks'), dir]) {
+      try {
+        if (fs.existsSync(d) && !fs.readdirSync(d).length) fs.rmdirSync(d);
+      } catch {
+      }
+    }
+    return { file: hooks, changed: removed > 0, removed };
+  },
+  opencode(global) {
+    const file = global ? path.join(os.homedir(), '.config', 'opencode', 'plugins', 'nofly.js') : path.join(process.cwd(), '.opencode', 'plugins', 'nofly.js');
+    const removed = removeOwned(file, (t) => PLUGIN_MARK_RE.test(t));
+    return { file, changed: removed > 0, removed };
+  },
+  amp(global) {
+    const file = global ? path.join(ampConfigDir(), 'plugins', 'nofly.ts') : path.join(process.cwd(), '.amp', 'plugins', 'nofly.ts');
+    const removed = removeOwned(file, (t) => PLUGIN_MARK_RE.test(t));
+    return { file, changed: removed > 0, removed };
+  },
 };
+
+function removeOwned(file, owned) {
+  let text = null;
+  try {
+    text = readRegularText(file);
+  } catch {
+    return 0;
+  }
+  if (!owned(text)) return 0;
+  fs.rmSync(file, { force: true });
+  return 1;
+}

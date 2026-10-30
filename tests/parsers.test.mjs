@@ -12,6 +12,7 @@ import { parseYaml } from '../src/core/yaml-lite.mjs';
 import { listZipEntries } from '../src/core/zip-lite.mjs';
 import { parseConfigDoc } from '../src/detect/signals/mcp-config.mjs';
 import { localGate } from '../src/detect/guard-signals.mjs';
+import { SNAPSHOT_INTEL, loadPackageIntel } from '../src/detect/signals/package-names.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(HERE, '..', 'nofly.mjs');
@@ -36,8 +37,13 @@ test('TOML strings keep their # and ], and a multi-line string cannot hide the r
 
 test('a Codex config with # inside a string is still graded', () => {
   const content = '[mcp_servers.h]\nargs = ["-y", "crossenv", "--label", " #prod"]\ncommand = "npx"\n';
-  const result = localGate(content, { kind: 'mcp', path: '.codex/config.toml' });
-  assert.ok(result.findings.some((f) => f.severity === 'CRITICAL' && /known-malicious package/i.test(f.title)), JSON.stringify(result.findings));
+  loadPackageIntel({ ...SNAPSHOT_INTEL, malicious: [...SNAPSHOT_INTEL.malicious, { ecosystem: 'npm', name: 'crossenv', versions: null, id: 'MAL-TEST-1', modified: new Date().toISOString(), summary: 'crossenv' }] }, 'test');
+  try {
+    const result = localGate(content, { kind: 'mcp', path: '.codex/config.toml' });
+    assert.ok(result.findings.some((f) => f.severity === 'CRITICAL' && /known-malicious package/i.test(f.title)), JSON.stringify(result.findings));
+  } finally {
+    loadPackageIntel(SNAPSHOT_INTEL, 'snapshot');
+  }
 });
 
 function zip(entries) {

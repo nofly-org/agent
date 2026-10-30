@@ -38,6 +38,7 @@ export const COMMANDS = {
   plan: (f, p) => import('../commands/plan.mjs').then((m) => m.cmdPlan(f, p)),
   corpus: (f, p) => import('../commands/corpus.mjs').then((m) => m.cmdCorpus(f, p)),
   rules: (f, p) => import('../commands/rules.mjs').then((m) => m.cmdRules(f, p)),
+  packs: (f, p) => import('../commands/packs.mjs').then((m) => m.cmdPacks(f, p)),
   design: (f, p) => import('../commands/design.mjs').then((m) => m.cmdDesign(f, p)),
   add: (f, p) => import('../commands/add.mjs').then((m) => m.cmdAdd(f, p)),
   'install-hook': (f) => import('../commands/install-hook.mjs').then((m) => m.cmdInstallHook(f)),

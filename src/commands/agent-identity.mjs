@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { api } from '../core/api-client.mjs';
 import { git } from '../core/git-exec.mjs';
-import { loadConfig, resolveSettings, saveAgentCredential } from '../core/config.mjs';
+import { getMachineId, loadConfig, resolveSettings, saveAgentCredential } from '../core/config.mjs';
 import { EXIT_USAGE, exitNotConfigured } from '../core/exit-codes.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { WORKLOAD_SOURCES, platformToken, workloadCachePath, workloadKey, workloadSource, writeCachedCredential } from '../core/workload-identity.mjs';
@@ -36,7 +36,27 @@ export async function cmdAgentIdentity(flags, positional) {
     process.exit(EXIT_USAGE);
   }
   if (source) return registerKeyless(flags, { url, apiKey, source });
+  if (!inCi() && !flags.static && !flags['no-save']) return registerOnMachine(flags, { url, apiKey, cfg });
   return registerWithCredential(flags, { url, apiKey });
+}
+
+async function registerOnMachine(flags, { url, apiKey, cfg }) {
+  const res = await callRegister(url, apiKey, { ...registrationBody(flags), machineBound: true, machineId: getMachineId(cfg) });
+  const target = credentialTarget(flags);
+  let savedTo = null;
+  try {
+    savedTo = saveAgentCredential(target, { machineBound: true, slug: res.slug, name: res.name, url, savedAt: new Date().toISOString() });
+  } catch (e) {
+    console.error(yellow(`  ! The binding could not be saved (${e.message}). Re-run on this machine, or pass --static to use a stored credential.`));
+  }
+  if (flags.json) {
+    console.log(JSON.stringify({ ...res, credential: undefined }, null, 2));
+    return;
+  }
+  console.log(`\n  ${green('✓')} Registered agent identity ${bold(res.name)} ${dim('(' + res.slug + ' · ' + res.type + ')')} bound to this machine`);
+  console.log(dim('    No long-lived credential was stored. The firewall on this machine asks for an hour-long session as it needs one.'));
+  if (savedTo) console.log(dim(`    Binding saved to ${savedTo}${target !== 'default' ? ` for ${target}` : ''}. Use --static for a stored credential instead.`));
+  afterRegistration(res);
 }
 
 export function registrationWorkload(flags, env = process.env) {
@@ -68,6 +88,7 @@ export function registrationBody(flags) {
     ownerEmail: ownerEmail(flags),
     projectId: flags.project ? String(flags.project) : undefined,
     description: purpose || undefined,
+    role: flags.role ? String(flags.role).trim() : undefined,
   };
 }
 
@@ -168,7 +189,7 @@ async function registerKeyless(flags, { url, apiKey, source }) {
 
 function afterRegistration(res) {
   if (res.status === 'PENDING') {
-    console.log(`\n  ${yellow('!')} ${bold('Awaiting a second approver.')} ${dim('It works once someone other than its creator activates it in the dashboard.')}`);
+    console.log(`\n  ${yellow('!')} ${bold('Pending until someone activates it.')} ${dim('Every call it makes is flagged until it is activated in the dashboard. Pass --role <saved role> to register it under a policy someone already approved.')}`);
   }
   if (res.owner) {
     console.log(`  ${dim('Owner:')} ${res.owner.email ?? res.owner.name}`);
@@ -233,5 +254,7 @@ export function identityStatus(cfg, url, env = process.env) {
   const all = cfg?.agentCredentials && typeof cfg.agentCredentials === 'object' ? cfg.agentCredentials : {};
   const saved = Object.entries(all).filter(([, e]) => typeof e?.credential === 'string' && e.credential.startsWith('shm_agt_') && (!url || !e.url || e.url === url));
   if (saved.length) return `saved credential for ${saved.map(([k, e]) => `${k} (${e.slug ?? e.credential.slice(0, 14)})`).join(', ')}`;
+  const bound = Object.entries(all).filter(([, e]) => e?.machineBound === true && typeof e.slug === 'string' && (!url || !e.url || e.url === url));
+  if (bound.length) return `bound to this machine for ${bound.map(([k, e]) => `${k} (${e.slug})`).join(', ')} - hour-long sessions, no stored credential`;
   return null;
 }

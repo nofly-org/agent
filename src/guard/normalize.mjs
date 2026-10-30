@@ -115,13 +115,24 @@ function normalizeGuardShape(agent, payload) {
       };
     case 'cline':
       return clineShape(payload);
-    case 'gemini': {
+    case 'gemini':
+    case 'qwen-code': {
       const mcp = payload.mcp_context;
       const server = typeof mcp?.server_name === 'string' ? mcp.server_name.trim().replace(/__/g, '_') : '';
       const leaf = typeof mcp?.tool_name === 'string' ? mcp.tool_name.trim() : '';
       const name = server && leaf && !String(payload.tool_name ?? '').startsWith('mcp__') ? `mcp__${server}__${leaf}` : payload.tool_name;
       return { tool_name: name, tool_input: payload.tool_input, tool_response: payload.tool_response, cwd: payload.cwd, session_id: payload.session_id };
     }
+    case 'augment':
+      return augmentShape(payload);
+    case 'kiro':
+      return kiroShape(payload);
+    case 'goose':
+      return gooseShape(payload);
+    case 'opencode':
+      return opencodeShape(payload);
+    case 'amp':
+      return ampShape(payload);
     case 'codex':
     case 'claude':
     case 'aider':
@@ -184,6 +195,115 @@ function clineShape(payload) {
     cwd: payload.workspaceRoots?.[0] ?? payload.cwd,
     session_id: payload.taskId ?? payload.task_id ?? payload.session_id,
   };
+}
+
+const textOf = (v) => (typeof v === 'string' ? v : undefined);
+
+function writeOrEdit(path, content, oldText, newText) {
+  if (typeof oldText === 'string') return { tool_name: 'Edit', tool_input: { file_path: path, old_string: oldText, new_string: textOf(newText) ?? '' } };
+  return { tool_name: 'Write', tool_input: { file_path: path, content: textOf(content) ?? '' } };
+}
+
+function mcpName(server, leaf) {
+  return `mcp__${String(server || 'server').replace(/__/g, '_')}__${leaf || 'tool'}`;
+}
+
+function augmentTool(name, input) {
+  const i = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  switch (name) {
+    case 'launch-process':
+      return { tool_name: 'Bash', tool_input: { command: textOf(i.command) ?? '' } };
+    case 'save-file':
+      return { tool_name: 'Write', tool_input: { file_path: i.path, content: textOf(i.file_content) ?? textOf(i.content) ?? '' } };
+    case 'str-replace-editor':
+      return writeOrEdit(i.path, i.file_text, i.old_str_1 ?? i.old_str, i.new_str_1 ?? i.new_str);
+    case 'view':
+      return { tool_name: 'Read', tool_input: { file_path: i.path } };
+    case 'web-fetch':
+      return { tool_name: 'WebFetch', tool_input: { url: i.url, ...i } };
+    default:
+      return { tool_name: name, tool_input: input };
+  }
+}
+
+function augmentShape(payload) {
+  const name = String(payload.tool_name ?? '');
+  const mapped = payload.is_mcp_tool ? { tool_name: mcpName('augment', name), tool_input: objectArgs(payload.tool_input) } : augmentTool(name, payload.tool_input);
+  return { ...mapped, tool_response: payload.tool_output ?? payload.tool_error, cwd: payload.workspace_roots?.[0] ?? payload.cwd, session_id: payload.conversation_id ?? payload.session_id };
+}
+
+function kiroTool(name, input) {
+  const i = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  if (/^(?:execute_bash|execute_cmd|executeBash|shell)$/i.test(name)) return { tool_name: 'Bash', tool_input: { command: textOf(i.command) ?? '' } };
+  if (/^(?:fs_write|write|fsWrite)$/i.test(name)) return writeOrEdit(i.path, i.file_text ?? i.content ?? i.new_str, i.command === 'str_replace' ? i.old_str : undefined, i.new_str);
+  if (/^(?:fs_read|read|fsRead)$/i.test(name)) return { tool_name: 'Read', tool_input: { file_path: i.path ?? i.operations?.[0]?.path, ...i } };
+  if (/^(?:web_fetch|webFetch)$/i.test(name)) return { tool_name: 'WebFetch', tool_input: { url: i.url, ...i } };
+  const mcp = /^mcp_([^_]+)_(.+)$/.exec(name);
+  if (mcp) return { tool_name: mcpName(mcp[1], mcp[2]), tool_input: objectArgs(input) };
+  return { tool_name: name, tool_input: input };
+}
+
+function kiroShape(payload) {
+  return { ...kiroTool(String(payload.tool_name ?? ''), payload.tool_input), tool_response: payload.tool_response ?? payload.tool_result, cwd: payload.cwd, session_id: payload.session_id };
+}
+
+function gooseTool(name, input) {
+  const i = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  if (name === 'developer__shell') return { tool_name: 'Bash', tool_input: { command: textOf(i.command) ?? '' } };
+  if (name === 'developer__text_editor') {
+    if (i.command === 'view') return { tool_name: 'Read', tool_input: { file_path: i.path } };
+    return writeOrEdit(i.path, i.file_text ?? i.new_str, i.command === 'str_replace' ? i.old_str : undefined, i.new_str);
+  }
+  const ext = /^([^_]+(?:_[^_]+)*?)__(.+)$/.exec(name);
+  if (ext) return { tool_name: mcpName(ext[1], ext[2]), tool_input: objectArgs(input) };
+  return { tool_name: name, tool_input: input };
+}
+
+function gooseShape(payload) {
+  return { ...gooseTool(String(payload.tool_name ?? ''), payload.tool_input), tool_response: payload.tool_response ?? payload.tool_output, cwd: payload.working_dir ?? payload.cwd, session_id: payload.session_id };
+}
+
+const OPENCODE_BUILTINS = new Set(['bash', 'edit', 'write', 'read', 'grep', 'glob', 'list', 'patch', 'todowrite', 'todoread', 'webfetch', 'websearch', 'codesearch', 'task', 'multiedit', 'skill']);
+
+function opencodeTool(name, input) {
+  const i = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  switch (name) {
+    case 'bash':
+      return { tool_name: 'Bash', tool_input: { command: textOf(i.command) ?? '' } };
+    case 'write':
+      return { tool_name: 'Write', tool_input: { file_path: i.filePath, content: textOf(i.content) ?? '' } };
+    case 'edit':
+      return { tool_name: 'Edit', tool_input: { file_path: i.filePath, old_string: textOf(i.oldString) ?? '', new_string: textOf(i.newString) ?? '' } };
+    case 'read':
+      return { tool_name: 'Read', tool_input: { file_path: i.filePath } };
+    case 'webfetch':
+      return { tool_name: 'WebFetch', tool_input: { url: i.url, ...i } };
+    case 'patch':
+      return { tool_name: 'apply_patch', tool_input: { input: textOf(i.patchText) ?? '' } };
+    default: {
+      const mcp = !OPENCODE_BUILTINS.has(name) && /^([^_]+)_(.+)$/.exec(name);
+      return mcp ? { tool_name: mcpName(mcp[1], mcp[2]), tool_input: objectArgs(input) } : { tool_name: name, tool_input: input };
+    }
+  }
+}
+
+function opencodeShape(payload) {
+  return { ...opencodeTool(String(payload.tool_name ?? ''), payload.tool_input), tool_response: payload.tool_response, cwd: payload.cwd, session_id: payload.session_id };
+}
+
+function ampTool(name, input) {
+  const i = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  if (/^(?:Bash|shell_command)$/.test(name)) return { tool_name: 'Bash', tool_input: { command: textOf(i.command) ?? textOf(i.cmd) ?? '' } };
+  if (name === 'edit_file') return writeOrEdit(i.path, i.new_str, i.old_str, i.new_str);
+  if (name === 'create_file') return { tool_name: 'Write', tool_input: { file_path: i.path, content: textOf(i.content) ?? '' } };
+  if (name === 'Read') return { tool_name: 'Read', tool_input: { file_path: i.path } };
+  if (name === 'read_web_page') return { tool_name: 'WebFetch', tool_input: { url: i.url, ...i } };
+  if (name === 'apply_patch') return { tool_name: 'apply_patch', tool_input: typeof input === 'string' ? { input } : i };
+  return { tool_name: name, tool_input: input };
+}
+
+function ampShape(payload) {
+  return { ...ampTool(String(payload.tool_name ?? ''), payload.tool_input), tool_response: payload.tool_response, cwd: payload.cwd, session_id: payload.session_id };
 }
 
 function jsonOrText(value) {

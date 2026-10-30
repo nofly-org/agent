@@ -83,6 +83,33 @@ function oncePerFile(ctx, id) {
   return true;
 }
 
+const PUBLIC_AI_KEY_RE =
+  /\b(?:NEXT_PUBLIC|NUXT_PUBLIC|EXPO_PUBLIC|REACT_APP|VUE_APP|VITE|GATSBY|PUBLIC)_(?:[A-Z0-9]+_)*?(?:AZURE_OPENAI|OPENAI|ANTHROPIC|CLAUDE|GEMINI|GOOGLE_(?:AI|GENAI|GENERATIVE_AI)|GENAI|VERTEX(?:_AI)?|GROQ|MISTRAL|COHERE|HUGGING_?FACE|HF|REPLICATE|TOGETHER(?:_AI)?|PERPLEXITY|PPLX|DEEPSEEK|XAI|GROK|FIREWORKS|OPENROUTER|ELEVEN_?LABS|ASSEMBLY_?AI|DEEPGRAM|STABILITY(?:_AI)?|VOYAGE(?:_AI)?|PINECONE|LANGCHAIN|LANGSMITH|AI21|CEREBRAS|LLM|AI)_(?:[A-Z0-9]+_)*?(?:API_?KEY|SECRET(?:_KEY)?|ACCESS_TOKEN|AUTH_TOKEN|TOKEN|KEY)\b/;
+const SERVER_ONLY_FILE_RE = /(?:^|[\\/])(?:pages[\\/]api|server|lib[\\/]server)[\\/]|(?:^|[\\/])(?:route|middleware)\.[cm]?[jt]s$|[.+]server\.[cm]?[jt]s$|\+api\.[cm]?[jt]s$/;
+const SERVER_ONLY_TEXT_RE = /^\s*['"]use server['"]|\bimport\s+['"]server-only['"]/m;
+
+export function clientExposedAiKey() {
+  return {
+    id: 'js.client_exposed_ai_key',
+    title: 'AI-provider key read from a public build variable',
+    severity: 'HIGH',
+    category: 'secret',
+    confidence: 0.8,
+    re: PUBLIC_AI_KEY_RE,
+    sink: (m) => m[0],
+    source: 'public build variable',
+    suppress: (m, _unit, ctx) => {
+      if (SERVER_ONLY_FILE_RE.test(ctx.file ?? '') || SERVER_ONLY_TEXT_RE.test(liveLines(ctx).join('\n'))) return true;
+      return !oncePerFile(ctx, `js.client_exposed_ai_key:${m[0]}`);
+    },
+    message:
+      'Reads an AI-provider key from a public build variable. The VITE_, NEXT_PUBLIC_, REACT_APP_, EXPO_PUBLIC_, VUE_APP_, GATSBY_, NUXT_PUBLIC_ and PUBLIC_ prefixes tell the bundler to inline the value into the JavaScript it serves, so anyone who opens the app can read the key out of the bundle and spend against the provider account - or reach the files, fine-tunes and assistants it holds.',
+    remediation:
+      'Call the model from your own server route and read the key there from a variable without the public prefix - the browser calls your route, never the provider. Then rotate the key: every build that shipped it has published it.',
+    cwe: 'CWE-522',
+  };
+}
+
 export function startupPersistence(lang) {
   const autostart = `${lang}.autostart_install`;
   const rcCommand = `${lang}.shell_rc_command`;

@@ -161,7 +161,7 @@ test('a cluster workload is keyed by the subject its own token names', () => {
   assert.equal(readCachedCredential(file, { url: 'u', source: 'kubernetes', audience: 'aud', workload: b }), null);
 });
 
-test('register on a laptop saves the credential instead of printing it, and sends the purpose and owner', async () => {
+test('register on a laptop binds the agent to this machine and stores no credential', async () => {
   const s = await serve({
     'POST /agents/register': (body) => [201, { id: 'a1', slug: 'inbox-triage', name: 'Inbox Triage', type: 'coding-agent', status: 'ACTIVE', description: body.description, owner: { email: body.ownerEmail }, credential: AGT, credentialPrefix: AGT.slice(0, 14), reviewDueAt: '2027-04-02T00:00:00.000Z', registration: { existing: false, keyless: false } }],
   });
@@ -169,9 +169,34 @@ test('register on a laptop saves the credential instead of printing it, and send
     const out = await cli(['agent-identity', 'register', '--name', 'Inbox Triage', '--type', 'coding-agent', '--purpose', 'Sorts and labels the support inbox', '--owner', 'dana@acme.com', '--for', 'claude'], { NOFLY_URL: s.url, NOFLY_API_KEY: 'shm_live_test' });
     assert.equal(out.code, 0, out.stderr);
     const sent = s.seen.find((x) => x.url === '/agents/register').body;
+    assert.equal(sent.machineBound, true);
+    assert.equal(typeof sent.machineId, 'string');
+    assert.equal(sent.description, 'Sorts and labels the support inbox');
+    assert.equal(sent.ownerEmail, 'dana@acme.com');
+    const cfg = JSON.parse(fs.readFileSync(path.join(out.home, '.nofly', 'config.json'), 'utf8'));
+    assert.equal(cfg.agentCredentials.claude.machineBound, true);
+    assert.equal(cfg.agentCredentials.claude.slug, 'inbox-triage');
+    assert.equal(cfg.agentCredentials.claude.credential, undefined, 'no long-lived credential is stored');
+    assert.ok(!out.stdout.includes(AGT));
+    assert.match(out.stdout, /bound to this machine/);
+    assert.match(out.stdout, /Review due 2027-04-02/);
+  } finally {
+    await s.close();
+  }
+});
+
+test('register --static on a laptop saves the credential instead of printing it, and sends the purpose and owner', async () => {
+  const s = await serve({
+    'POST /agents/register': (body) => [201, { id: 'a1', slug: 'inbox-triage', name: 'Inbox Triage', type: 'coding-agent', status: 'ACTIVE', description: body.description, owner: { email: body.ownerEmail }, credential: AGT, credentialPrefix: AGT.slice(0, 14), reviewDueAt: '2027-04-02T00:00:00.000Z', registration: { existing: false, keyless: false } }],
+  });
+  try {
+    const out = await cli(['agent-identity', 'register', '--static', '--name', 'Inbox Triage', '--type', 'coding-agent', '--purpose', 'Sorts and labels the support inbox', '--owner', 'dana@acme.com', '--for', 'claude'], { NOFLY_URL: s.url, NOFLY_API_KEY: 'shm_live_test' });
+    assert.equal(out.code, 0, out.stderr);
+    const sent = s.seen.find((x) => x.url === '/agents/register').body;
     assert.equal(sent.description, 'Sorts and labels the support inbox');
     assert.equal(sent.ownerEmail, 'dana@acme.com');
     assert.equal(sent.workloadToken, undefined);
+    assert.equal(sent.machineBound, undefined);
     const cfg = JSON.parse(fs.readFileSync(path.join(out.home, '.nofly', 'config.json'), 'utf8'));
     assert.equal(cfg.agentCredentials.claude.credential, AGT);
     assert.equal(cfg.agentCredentials.claude.url, s.url);

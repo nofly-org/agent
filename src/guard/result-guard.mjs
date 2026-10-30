@@ -12,6 +12,8 @@ import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
 import { resultText, sendableResponse, withheldOutput } from './result-shape.mjs';
 import { readHookPayload as readPayload } from './payload.mjs';
 import { gatewayEntryKey } from './gateway-entry.mjs';
+import { noteResult } from './session-record.mjs';
+import { agentHeader, keyFor, presentedAgent } from './presented-agent.mjs';
 
 function readHookPayload() {
   return readPayload() ?? process.exit(0);
@@ -89,13 +91,13 @@ function reportUnauthenticated(agent, status, strict, screen, refuse) {
   exitWithoutVerdict(agent, screen);
 }
 
-async function requestServerDecision({ url, apiKey, body, agent, strict, screen, refuse }) {
+async function requestServerDecision({ url, apiKey, agentId, body, agent, strict, screen, refuse }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), guardTimeoutMs());
   try {
     const response = await keyedFetch(`${url}/gate/tool-result`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-NoFly-Key': apiKey, Connection: 'close' },
+      headers: { 'Content-Type': 'application/json', 'X-NoFly-Key': apiKey, ...agentHeader(agentId), Connection: 'close' },
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -125,7 +127,11 @@ async function requestServerDecision({ url, apiKey, body, agent, strict, screen,
 export async function cmdResultGuard(flags) {
   const agent = resolveAgentFlag(flags);
   const strict = envFlag('NOFLY_GUARD_STRICT');
-  const { apiKey, url } = resolveSettings(loadConfig());
+  const cfg = loadConfig();
+  const settings = resolveSettings(cfg);
+  const { url } = settings;
+  const agentId = await presentedAgent(flags, { cfg, agent, url });
+  const apiKey = keyFor(settings.apiKey, agentId);
 
   const payload = readHookPayload();
   const normalized = normalizeGuardInput(agent, payload);
@@ -138,6 +144,12 @@ export async function cmdResultGuard(flags) {
 
   if (unscreenedShellResult(normalized, response)) process.exit(0);
   const screen = screenResponse(normalized, response);
+  if (!localTierDisabled()) {
+    try {
+      noteResult({ agent, sessionId: normalized.session_id, tool: String(normalized.tool_name ?? ''), findings: screen.findings });
+    } catch {
+    }
+  }
   if (!localTierDisabled() && !screen.suppressBlock && screen.verdict === 'BLOCK') {
     const worst = screen.findings.find((f) => f.severity === 'CRITICAL') || screen.findings[0];
     const label = worst?.label || 'malicious content';
@@ -155,6 +167,7 @@ export async function cmdResultGuard(flags) {
   const decision = await requestServerDecision({
     url,
     apiKey,
+    agentId,
     agent,
     strict,
     screen,

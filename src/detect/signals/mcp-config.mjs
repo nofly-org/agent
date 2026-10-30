@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { assessUrl } from './egress.mjs';
-import { MALICIOUS_PACKAGE_SEED, POPULAR_PACKAGES, editDistance } from './packages.mjs';
+import { MALICIOUS_PACKAGE_SEED, typosquatTarget } from './packages.mjs';
 import { SECRET_PATTERNS, isPlaceholderSecret } from './secrets.mjs';
 import { parseLooseToml } from '../../inventory/grant-extract.mjs';
 import { parseYaml } from '../../core/yaml-lite.mjs';
@@ -516,7 +516,7 @@ export function gradeServer(s) {
     if (escapes.length) push(escapes.some((e) => e !== 'host namespace') ? 'HIGH' : 'MEDIUM', `MCP server "${s.name}" runs a container with host-level access`, 'Drop --privileged and host mounts; never expose the Docker socket.', escapes[0] === 'docker.sock' ? 'docker.sock' : escapes[0]);
     if (mounts.exec && !mounts.exec.readOnly) push('HIGH', `MCP server "${s.name}" can rewrite ${mounts.exec.source} on the host`, 'Mount it read-only (append :ro, or readonly in --mount). If the server must write a cache, mount only that cache directory writable.', mounts.exec.raw);
     else if (mounts.exec) push('MEDIUM', `MCP server "${s.name}" is handed ${mounts.exec.source} read-only`, 'Mount only the profile or key the server needs, or give it a short-lived role or token instead of the long-lived file.', mounts.exec.raw);
-    const image = (eff.args ?? []).find((t, i, a) => !t.startsWith('-') && !['run', 'exec', 'create', 'start'].includes(t) && !/^-/.test(a[i - 1] ?? '') );
+    const image = (eff.args ?? []).find((t, i, a) => !t.startsWith('-') && !['run', 'exec', 'create', 'start'].includes(t) && !/^-/.test(a[i - 1] ?? ''));
     if (image && !/@sha256:/.test(image)) {
       const tag = image.includes(':') ? image.slice(image.lastIndexOf(':') + 1) : null;
       if (!tag || /^(latest|main|master|dev|edge|nightly)$/i.test(tag)) push('LOW', `MCP server "${s.name}" runs an unpinned container image`, 'Pin the image by digest (image@sha256:…).', image);
@@ -593,7 +593,7 @@ export function gradeServer(s) {
     } else {
       if (MALICIOUS_PACKAGE_SEED.has(pkg)) push('CRITICAL', `MCP server "${s.name}" runs a known-malicious package`, 'Remove this server and audit for compromise.', pkg);
       else {
-        const squat = POPULAR_PACKAGES.find((p) => p !== pkg && editDistance(pkg, p) === 1);
+        const squat = typosquatTarget(pkg);
         if (squat) push('MEDIUM', `Possible typosquat in "${s.name}": ${pkg}`, `Confirm the intended package is "${squat}", not "${pkg}", and pin it.`, pkg);
       }
       if (launch.unpinned || launch.autoInstall) {
@@ -929,7 +929,7 @@ function maskHelperHeaders(raw) {
 
 const MAX_MASKED_MATCHES = 2000;
 
-export function maskNamedSecretsIn(text, remember = () => {}) {
+export function maskNamedSecretsIn(text, remember = () => { }) {
   let out = String(text ?? '');
   for (const { re } of SECRET_PATTERNS) {
     const once = fresh(re);

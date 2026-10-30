@@ -2,9 +2,48 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { MAX_ARTIFACT_BYTES, readRegularFile } from '../artifacts/matchers.mjs';
 import { isModelRefScannable, scanModelRefs } from '../detect/model-refs.mjs';
+import { nameSkeleton } from '../detect/signals/manifests.mjs';
+import { editDistance } from '../detect/signals/package-names.mjs';
 import { MODEL_SEV_RANK, modelFixPlan, modelLookup } from './lookup.mjs';
 
 const DEFAULT_LOOKUP_CONCURRENCY = 6;
+
+const SAFETY_REMOVED = [
+  { re: /abliterat/i, how: 'abliterated - the refusal direction was projected out of the weights' },
+  { re: /orthogonali[sz]/i, how: 'orthogonalized - the refusal direction was projected out of the weights' },
+  { re: /(?:^|[/_.:-])(?:un|de)-?censored(?:$|[/_.:-])/i, how: 'published as uncensored - fine-tuned so it stops refusing' },
+  { re: /(?:^|[/_.:-])(?:refusal[-_]?(?:removed|ablated|free)|no[-_]?(?:refusals?|guardrails?|safety|alignment)|unaligned|jailbr(?:oken|eak))(?:$|[/_.:-])/i, how: 'named for removed refusals or alignment' },
+  { re: /^(?:cognitivecomputations\/)?dolphin[-_.\d]/i, how: 'a Dolphin release, trained on data filtered to remove alignment and refusals' },
+];
+
+export function safetyRemovedReason(id) {
+  return SAFETY_REMOVED.find((s) => s.re.test(String(id ?? '')))?.how ?? null;
+}
+
+const POPULAR_MODEL_ORGS = [
+  'meta-llama', 'mistralai', 'google', 'openai', 'microsoft', 'Qwen', 'deepseek-ai', 'stabilityai', 'anthropic', 'nvidia', 'apple',
+  'ibm-granite', 'tiiuae', 'bigscience', 'EleutherAI', 'NousResearch', 'HuggingFaceH4', 'CohereForAI', 'databricks', 'Salesforce',
+  'facebook', 'bigcode', 'sentence-transformers', 'black-forest-labs', 'TheBloke',
+];
+
+const KNOWN_MODEL_ORGS = new Set([...POPULAR_MODEL_ORGS, 'HuggingFaceTB', 'HuggingFaceM4', 'HuggingFaceFW', 'FacebookAI'].map((o) => o.toLowerCase()));
+
+export function publisherLookalike(id) {
+  const owner = String(id ?? '').includes('/') ? String(id).split('/')[0].trim() : '';
+  if (!owner) return null;
+  const raw = owner.toLowerCase();
+  const folded = nameSkeleton(owner);
+  const spoofed = folded !== raw ? POPULAR_MODEL_ORGS.find((o) => o.toLowerCase() === folded) : undefined;
+  if (spoofed) return { org: spoofed, distance: 0 };
+  if (KNOWN_MODEL_ORGS.has(raw)) return null;
+  for (const org of POPULAR_MODEL_ORGS) {
+    const allowed = org.length <= 5 ? 0 : org.length <= 8 ? 1 : 2;
+    if (!allowed || Math.abs(org.length - folded.length) > allowed) continue;
+    const d = editDistance(folded, org.toLowerCase());
+    if (d > 0 && d <= allowed) return { org, distance: d };
+  }
+  return null;
+}
 
 export function resolveScanScope(target, walkFiles) {
   try {
@@ -78,10 +117,15 @@ function alertLevel(lookup, findings) {
 export function assessModel(reference, rawLookup) {
   const lookup = rawLookup || {};
   const findings = lookup.findings || [];
-  const alert = alertLevel(lookup, findings);
+  const safetyRemoved = safetyRemovedReason(reference.id);
+  const lookalike = reference.source === 'hf' ? publisherLookalike(reference.id) : null;
+  const graded = alertLevel(lookup, findings);
+  const alert = (safetyRemoved || lookalike) && graded === 'OK' ? 'FLAG' : graded;
 
   return {
     ...reference,
+    safetyRemoved,
+    lookalike,
     found: !!lookup.found,
     verdict: lookup.verdict || null,
     riskScore: lookup.riskScore ?? null,

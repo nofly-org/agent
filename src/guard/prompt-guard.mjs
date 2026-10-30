@@ -1,6 +1,7 @@
 import { gateMachine } from '../core/api-client.mjs';
 import { breakerOpen, breakerReset, breakerTrip, guardTimeoutMs } from '../core/circuit-breaker.mjs';
 import { loadConfig, resolveSettings } from '../core/config.mjs';
+import { agentHeader, keyFor, presentedAgent } from './presented-agent.mjs';
 import { boundedLocalScan, downrankCodeContext } from '../detect/guard-signals.mjs';
 import { redactLocally } from '../detect/local-redact.mjs';
 import { detectEnv } from '../gate/environment.mjs';
@@ -11,7 +12,7 @@ import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
 import { stoppedNote } from './emit.mjs';
 import { readHookPayload as readPayload } from './payload.mjs';
 
-export const PROMPT_HOOK_AGENTS = new Set(['claude', 'cursor', 'codex', 'gemini']);
+export const PROMPT_HOOK_AGENTS = new Set(['claude', 'cursor', 'codex', 'gemini', 'qwen-code']);
 
 function normalizePromptInput(agent, payload) {
   const p = payload || {};
@@ -89,13 +90,13 @@ function exitWithInjectionNote(agent, injection) {
   process.exit(0);
 }
 
-async function requestServerDecision({ url, apiKey, body, agent, strict, injection }) {
+async function requestServerDecision({ url, apiKey, agentId, body, agent, strict, injection }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), guardTimeoutMs());
   try {
     const response = await keyedFetch(`${url}/gate/tool-call`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-NoFly-Key': apiKey, Connection: 'close' },
+      headers: { 'Content-Type': 'application/json', 'X-NoFly-Key': apiKey, ...agentHeader(agentId), Connection: 'close' },
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -135,17 +136,24 @@ export async function cmdPromptGuard(flags) {
 
   if (secrets.length) {
     const label = secrets[0].label || 'secret';
-    const { apiKey: reportKey, url: reportUrl } = resolveSettings(loadConfig());
+    const reportCfg = loadConfig();
+    const reportSettings = resolveSettings(reportCfg);
+    const reportUrl = reportSettings.url;
+    const reportAgent = await presentedAgent(flags, { cfg: reportCfg, agent, url: reportUrl });
     await reportGuardDecision(
       reportUrl,
-      reportKey,
-      null,
+      keyFor(reportSettings.apiKey, reportAgent),
+      reportAgent,
       buildPromptGuardBody(normalized, agent, 'BLOCK', secrets[0].label || 'secret in prompt'),
     );
     emitPromptDeny(agent, secretInPromptReason(label));
   }
 
-  const { apiKey, url } = resolveSettings(loadConfig());
+  const cfg = loadConfig();
+  const settings = resolveSettings(cfg);
+  const { url } = settings;
+  const agentId = await presentedAgent(flags, { cfg, agent, url });
+  const apiKey = keyFor(settings.apiKey, agentId);
   if (!apiKey) {
     if (injection.length) emitPromptContext(agent, promptInjectionNote(injection));
     if (strict) emitPromptDeny(agent, 'NoFly is not configured on this machine (NOFLY_GUARD_STRICT). Run: nofly init --key shm_…');
@@ -156,6 +164,7 @@ export async function cmdPromptGuard(flags) {
   const decision = await requestServerDecision({
     url,
     apiKey,
+    agentId,
     agent,
     strict,
     injection,

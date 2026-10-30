@@ -4,6 +4,7 @@ import { EXIT_USAGE, exitNotConfigured } from '../core/exit-codes.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { VERSION } from '../core/version.mjs';
 import { resolveAgentIdentityHandle } from './agent-identity.mjs';
+import { machineSessionCredential, storedMachineBinding } from '../core/machine-session.mjs';
 import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
 import { adoptLegacyHeaders } from '../core/legacy.mjs';
 import { currentUsername } from '../core/api-client.mjs';
@@ -223,6 +224,16 @@ export async function cmdLlmProxy(flags) {
   const project = flags.project ? String(flags.project) : null;
   const actor = `${os.hostname()}/${currentUsername()}`;
 
+  const fixedAgent = resolveAgentIdentityHandle(flags) ?? storedAgentCredential(config, null, url);
+  const binding = fixedAgent ? null : storedMachineBinding(config, null, url);
+  let sessionAgent = binding ? await machineSessionCredential({ cfg: config, url, binding }) : null;
+  if (binding) {
+    const renew = setInterval(async () => {
+      sessionAgent = (await machineSessionCredential({ cfg: config, url, binding })) ?? sessionAgent;
+    }, 10 * 60_000);
+    renew.unref?.();
+  }
+
   const handler = createProxyHandler({
     url,
     providerPattern: new RegExp(`^/(${LLM_PROVIDERS.join('|')})(/.*)?$`),
@@ -232,7 +243,9 @@ export async function cmdLlmProxy(flags) {
       project,
       machineId: config.machineId,
       sessionId: newSessionId(),
-      agentId: resolveAgentIdentityHandle(flags) ?? storedAgentCredential(config, null, url),
+      get agentId() {
+        return fixedAgent ?? sessionAgent;
+      },
     },
   });
 

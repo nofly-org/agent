@@ -13,6 +13,7 @@ import { locationBase } from '../gate/locations.mjs';
 import { toSarif } from '../gate/sarif.mjs';
 import { bundledFileFindings, bundledKind, byBundledPriority, collectLocalSast, mergeSastIntoResult, notAnalyzedFindings, planBundled } from '../gate/sast.mjs';
 import { withMcpAdvisories } from '../gate/advisories.mjs';
+import { askKnownReview, hashOnly, withKnownReview } from '../gate/known.mjs';
 import { maskSecrets } from '../detect/secret-mask.mjs';
 import { listZipEntries, normalizeZipName, readZipText } from '../core/zip-lite.mjs';
 import { readFailure, readRegularBuffer } from '../core/safe-read.mjs';
@@ -130,6 +131,21 @@ function readGateTarget(flags, positional) {
   };
 }
 
+async function requestKnownReview({ url, apiKey, flags, relPath, name, content }) {
+  if (!flags.json) process.stdout.write(dim('  Asking NoFly by hash only - the file is not sent… '));
+  try {
+    const known = await askKnownReview(url, apiKey, { content, name, path: relPath });
+    if (!flags.json) console.log(known.known ? `an earlier review of this exact file holds ${known.findings.length} finding(s)` : 'no earlier review of this exact file');
+    return known;
+  } catch (error) {
+    if (!flags.json) {
+      console.log(yellow('backend unavailable'));
+      console.error(`  ${yellow('⚠')} ${error.message} ${dim('- on-machine analysis only')}`);
+    }
+    return null;
+  }
+}
+
 async function requestGateVerdict({ url, apiKey, flags, kind, relPath, content, fullTarget }) {
   if (!flags.json) process.stdout.write(dim('  Checking with NoFly gate… '));
   try {
@@ -168,9 +184,17 @@ export async function cmdGate(rawFlags, positional) {
   const name = flags.name ? String(flags.name) : (relPath ? relPath.split('/').pop() : 'artifact');
   const local = unread ? withUnreadMiddle(localGate(content, { kind, path: relPath }), unread) : localGate(content, { kind, path: relPath });
 
+  const byHash = hashOnly(flags);
+  if (byHash && flags.strict) {
+    console.error(`${red('✗')} --strict needs the server to apply org policy, and that needs the file - drop --hash-only (or NOFLY_UPLOAD_CONTENT=0) to use it.`);
+    process.exit(EXIT_USAGE);
+  }
   let serverVerdict = null;
   let sent = null;
-  if (apiKey) {
+  let known = null;
+  if (apiKey && byHash) {
+    known = await requestKnownReview({ url, apiKey, flags, relPath, name, content });
+  } else if (apiKey) {
     ({ verdict: serverVerdict, sent = null } = await requestGateVerdict({ url, apiKey, flags, kind, relPath, content, fullTarget }));
     if (!serverVerdict && flags.strict) {
       const fallback = localAsGateResult(local, name, kind);
@@ -194,7 +218,7 @@ export async function cmdGate(rawFlags, positional) {
   }
   const base = serverVerdict || localAsGateResult(shownLocal, name, kind);
   const carried = serverVerdict ? carriedPastMasking(local, sent, { kind, path: relPath }, serverVerdict.findings) : [];
-  const result = mergeSastIntoResult(base, [...carried, ...collectLocalSast({ fullPath: fullTarget, relPath, kind, content, root: fullTarget ? locationBase(path.dirname(fullTarget)) : undefined }), ...fromBundle]);
+  const result = withKnownReview(mergeSastIntoResult(base, [...carried, ...collectLocalSast({ fullPath: fullTarget, relPath, kind, content, root: fullTarget ? locationBase(path.dirname(fullTarget)) : undefined }), ...fromBundle]), known);
   if (sarif) console.log(JSON.stringify(toSarif([{ ...result, path: relPath ?? name, ...(fullTarget ? { full: fullTarget } : {}) }]), null, 2));
   else printGateResult(result, serverVerdict ? 'server' : 'local', flags);
 
@@ -203,6 +227,10 @@ export async function cmdGate(rawFlags, positional) {
 }
 
 async function cmdGateAll(flags, positional, { apiKey, url }) {
+  if (hashOnly(flags) && flags.strict) {
+    console.error(`${red('✗')} --strict needs the server to apply org policy, and that needs the files - drop --hash-only (or NOFLY_UPLOAD_CONTENT=0) to use it.`);
+    process.exit(EXIT_USAGE);
+  }
 
   const dirArg = typeof flags.all === 'string' ? flags.all : positional[0];
   const target = resolveScanTarget(dirArg);

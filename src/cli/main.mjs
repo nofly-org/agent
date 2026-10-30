@@ -63,5 +63,9 @@ export async function main() {
     console.error(dim('Run `nofly help` for the full command list.'));
     process.exit(EXIT_USAGE);
   }
+  try {
+    await (await import('../core/rule-packs.mjs')).applyCachedRulePacks();
+  } catch {
+  }
   return fn(flags, positional);
 }

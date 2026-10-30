@@ -1,4 +1,4 @@
-import { AGENT_INSTALLERS, AGENT_KEYS, AGENT_LABELS, AGENT_UNINSTALLERS } from '../agents/installers.mjs';
+import { AGENT_INSTALLERS, AGENT_KEYS, AGENT_LABELS, AGENT_UNINSTALLERS, noHookNote } from '../agents/installers.mjs';
 import { MANAGED_AGENTS, installManaged, uninstallManaged, userWritableLauncher } from '../agents/managed.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
@@ -10,11 +10,15 @@ function requestedAgents(flags, fallback) {
   const requested = flags.agent
     ? String(flags.agent).toLowerCase().split(',').map((s) => s.trim()).filter(Boolean)
     : [fallback];
-  const unknown = requested.filter((a) => a !== 'all' && !AGENT_KEYS.includes(a));
+  const hookless = requested.filter((a) => noHookNote(a));
+  for (const a of hookless) console.error(yellow('!') + ` ${noHookNote(a)}`);
+  const unknown = requested.filter((a) => a !== 'all' && !AGENT_KEYS.includes(a) && !noHookNote(a));
   if (unknown.length) {
     console.error(red('✗') + ` Unknown agent(s): ${unknown.join(', ')}. Supported: ${AGENT_KEYS.join(', ')}, all.`);
     process.exit(EXIT_USAGE);
   }
+  if (hookless.length && hookless.length === requested.length) process.exit(EXIT_USAGE);
+  if (hookless.length) return requested.filter((a) => !hookless.includes(a));
   return requested.includes('all') ? AGENT_KEYS : requested;
 }
 

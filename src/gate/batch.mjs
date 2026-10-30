@@ -5,9 +5,10 @@ import { clampInt } from '../core/numbers.mjs';
 import { SEV_COLOR, bold, dim, gray, green, red, yellow } from '../core/terminal.mjs';
 import { grade, localGate } from '../detect/guard-signals.mjs';
 import { applyRepoPolicy, loadRepoPolicy, parseRepoPolicy } from './repo-policy.mjs';
-import { isGateVerdict, localAsGateResult } from './result.mjs';
+import { REWORDING_NOT_RUN, isGateVerdict, localAsGateResult } from './result.mjs';
 import { bundledFindings, collectLocalSast, mergeSastIntoResult } from './sast.mjs';
 import { withMcpAdvisories } from './advisories.mjs';
+import { askKnownReview, hashOnly, withKnownReview } from './known.mjs';
 import { maskSecrets } from '../detect/secret-mask.mjs';
 import { acceptedLines, loadBaseline, loadIgnoreRules, parseBaseline, parseIgnoreRules, suppressResult } from './suppressions.mjs';
 
@@ -71,18 +72,37 @@ function analyseLocally(artifacts, quiet, root) {
   return prepared;
 }
 
+async function requestKnownReviews(prepared, { apiKey, url, quiet }) {
+  const known = new Array(prepared.length).fill(null);
+  if (!apiKey) return { known, backendDown: false };
+  for (const [index, { artifact, content, skipped }] of prepared.entries()) {
+    if (skipped) continue;
+    try {
+      known[index] = await askKnownReview(url, apiKey, { content, name: artifact.rel.split('/').pop(), path: artifact.rel });
+    } catch (error) {
+      if (!quiet) console.log(`  ${yellow('⚠')} ${dim(`backend unavailable (${error.message}) - on-machine analysis for the rest`)}`);
+      return { known, backendDown: true };
+    }
+  }
+  return { known, backendDown: false };
+}
+
 async function requestServerVerdicts(prepared, { apiKey, url, env, flags, quiet }) {
   const verdicts = new Array(prepared.length).fill(null);
   const rejected = [];
   let backendDown = false;
   let authFailed = false;
   if (!apiKey) return { verdicts, rejected, backendDown, authFailed };
+  if (hashOnly(flags)) {
+    const asked = await requestKnownReviews(prepared, { apiKey, url, quiet });
+    return { verdicts, rejected, backendDown: asked.backendDown, authFailed, known: asked.known };
+  }
 
   const concurrency = clampInt(process.env.NOFLY_GATE_CONCURRENCY, DEFAULT_CONCURRENCY, MIN_CONCURRENCY, MAX_CONCURRENCY);
   let nextIndex = 0;
 
   const worker = async () => {
-    for (;;) {
+    for (; ;) {
       const index = nextIndex;
       nextIndex += 1;
       if (index >= prepared.length || backendDown) return;
@@ -175,7 +195,7 @@ export async function gateArtifactList(artifacts, { apiKey, url, env, flags, roo
   const policy = resolvePolicy(flags, workingRoot, trusted);
 
   const prepared = analyseLocally(artifacts, quiet, workingRoot);
-  const { verdicts, rejected, backendDown, authFailed } = await requestServerVerdicts(prepared, { apiKey, url, env, flags, quiet });
+  const { verdicts, rejected, backendDown, authFailed, known = [] } = await requestServerVerdicts(prepared, { apiKey, url, env, flags, quiet });
 
   let advisoryOutage = false;
   await Promise.all(prepared.map(async (p, i) => {
@@ -197,7 +217,7 @@ export async function gateArtifactList(artifacts, { apiKey, url, env, flags, roo
     const source = serverVerdict ? 'server' : 'local';
     const base = skipped ? notAnalyzedResult(artifact, skipped) : serverVerdict || localAsGateResult(local, artifact.rel.split('/').pop(), artifact.kind);
     const carried = serverVerdict && !skipped ? carriedPastMasking(local, sent, { kind: artifact.kind, path: artifact.rel }, serverVerdict.findings) : [];
-    const merged = skipped ? base : mergeSastIntoResult(base, [...carried, ...(sast || [])]);
+    const merged = skipped ? base : withKnownReview(mergeSastIntoResult(base, [...carried, ...(sast || [])]), known[index] ?? null);
 
     const raw = { path: artifact.rel, full: artifact.full, kind: artifact.kind, source, ...merged, ...(serverVerdict ? { orgDecision: serverVerdict.decision } : {}) };
     if (Object.hasOwn(artifact, 'read') && typeof artifact.read?.content === 'string') suppression.lineCache.set(path.resolve(artifact.full), artifact.read.content.split(/\r?\n/));
@@ -217,6 +237,11 @@ export async function gateArtifactList(artifacts, { apiKey, url, env, flags, roo
 
     if (!quiet) printResult(result, artifact, source);
   });
+
+  const local = results.filter((r) => r.source === 'local' && r.knownReview !== 'held').length;
+  if (local && !quiet) {
+    console.log(`\n  ${yellow('!')} ${bold('Not checked:')} ${dim(`${local} artifact(s) were judged by the on-machine rules only, so instructions reworded to slip past them were not looked for. ${REWORDING_NOT_RUN.enabledBy}`)}`);
+  }
 
   return { results, blocked, flagged, suppressed, backendDown, rejected, authFailed, ...(acceptLines ? { acceptedLines: accepted } : {}) };
 }

@@ -2,11 +2,12 @@ import { RISKY_CONFIG_MARKERS, riskyConfigHit } from './config-markers.mjs';
 import { detectCredentialHarvest } from './credential-harvest.mjs';
 import { egressHost } from './egress.mjs';
 import { detectExecutionHijack, gitConfigFileExec, vscodeTaskAutorun } from './execution-hijack.mjs';
+import { authorityForgerySignals } from './authority-forgery.mjs';
 import { DESCRIBED_VERB_PHRASES, INJECTION_PHRASES, INJECTION_REGEXES, bulkDeleteIsRoutine, describedVerb, disguisedWords, precededByNegation, describesRatherThanInstructs } from './injection.mjs';
 import { INVISIBLE_CHARS_GLOBAL_RE, suspiciousInvisible } from './invisible-chars.mjs';
 import { invisibleInjectionFindings, invisibleSecretFindings } from './invisible-smuggling.mjs';
 import { lineAt, locate } from './lines.mjs';
-import { codeMask, deobfuscate } from './masking.mjs';
+import { MARK_CONCEALED, codeMask, deobfuscate } from './masking.mjs';
 import { PII_PATTERNS, RESERVED_IPV4, SECRET_PATTERNS, VERSION_CONTEXT, isPlaceholderSecret, luhnValid } from './secrets.mjs';
 import { SEV_RANK } from './severity.mjs';
 import { DANGEROUS_SHELL, matchesShellSignal, proseSignals } from './shell.mjs';
@@ -32,6 +33,10 @@ function injectionHits(t, mask) {
     if (label === 'Bulk destructive command' && bulkDeleteIsRoutine(t, at, m[0])) continue;
     if (moodGuarded && describesRatherThanInstructs(t, at)) continue;
     out.push({ label, severity: 'HIGH', category: 'injection', ...where(re) });
+  }
+  for (const s of authorityForgerySignals(t)) {
+    const at = mask ? { line: lineAt(t, s.start), at: s.start, codeContext: mask[s.start] === 1, concealed: mask[s.start] === MARK_CONCEALED } : {};
+    out.push({ label: s.label, severity: s.severity, category: 'injection', ...at });
   }
   return out;
 }

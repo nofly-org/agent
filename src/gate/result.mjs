@@ -9,6 +9,12 @@ export function isGateVerdict(v) {
 
 export const severityColor = (severity) => SEV_COLOR[String(severity ?? '').toUpperCase()] ?? gray;
 
+export const REWORDING_NOT_RUN = {
+  check: 'reworded-instructions',
+  why: 'Instructions reworded to slip past the rules. The AI and model checks that catch those run on your NoFly server, and this verdict came from the on-machine rules only.',
+  enabledBy: 'Run it again with a reachable NoFly server (nofly init --key shm_… --url <backend>) to add them.',
+};
+
 export function localAsGateResult(local, name, kind) {
   return {
     decision: local.verdict,
@@ -17,6 +23,7 @@ export function localAsGateResult(local, name, kind) {
     riskScore: local.riskScore,
     findingCount: local.findings.length,
     findings: local.findings.map((f) => ({ severity: f.severity, title: f.title, remediationText: f.remediationText, ...(f.line ? { line: f.line } : {}) })),
+    notAttempted: [REWORDING_NOT_RUN],
   };
 }
 

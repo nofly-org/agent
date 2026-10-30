@@ -7,6 +7,7 @@ export { SUSPICIOUS_EGRESS_HOSTS, egressHost } from './signals/egress.mjs';
 export { detectExecutionHijack, gitConfigFileExec, vscodeTaskAutorun } from './signals/execution-hijack.mjs';
 export { localGate } from './signals/gate.mjs';
 export { INJECTION_PHRASES, INJECTION_REGEXES, INVISIBLE_CHARS_RE } from './signals/injection.mjs';
+export { installFindings } from './signals/install-screen.mjs';
 export { localMemory } from './signals/memory.mjs';
 export { AGENT_ROOT_RE, isAgentAdjacentPath, localPropagation } from './signals/propagation.mjs';
 export { citationGoverns, describesAt, isDocumentationLine, prohibitsAt } from './signals/prose-context.mjs';

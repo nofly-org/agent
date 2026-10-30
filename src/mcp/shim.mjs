@@ -1,7 +1,7 @@
 import os from 'node:os';
 import { gateMachine } from '../core/api-client.mjs';
 import { breakerOpen } from '../core/circuit-breaker.mjs';
-import { loadConfig, resolveSettings, storedAgentCredential } from '../core/config.mjs';
+import { loadConfig, resolveSettings } from '../core/config.mjs';
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { red } from '../core/terminal.mjs';
 import { detectEnv } from '../gate/environment.mjs';
@@ -10,7 +10,7 @@ import { spawnGuardedServer } from './child-process.mjs';
 import { reportListing, requestConnectVerdict } from './connect-gate.mjs';
 import { createLineFramer, idInHead, refusal, sendBlockedInitialize, writeMessage } from './jsonrpc.mjs';
 import { LISTING_KEY, RESULT_METHODS, screenInstructions, screenListing, screenResult, screenToolCallArguments } from './screening.mjs';
-import { resolveAgentIdentityHandle } from '../commands/agent-identity.mjs';
+import { keyFor, presentedAgent } from '../guard/presented-agent.mjs';
 import { resolveScreenMode, screenCallRemote, screenResultRemote, shimSessionId } from './backend-screen.mjs';
 import { SCREENED_SERVER_METHODS, screenServerRequest } from './server-requests.mjs';
 
@@ -32,8 +32,9 @@ function readLaunchTarget(flags, positional) {
   return { name, command, args };
 }
 
-async function resolveConnectVerdict({ name, command, args, flags, settings, strict }) {
-  const { apiKey, url } = settings;
+async function resolveConnectVerdict({ name, command, args, flags, settings, strict, agentId }) {
+  const { url } = settings;
+  const apiKey = keyFor(settings.apiKey, agentId);
   if (!apiKey || !url) {
     if (strict) {
       await sendBlockedInitialize(
@@ -52,6 +53,7 @@ async function resolveConnectVerdict({ name, command, args, flags, settings, str
     server: { name, command, args },
     agent: flags.agent ? String(flags.agent) : undefined,
     projectId: flags.project ? String(flags.project) : undefined,
+    agentId,
   });
   if (!error) return verdict;
 
@@ -399,11 +401,11 @@ export async function runMcpShim(flags, positional) {
     strict,
     settings,
     sessionId: shimSessionId(name),
-    agentId: resolveAgentIdentityHandle(flags) ?? storedAgentCredential(config, agent ?? null, settings.url),
+    agentId: await presentedAgent(flags, { cfg: config, agent: agent ?? null, url: settings.url }),
   };
   if (process.env.NOFLY_DEBUG) note(`mcp-guard: "${name}" screening=${ctx.mode} (from ${screening.source})`);
 
-  const verdict = await resolveConnectVerdict({ name, command, args, flags, settings, strict });
+  const verdict = await resolveConnectVerdict({ name, command, args, flags, settings, strict, agentId: ctx.agentId });
   await enforceConnectVerdict(verdict, name);
   const deniedTools = Array.isArray(verdict?.deniedTools) ? verdict.deniedTools.map(String) : [];
 

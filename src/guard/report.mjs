@@ -4,10 +4,38 @@ import { detectEnv } from '../gate/environment.mjs';
 import { resolveCommand } from './command-resolve.mjs';
 import { redactLocally } from '../detect/local-redact.mjs';
 import { keyedFetch } from '../core/keyed-fetch.mjs';
+import { git } from '../core/git-exec.mjs';
 import { drainReports, queueReport } from './report-outbox.mjs';
+
+let gitEmail;
+
+function configuredEmail() {
+  if (gitEmail !== undefined) return gitEmail;
+  try {
+    gitEmail = git(['config', '--get', 'user.email'], { timeout: 1500 })?.trim() || null;
+  } catch {
+    gitEmail = null;
+  }
+  return gitEmail;
+}
+
+export function triggerOf(env) {
+  if (env?.environment === 'CI') return `ci:${env.ciProvider || 'pipeline'}`;
+  if (env?.environment === 'REMOTE') return 'cli:remote';
+  return 'cli:local';
+}
+
+export function actingPerson(env, vars = process.env, readEmail = configuredEmail) {
+  const token = String(vars.NOFLY_USER_TOKEN ?? '').trim();
+  const named = String(vars.NOFLY_USER ?? '').trim();
+  const email = named || (env?.environment === 'CI' ? '' : readEmail() || '');
+  if (!email && !token) return {};
+  return { principal: { ...(email ? { email } : {}), ...(token ? { token } : {}) } };
+}
 
 export function buildGuardBody(norm, agent, clientDecision, clientReason) {
   const command = norm.tool_input?.command ?? norm.tool_input?.cmd ?? norm.tool_input?.script;
+  const env = detectEnv();
   const found = typeof command === 'string' ? resolveCommand(command) : null;
   const resolved = found?.command ? { ...found, command: redactLocally(found.command, { categories: ['secret'] }).text } : found;
   return {
@@ -19,7 +47,9 @@ export function buildGuardBody(norm, agent, clientDecision, clientReason) {
     session_id: norm.session_id,
     ...(norm.parent_session_id ? { parent_session_id: norm.parent_session_id } : {}),
     machine: gateMachine(),
-    env: detectEnv(),
+    env,
+    trigger: triggerOf(env),
+    ...actingPerson(env),
     agent,
     ...(clientDecision ? { client_decision: clientDecision, client_reason: clientReason } : {}),
   };
