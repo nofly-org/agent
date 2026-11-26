@@ -5,7 +5,7 @@ const BOOLEAN_FLAGS = new Set([
   'fail-on-regression', 'fail-on-blocked', 'write', 'yes', 'stdin', 'quiet', 'help',
   'check', 'checklist', 'pre-receive', 'uninstall', 'save', 'list', 'machine',
   'all-users', 'no-owner', 'static', 'no-save', 'print-credential', 'managed', 'guard',
-  'allow-user-writable', 'trust-new-key', 'hash-only',
+  'allow-user-writable', 'trust-new-key', 'hash-only', 'no-machine',
 ]);
 
 const VALUE_FLAGS = new Set([

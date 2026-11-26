@@ -44,12 +44,12 @@ export function hookCommand(args, opts = {}) {
 }
 
 export function noflyHookRe(verb) {
-  return new RegExp(`(?:(?:nofly|shomra)(?:\\.mjs(?:\\\\?['"])?)?|@(?:nofly|shomra)/agent(?:@[\\w.\\-]+)?)\\s+${verb}`, 'i');
+  return new RegExp(`(?:nofly(?:\\.mjs(?:\\\\?['"])?)?|@nofly/agent(?:@[\\w.\\-]+)?)\\s+${verb}`, 'i');
 }
 
-export const NOFLY_ANY_HOOK_RE = /(?:(?:nofly|shomra)(?:\.mjs(?:\\?['"])?)?|@(?:nofly|shomra)\/agent(?:@[\w.\-]+)?)\s+(tool-guard|result-guard|prompt-guard|plan-guard|session-guard)/i;
+export const NOFLY_ANY_HOOK_RE = /(?:nofly(?:\.mjs(?:\\?['"])?)?|@nofly\/agent(?:@[\w.\-]+)?)\s+(tool-guard|result-guard|prompt-guard|plan-guard|session-guard)/i;
 
-const LAUNCH_RE = /(?:("[^"]*"|'[^']*'|[^\s"']+)\s+)?("[^"]*(?:nofly|shomra)\.mjs"|'[^']*(?:nofly|shomra)\.mjs'|[^\s"']*(?:nofly|shomra)\.mjs)(?=\s)/;
+const LAUNCH_RE = /(?:("[^"]*"|'[^']*'|[^\s"']+)\s+)?("[^"]*nofly\.mjs"|'[^']*nofly\.mjs'|[^\s"']*nofly\.mjs)(?=\s)/;
 const unquote = (t) => String(t ?? '').replace(/^(["'])([\s\S]*)\1$/, '$2').replace(/\\(["\\$`])/g, '$1');
 
 function missing(p) {
@@ -63,13 +63,13 @@ function missing(p) {
 
 export function refreshedHookCommand(command) {
   const text = String(command ?? '');
-  const pin = /@(?:nofly|shomra)\/agent@([\w.\-]+)/.exec(text);
+  const pin = /@nofly\/agent@([\w.\-]+)/.exec(text);
   if (pin) return pin[0] === PACKAGE_SPEC ? text : text.replace(pin[0], PACKAGE_SPEC);
   const m = LAUNCH_RE.exec(text);
   if (!m) return text;
   const node = m[1] ? unquote(m[1]) : null;
   const script = unquote(m[2]);
   const nodeGone = node && node !== 'node' && /[\\/]/.test(node) && missing(node);
-  if (!missing(script) && !nodeGone && !/shomra\.mjs$/i.test(script)) return text;
+  if (!missing(script) && !nodeGone) return text;
   return `${text.slice(0, m.index)}${launcher()}${text.slice(m.index + m[0].length)}`;
 }

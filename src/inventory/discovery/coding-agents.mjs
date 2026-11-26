@@ -31,7 +31,7 @@ export function discoverCodingAgents(roots = [process.cwd()], opts = {}) {
     { vendor: 'windsurf', name: 'Windsurf', probes: [path.join(HOME, '.codeium', 'windsurf')], hookFiles: [path.join(HOME, '.codeium', 'windsurf', 'hooks.json'), inCwd('.windsurf', 'hooks.json')].filter(Boolean) },
     { vendor: 'gemini', name: 'Gemini CLI', probes: [path.join(HOME, '.gemini')], hookFiles: [path.join(HOME, '.gemini', 'settings.json'), inCwd('.gemini', 'settings.json')].filter(Boolean) },
     { vendor: 'codex', name: 'OpenAI Codex CLI', probes: [path.join(HOME, '.codex')], hookFiles: [managedFile('codex'), path.join(HOME, '.codex', 'hooks.json'), inCwd('.codex', 'hooks.json')].filter(Boolean) },
-    { vendor: 'copilot', name: 'GitHub Copilot', probes: [path.join(HOME, '.copilot'), path.join(vscodeUserDir(), 'globalStorage', 'github.copilot-chat')], hookFiles: [managedFile('copilot'), path.join(HOME, '.copilot', 'hooks', 'nofly.json'), inCwd('.github', 'hooks', 'nofly.json'), path.join(HOME, '.copilot', 'hooks', 'shomra.json'), inCwd('.github', 'hooks', 'shomra.json')].filter(Boolean) },
+    { vendor: 'copilot', name: 'GitHub Copilot', probes: [path.join(HOME, '.copilot'), path.join(vscodeUserDir(), 'globalStorage', 'github.copilot-chat')], hookFiles: [managedFile('copilot'), path.join(HOME, '.copilot', 'hooks', 'nofly.json'), inCwd('.github', 'hooks', 'nofly.json')].filter(Boolean) },
     { vendor: 'qwen-code', name: 'Qwen Code', probes: [path.join(HOME, '.qwen')], hookFiles: [path.join(HOME, '.qwen', 'settings.json'), inCwd('.qwen', 'settings.json')].filter(Boolean) },
     { vendor: 'kiro', name: 'Kiro', probes: [path.join(HOME, '.kiro'), path.join(HOME, '.aws', 'amazonq')], hookFiles: [path.join(HOME, '.kiro', 'hooks', 'nofly.json'), inCwd('.kiro', 'hooks', 'nofly.json')].filter(Boolean) },
     { vendor: 'opencode', name: 'OpenCode', probes: [path.join(HOME, '.config', 'opencode'), path.join(HOME, '.local', 'share', 'opencode')], hookFiles: [path.join(HOME, '.config', 'opencode', 'plugins', 'nofly.js'), inCwd('.opencode', 'plugins', 'nofly.js')].filter(Boolean) },
@@ -51,7 +51,7 @@ export function discoverCodingAgents(roots = [process.cwd()], opts = {}) {
     if (!installedAt) continue;
     const guardFile = a.hookFiles.find((f) => {
       const t = readText(f, 20_000);
-      return t != null && /nofly|shomra/i.test(t);
+      return t != null && /nofly/i.test(t);
     });
 
     projects ??= projectRoots(cwd, roots, { home: opts.home });

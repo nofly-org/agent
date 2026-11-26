@@ -7,17 +7,6 @@ import { KIND_LABEL, VENDOR_TOOLS, matcherCovers, missingTools } from '../agents
 import { VERSION } from '../core/version.mjs';
 import { readRegularText } from '../core/safe-read.mjs';
 
-/**
- *  WHAT A SETTINGS FILE ACTUALLY PUTS IN FRONT OF THE HOOK - read on the
- * machine, with no network.
- *
- * ⚠ AN INSTALLED HOOK IS NOT A COVERED ONE. The entry can be present, point at
- * the right binary and still name a matcher that leaves this vendor's shell tool
- * out, in which case every command the agent runs reaches nobody while the
- * settings file, the dashboard and `nofly status` all say "installed". That gap
- * is the one thing a server-side simulation cannot see, so it is stated as its
- * own state (POROUS) with the exact names and the command that widens them.
- */
 
 const home = () => os.homedir();
 
@@ -29,7 +18,6 @@ function expand(p) {
   return p;
 }
 
-/** A vendor counts as present when its own config root exists - the hook may or may not be in it yet. */
 export function vendorInstalled(vendor) {
   const v = VENDOR_TOOLS[vendor];
   if (!v) return false;
@@ -41,7 +29,7 @@ export function installedVendors(keys = Object.keys(VENDOR_TOOLS)) {
   return keys.filter((k) => vendorInstalled(k));
 }
 
-const CLINE_MARK_RE = /\/\/ (?:nofly|shomra) cline hook/;
+const CLINE_MARK_RE = /\/\/ nofly cline hook/;
 const CLINE_RUN_RE = /spawnSync\((".*?"|'npx'),\s*\[(.*?)\]/;
 
 function clineEntry(file, event) {
@@ -74,11 +62,7 @@ function readJson(file) {
   }
 }
 
-/**
- * Every NoFly tool-guard entry in one settings file, in the vendor's own shape.
- * ⚠ `matcher: null` is not "no matcher" - for a flat-event vendor there is no
- * such field, and the EVENT is what decides whether the hook runs.
- */
+
 export function hookEntries(vendor, file) {
   if (VENDOR_TOOLS[vendor]?.settings?.shape === 'cline-scripts') return path.basename(file) === 'PreToolUse' ? clineEntry(file, 'PreToolUse') : [];
   const cfg = readJson(file);
@@ -120,20 +104,15 @@ export function hookEntries(vendor, file) {
   return out;
 }
 
-/**
- * ⚠ A HOOK THAT NAMES A BINARY THAT IS NOT THERE IS NOT A HOOK. The agent logs a
- * spawn error nobody reads and runs the call. Checked here because only the
- * machine can: an absolute path from another checkout, or a pinned npm version
- * that is not the one running, both read as "installed" everywhere else.
- */
+
 export function commandHealth(command) {
-  const npm = /@(?:nofly|shomra)\/agent@([\w.\-]+)/.exec(command);
+  const npm = /@nofly\/agent@([\w.\-]+)/.exec(command);
   if (npm) {
     return npm[0] === PACKAGE_SPEC
       ? { ok: true, how: 'npm', detail: PACKAGE_SPEC }
       : { ok: true, stale: true, how: 'npm', detail: `pinned to ${npm[0]}, this CLI is ${VERSION}` };
   }
-  const named = [...command.matchAll(/"([^"]+(?:nofly|shomra)\.mjs)"|'([^']+(?:nofly|shomra)\.mjs)'|([^\s"']+(?:nofly|shomra)\.mjs)/g)].map((m) => m[1] ?? m[2] ?? m[3]).filter(Boolean);
+  const named = [...command.matchAll(/"([^"]+nofly\.mjs)"|'([^']+nofly\.mjs)'|([^\s"']+nofly\.mjs)/g)].map((m) => m[1] ?? m[2] ?? m[3]).filter(Boolean);
   const target = named[0];
   if (!target) return { ok: true, how: 'npm', detail: 'resolved through the package manager' };
   if (!fs.existsSync(target)) return { ok: false, how: 'path', detail: `${target} does not exist on this machine - the agent's hook spawn fails and the call runs unscreened` };
@@ -147,11 +126,6 @@ function scopeOf(file) {
   return file.startsWith(home()) ? 'user' : 'project';
 }
 
-/**
- * The static reading for one vendor: is the hook there, does it point at a real
- * binary, and does what it names cover every tool this vendor uses for shell,
- * write, edit, patch and MCP.
- */
 export function staticCheck(vendor) {
   const v = VENDOR_TOOLS[vendor];
   const files = agentHookFiles(vendor).filter((f) => fs.existsSync(f));
@@ -214,7 +188,6 @@ export function staticCheck(vendor) {
     for (const t of missingTools(vendor, matchers.join('|'))) missing.push({ ...t, why: KIND_LABEL[t.kind] });
   }
 
-  /** Flat-event vendors: the event IS the coverage. */
   const missingEvents = [];
   for (const e of v.events ?? []) {
     if (v.matcher !== null) continue;
@@ -244,7 +217,7 @@ export function staticCheck(vendor) {
   };
 }
 
-/** ⚠ Reported so a machine that cannot reach the server is not read as a machine nothing refused. */
+/**  Reported so a machine that cannot reach the server is not read as a machine nothing refused. */
 export function environmentChecks({ url, apiKey, strict, breakerOpen, subjectTypes }) {
   const rows = [];
   rows.push({

@@ -20,8 +20,6 @@ export function copilotHookFile(global, name = 'nofly') {
   return path.join(base, 'hooks', `${name}.json`);
 }
 
-export const LEGACY_HOOK_NAME = 'shomra';
-
 export function managedFile(agent, platform = process.platform, env = process.env, name = 'nofly') {
   const file = systemFile(agent, platform, env, name);
   const root = env.NOFLY_MANAGED_ROOT;
@@ -45,7 +43,7 @@ function systemFile(agent, platform, env, name) {
   }
 }
 
-const CLINE_SCRIPT_MARK = /\/\/ (?:nofly|shomra) cline hook/;
+const CLINE_SCRIPT_MARK = /\/\/ nofly cline hook/;
 
 /** Every settings file a vendor's hook could be installed in - user scope first, then this repo. */
 export function agentHookFiles(agent) {
@@ -56,12 +54,12 @@ function hookFileCandidates(agent) {
   const home = os.homedir();
   const cwd = process.cwd();
   switch (agent) {
-    case 'claude': return [managedFile('claude'), managedFile('claude', process.platform, process.env, LEGACY_HOOK_NAME), path.join(home, '.claude', 'settings.json'), path.join(cwd, '.claude', 'settings.json')].filter(Boolean);
+    case 'claude': return [managedFile('claude'), path.join(home, '.claude', 'settings.json'), path.join(cwd, '.claude', 'settings.json')].filter(Boolean);
     case 'codex': return [managedFile('codex'), path.join(home, '.codex', 'hooks.json'), path.join(cwd, '.codex', 'hooks.json')].filter(Boolean);
     case 'gemini': return [path.join(home, '.gemini', 'settings.json'), path.join(cwd, '.gemini', 'settings.json')];
     case 'cursor': return [path.join(home, '.cursor', 'hooks.json'), path.join(cwd, '.cursor', 'hooks.json')];
     case 'windsurf': return [path.join(home, '.codeium', 'windsurf', 'hooks.json'), path.join(cwd, '.windsurf', 'hooks.json')];
-    case 'copilot': return [managedFile('copilot'), managedFile('copilot', process.platform, process.env, LEGACY_HOOK_NAME), copilotHookFile(true), copilotHookFile(false), copilotHookFile(true, LEGACY_HOOK_NAME), copilotHookFile(false, LEGACY_HOOK_NAME)].filter(Boolean);
+    case 'copilot': return [managedFile('copilot'), copilotHookFile(true), copilotHookFile(false)].filter(Boolean);
     case 'cline': return [...clineHookDirs(true), ...clineHookDirs(false)].flatMap((d) => Object.keys(CLINE_EVENTS).map((e) => path.join(d, e)));
     case 'aider': return [path.join(home, '.aider.conf.yml'), path.join(cwd, '.aider.conf.yml')];
     case 'qwen-code': return [path.join(home, '.qwen', 'settings.json'), path.join(cwd, '.qwen', 'settings.json')];
@@ -81,7 +79,7 @@ export function agentHookInstalled(agent) {
   return agentHookFiles(agent).filter((f) => {
     try {
       const text = readRegularText(f);
-      if (agent === 'aider') return /(?:nofly|shomra) llm guard/i.test(text);
+      if (agent === 'aider') return /nofly llm guard/i.test(text);
       if (agent === 'cline') return CLINE_SCRIPT_MARK.test(text);
       if (agent === 'augment') return AUGMENT_HOOK_RE.test(text);
       if (agent === 'opencode' || agent === 'amp') return PLUGIN_RE.test(text);

@@ -15,12 +15,7 @@ import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
 import { MCP_HOST_CONFIGS, MCP_HOST_KEYS, noflyMcpEntry } from '../mcp/hosts.mjs';
 import { runMcpServer } from '../mcp/server.mjs';
 import { cmdMcpAdd, cmdMcpList } from './mcp-add.mjs';
-
-function isLegacyServeEntry(entry) {
-  const args = Array.isArray(entry?.args) ? entry.args.map(String) : [];
-  const at = args.indexOf('mcp');
-  return at > 0 && args[at + 1] === 'serve' && /(?:nofly|shomra)(?:\.mjs)?$/i.test(args[at - 1]);
-}
+import { cmdMcpListInstalled } from './mcp-list.mjs';
 
 function cmdMcpInstall(flags) {
   const requested = flags.agent
@@ -51,9 +46,7 @@ function cmdMcpInstall(flags) {
     if (!cfg.mcpServers || typeof cfg.mcpServers !== 'object' || Array.isArray(cfg.mcpServers)) cfg.mcpServers = {};
     const before = JSON.stringify(cfg.mcpServers.nofly || null);
     cfg.mcpServers.nofly = entry;
-    const legacy = isLegacyServeEntry(cfg.mcpServers.shomra);
-    if (legacy) delete cfg.mcpServers.shomra;
-    const changed = legacy || before !== JSON.stringify(entry);
+    const changed = before !== JSON.stringify(entry);
     if (changed) {
       try {
         writeJsonFile(file, cfg);
@@ -175,7 +168,7 @@ export async function cmdMcp(flags, positional) {
   if (sub === 'install') return cmdMcpInstall(flags);
 
   const configFile = path.resolve(flags.config ? String(flags.config) : '.mcp.json');
-  if (sub === 'list') return cmdMcpList(flags, configFile);
+  if (sub === 'list') return flags.config ? cmdMcpList(flags, configFile) : cmdMcpListInstalled(flags);
   if (sub === 'add') return cmdMcpAdd(flags, positional, configFile);
 
   console.error(red('✗') + ` Usage: ${bold('nofly mcp add <name> <command…> | --url <url>')} ${dim('|')} ${bold('nofly mcp list')}`);

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { SettingsFileError, readJsonFile, writeFileAtomic, writeJsonFile } from '../core/json-file.mjs';
 import { LLM_PROXY_BASE, PACKAGE_SPEC, NOFLY_ANY_HOOK_RE, SELF_PATH, hookCommand, powershellCommand, refreshedHookCommand } from './hook-command.mjs';
 import { VERSION } from '../core/version.mjs';
-import { CLINE_EVENTS, LEGACY_HOOK_NAME, clineHookDirs, copilotHookFile, hasFlatHook, hasGroupedHook } from './hook-files.mjs';
+import { CLINE_EVENTS, clineHookDirs, copilotHookFile, hasFlatHook, hasGroupedHook } from './hook-files.mjs';
 import { matcherFor } from './vendor-tools.mjs';
 import { readFailure, readRegularText } from '../core/safe-read.mjs';
 
@@ -87,7 +87,7 @@ export function widenGroupMatcher(list, required, verb) {
   const verbRe = new RegExp(`\\b${verb}\\b`);
   let changed = false;
   for (const g of list) {
-    if (!Array.isArray(g?.hooks) || !g.hooks.some((h) => verbRe.test(String(h?.command || '')) && /nofly|shomra/i.test(String(h?.command || '')))) continue;
+    if (!Array.isArray(g?.hooks) || !g.hooks.some((h) => verbRe.test(String(h?.command || '')) && /nofly/i.test(String(h?.command || '')))) continue;
     const cur = typeof g.matcher === 'string' ? g.matcher : '';
     if (!cur || cur === '*' || cur === '.*') continue;
     const have = new Set(cur.split('|').map((s) => s.trim()));
@@ -309,8 +309,7 @@ export const AGENT_INSTALLERS = {
     } catch {
       current = null;
     }
-    const legacy = uninstallCopilotFile(copilotHookFile(global, LEGACY_HOOK_NAME)).changed;
-    if (current && JSON.stringify(current) === JSON.stringify(desired)) return { file, changed: legacy };
+    if (current && JSON.stringify(current) === JSON.stringify(desired)) return { file, changed: false };
     writeJsonFile(file, desired);
     return { file, changed: true };
   },
@@ -348,7 +347,7 @@ export const AGENT_INSTALLERS = {
     const portable = !global;
     const file = global ? path.join(os.homedir(), '.aider.conf.yml') : path.join(process.cwd(), '.aider.conf.yml');
     let text = fs.existsSync(file) ? readSettingsText(file) : '';
-    if (/#\s*(?:nofly|shomra) llm guard/i.test(text) || text.includes(LLM_PROXY_BASE)) {
+    if (/#\s*nofly llm guard/i.test(text) || text.includes(LLM_PROXY_BASE)) {
       return { file, changed: false };
     }
     const existing = /^\s*openai-api-base\s*:\s*(\S.*)$/m.exec(text);
@@ -615,7 +614,7 @@ export function copilotHooks(portable) {
 }
 
 const CLINE_MARK = '// nofly cline hook';
-const CLINE_MARK_RE = /\/\/ (?:nofly|shomra) cline hook/;
+const CLINE_MARK_RE = /\/\/ nofly cline hook/;
 
 export function clineScript(verb, portable) {
   const shebang = /\s/.test(process.execPath) ? '#!/usr/bin/env node' : `#!${process.execPath}`;
@@ -706,13 +705,10 @@ function nestedStrip(strip) {
 
 const homeOrCwd = (global, ...parts) => (global ? path.join(os.homedir(), ...parts) : path.join(process.cwd(), ...parts));
 
-const AIDER_BLOCK_RE = /\n?# --- (?:nofly|shomra) llm guard ---\n[\s\S]*?# --- end (?:nofly|shomra) ---\n?/;
+const AIDER_BLOCK_RE = /\n?# --- nofly llm guard ---\n[\s\S]*?# --- end nofly ---\n?/;
 
 function uninstallCopilot(global) {
-  const file = copilotHookFile(global);
-  const legacy = uninstallCopilotFile(copilotHookFile(global, LEGACY_HOOK_NAME));
-  const current = uninstallCopilotFile(file);
-  return current.changed || !legacy.changed ? current : { ...legacy, file };
+  return uninstallCopilotFile(copilotHookFile(global));
 }
 
 function uninstallCopilotFile(file) {

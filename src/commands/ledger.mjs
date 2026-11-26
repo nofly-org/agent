@@ -24,7 +24,7 @@ function mcpReach() {
   let total = 0;
   let mediated = 0;
   let files = 0;
-  const selfHints = ['mcp-guard', 'nofly', 'shomra'];
+  const selfHints = ['mcp-guard', 'nofly'];
 
   for (const { file } of mcpConfigCandidates()) {
     const entries = serverEntries(readJson(file));
@@ -45,7 +45,7 @@ function precommitInstalled() {
   const dir = gitHooksPath(process.cwd());
   if (!dir) return false;
   try {
-    return /nofly|shomra/i.test(readRegularText(path.join(dir, 'pre-commit'), 1024 * 1024));
+    return /nofly/i.test(readRegularText(path.join(dir, 'pre-commit'), 1024 * 1024));
   } catch {
     return false;
   }

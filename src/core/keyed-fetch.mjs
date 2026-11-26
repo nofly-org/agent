@@ -1,5 +1,3 @@
-import { withLegacyHeaders } from './legacy.mjs';
-
 const MAX_HOPS = 5;
 
 const NET_REASONS = [
@@ -57,8 +55,7 @@ export function redirectAllowed(from, to) {
 
 export async function keyedFetch(url, init = {}) {
   let current = new URL(String(url));
-  const plain = !!init.headers && Object.getPrototypeOf(init.headers) === Object.prototype;
-  let opts = { ...init, ...(plain ? { headers: withLegacyHeaders({ ...init.headers }) } : {}), redirect: 'manual' };
+  let opts = { ...init, redirect: 'manual' };
   for (let hop = 0; ; hop += 1) {
     const res = await fetch(current, opts);
     const location = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null;

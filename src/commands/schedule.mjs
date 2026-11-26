@@ -6,7 +6,7 @@ import { CONFIG_FILE, MACHINE_CONFIG_FILE, loadMachineConfig } from '../core/con
 import { EXIT_USAGE } from '../core/exit-codes.mjs';
 import { CLI_ENTRY_PATH } from '../core/package-root.mjs';
 import {
-  CRON_MARKER, LEGACY_SCHEDULE, SCHEDULE_LABEL, SYSTEMD_UNIT, TASK_NAME, cronLine, isCronEntry, launchdLogPath, launchdPlist, launchdPlistPath, mergeCrontab,
+  CRON_MARKER, SCHEDULE_LABEL, SYSTEMD_UNIT, TASK_NAME, cronLine, isCronEntry, launchdLogPath, launchdPlist, launchdPlistPath, mergeCrontab,
   parseEvery, reportArgs, schtasksCreateArgs, systemdService, systemdTimer, systemdUnitDir, windowsTaskXml,
 } from '../core/schedule-plan.mjs';
 import { bold, dim, green, red, yellow } from '../core/terminal.mjs';
@@ -216,9 +216,9 @@ function statusLinux(ctx) {
 }
 
 const PLATFORM = {
-  darwin: { install: installDarwin, remove: removeDarwin, removeLegacy: (ctx) => removeDarwin(ctx, LEGACY_SCHEDULE.label), status: statusDarwin },
-  win32: { install: installWin32, remove: removeWin32, removeLegacy: (ctx) => removeWin32(ctx, LEGACY_SCHEDULE.task), status: statusWin32 },
-  linux: { install: installLinux, remove: removeLinux, removeLegacy: (ctx) => fs.existsSync(path.join(systemdUnitDir(ctx), `${LEGACY_SCHEDULE.unit}.timer`)) ? removeLinux(ctx, LEGACY_SCHEDULE.unit) : null, status: statusLinux },
+  darwin: { install: installDarwin, remove: removeDarwin, status: statusDarwin },
+  win32: { install: installWin32, remove: removeWin32, status: statusWin32 },
+  linux: { install: installLinux, remove: removeLinux, status: statusLinux },
 };
 
 function context(flags) {
@@ -246,7 +246,6 @@ export async function cmdSchedule(flags, positional = []) {
     }
     let where;
     try {
-      impl.removeLegacy(ctx);
       where = impl.install({ ...ctx, hours });
     } catch (e) {
       console.error(`${red('✗')} ${e.message}`);
@@ -260,7 +259,7 @@ export async function cmdSchedule(flags, positional = []) {
     return;
   }
   if (sub === 'remove') {
-    const removed = [impl.remove(ctx), impl.removeLegacy(ctx)].filter(Boolean).join(', ');
+    const removed = impl.remove(ctx);
     console.log(removed ? `  ${green('✓')} Removed ${bold(removed)}` : `  ${dim('No NoFly schedule was installed.')}`);
     return;
   }

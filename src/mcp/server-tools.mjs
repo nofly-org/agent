@@ -74,8 +74,7 @@ export const MCP_TOOLS = [
 
 const workspacePath = (value, cwd) => path.resolve(cwd, String(value ?? '') || '.');
 
-export function mcpToolInvocation(rawName, rawArguments, cwd = process.cwd()) {
-  const name = typeof rawName === 'string' ? rawName.replace(/^shomra_/, 'nofly_') : rawName;
+export function mcpToolInvocation(name, rawArguments, cwd = process.cwd()) {
   const args = rawArguments && typeof rawArguments === 'object' ? rawArguments : {};
   if (name === 'nofly_check') return { args: ['check', workspacePath(args.path, cwd)] };
   if (name === 'nofly_scan_models') return { args: ['models', workspacePath(args.path, cwd)] };

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { CONFIG_DIR } from '../core/config.mjs';
-import { stateDirs } from '../core/legacy.mjs';
+import { stateDir as homeStateDir } from '../core/state-dir.mjs';
 import { SHELL_TOOLS_RE, WRITE_TOOLS, guardTouchedPaths, patchTextOf, shellCommandOf, shellWritePaths } from './classify.mjs';
 import { NOFLY_ANY_HOOK_RE } from '../agents/hook-command.mjs';
 import { postEditContents } from './memory-write.mjs';
@@ -10,18 +10,18 @@ import { readRegularText } from '../core/safe-read.mjs';
 
 const HOME_PREFIX = /^(?:~|\$HOME|\$\{HOME\}|%USERPROFILE%|\$env:USERPROFILE)(?=[\\/]|$)/i;
 const MUTATE_VERB = /(?:^|[\s;&|(])(?:rm|rmdir|unlink|shred|truncate|mv|cp|install|dd|chmod|chown|chattr|ln|tee|sed|perl|remove-item|del|erase|rd|set-content|add-content|clear-content|out-file|new-item|copy-item|move-item|rename-item)(?=\s)|>/i;
-const STATE_REF = /(?:~|\$HOME|\$\{HOME\}|%USERPROFILE%|\$env:USERPROFILE)[\\/]\.(?:nofly|shomra)(?=[\\/\s"';|&)]|$)/i;
+const STATE_REF = /(?:~|\$HOME|\$\{HOME\}|%USERPROFILE%|\$env:USERPROFILE)[\\/]\.nofly(?=[\\/\s"';|&)]|$)/i;
 const ASK_CAPABLE = new Set(['claude', 'cursor', 'copilot', 'gemini', 'codex', 'cline']);
 const MUTATING_LEAVES = new Set(['move_file', 'delete_file', 'remove_file', 'rename_file', 'copy_file']);
 const HOOK_FILE_RE = /(?:^|[\\/])(?:\.claude[\\/]settings(?:\.local)?\.json|\.codex[\\/]hooks\.json|\.gemini[\\/]settings\.json|\.cursor[\\/]hooks\.json|\.codeium[\\/]windsurf[\\/]hooks\.json|\.windsurf[\\/]hooks\.json|\.copilot[\\/]hooks[\\/][^\\/]+\.json|\.github[\\/]hooks[\\/][^\\/]+\.json|\.cline[\\/]hooks\.json|(?:\.clinerules|\.cline)[\\/]hooks[\\/](?:PreToolUse|PostToolUse)(?:\.\w+)?|Cline[\\/]Hooks[\\/](?:PreToolUse|PostToolUse)(?:\.\w+)?)$/i;
-const CLINE_MARK_RE = /\/\/ (?:nofly|shomra) cline hook/;
+const CLINE_MARK_RE = /\/\/ nofly cline hook/;
 const ours = (text) => NOFLY_ANY_HOOK_RE.test(text) || CLINE_MARK_RE.test(text);
-const IGNORE_FILE_RE = /(?:^|[\\/])\.(?:nofly|shomra)ignore$/i;
+const IGNORE_FILE_RE = /(?:^|[\\/])\.noflyignore$/i;
 const PROFILE_FILE_RE = /(?:^|[\\/])(?:\.bashrc|\.bash_profile|\.bash_login|\.profile|\.zshrc|\.zprofile|\.zshenv|\.kshrc|\.cshrc|\.tcshrc|\.config[\\/]fish[\\/]config\.fish|\.env(?:\.[\w.-]+)?|\.envrc)$|(?:^|[\\/])(?:Microsoft\.PowerShell_profile\.ps1|profile\.ps1)$/i;
 const DISABLE_HOOKS_RE = /["']?disableAllHooks["']?\s*:\s*true\b/i;
-const GUARD_ENV_RE = /["']?(?:NOFLY|SHOMRA)_(?:GUARD_LOCAL|GUARD_IGNORE|MODEL_GUARD|MCP_SCREEN|URL|GUARD_TIMEOUT_MS|GUARD_BREAKER_MS)["']?\s*:|\b(?:NOFLY|SHOMRA)_(?:GUARD_LOCAL|GUARD_IGNORE|MODEL_GUARD|MCP_SCREEN|URL|GUARD_TIMEOUT_MS|GUARD_BREAKER_MS)=/gi;
+const GUARD_ENV_RE = /["']?NOFLY_(?:GUARD_LOCAL|GUARD_IGNORE|MODEL_GUARD|MCP_SCREEN|URL|GUARD_TIMEOUT_MS|GUARD_BREAKER_MS)["']?\s*:|\bNOFLY_(?:GUARD_LOCAL|GUARD_IGNORE|MODEL_GUARD|MCP_SCREEN|URL|GUARD_TIMEOUT_MS|GUARD_BREAKER_MS)=/gi;
 const HOOK_COMMAND_RE = /"command"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
-const SELF_UNINSTALL_RE = /(?:\b(?:nofly|shomra)(?:\.mjs)?["']?|@(?:nofly|shomra)\/agent(?:@[\w.-]+)?)\s+install-hook\b[^\n;&|]*\s--uninstall\b/i;
+const SELF_UNINSTALL_RE = /(?:\bnofly(?:\.mjs)?["']?|@nofly\/agent(?:@[\w.-]+)?)\s+install-hook\b[^\n;&|]*\s--uninstall\b/i;
 const CHAINED_SHELL_RE = /[;&|`<>()]|\$\(/;
 
 function deshelled(command) {
@@ -60,7 +60,7 @@ function chainedGuardCount(text) {
     const cmd = m[1];
     if (!NOFLY_ANY_HOOK_RE.test(cmd)) continue;
     const lead = /^\s*((?:[A-Za-z_]\w*=\S*\s+)*)/.exec(cmd)?.[1] ?? '';
-    const foreignEnv = [...lead.matchAll(/([A-Za-z_]\w*)=/g)].some((a) => !/^(?:NOFLY|SHOMRA)_/i.test(a[1]));
+    const foreignEnv = [...lead.matchAll(/([A-Za-z_]\w*)=/g)].some((a) => !/^NOFLY_/i.test(a[1]));
     if (CHAINED_SHELL_RE.test(cmd) || foreignEnv) n++;
   }
   return n;
@@ -89,7 +89,7 @@ export function insideGuardState(p, { cwd = process.cwd(), home = os.homedir(), 
   if (typeof p !== 'string' || !p.trim()) return false;
   const raw = p.trim().replace(/^["']|["']$/g, '').replace(HOME_PREFIX, home);
   const abs = path.resolve(cwd || process.cwd(), raw);
-  const dirs = stateDir === CONFIG_DIR ? [...new Set([stateDir, ...stateDirs(home)])] : [stateDir];
+  const dirs = stateDir === CONFIG_DIR ? [...new Set([stateDir, homeStateDir(home)])] : [stateDir];
   const roots = dirs.flatMap((dir) => [path.resolve(dir), real(dir)]).filter(Boolean);
   const targets = [abs, real(abs)].filter(Boolean);
   return roots.some((root) => targets.some((t) => within(root, t)));

@@ -5,7 +5,7 @@ export const NO_RELATED = 'none';
 export const PUBLIC_TAG = 'public';
 export const MAX_ORG_TAGS = 3;
 export const VERDICT_RETENTION_DAYS = 90;
-const DEV_KEY = 'shomra-dev-insecure-key-change-me';
+const DEV_KEY = 'nofly-dev-insecure-key-change-me';
 
 export const ARTIFACT_TARGET = '@artifact';
 

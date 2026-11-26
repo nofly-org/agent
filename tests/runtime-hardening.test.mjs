@@ -186,6 +186,13 @@ test('the configured agent credential wins over one a local client sends', () =>
   assert.equal(forwardHeaders({ 'x-nofly-key': 'caller' }, ctx)['x-nofly-key'], 'org');
 });
 
+test('a client cannot hand the backend an agent handle under any other agent header', () => {
+  const ctx = { apiKey: 'org', actor: 'host/user', sessionId: 's', agentId: null };
+  const out = forwardHeaders({ 'x-acme-agent': 'billing-bot', 'X-Legacy-Agent': 'billing-bot', 'user-agent': 'sdk/1.0' }, ctx);
+  assert.deepEqual(Object.keys(out).filter((k) => /agent$/i.test(k)), ['user-agent']);
+  assert.equal(forwardHeaders({ 'x-acme-agent': 'billing-bot' }, { ...ctx, agentId: 'shm_agt_configured' })['x-acme-agent'], undefined);
+});
+
 test('with no configured agent the proxy forwards a client agent header only when it is a shm_agt_ credential', () => {
   const ctx = { apiKey: 'org', actor: 'host/user', sessionId: 's', agentId: null };
   assert.equal('x-nofly-agent' in forwardHeaders({ 'x-nofly-agent': 'billing-bot' }, ctx), false);

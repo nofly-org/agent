@@ -48,22 +48,14 @@ function fixedOf(vuln, name) {
   return [...out];
 }
 
-export async function mcpAdvisoryFindings(content, path = '', { fetchImpl = globalThis.fetch, timeoutMs = 3500 } = {}) {
-  const { servers } = gradeMcpDocument(content, path);
-  const wanted = new Map();
-  for (const s of servers ?? []) {
-    if (s.disabled) continue;
-    const p = launchPull(s.command, s.args);
-    if (!p?.version) continue;
-    if (knownVulnerable(p.ecosystem === 'pypi' ? 'python' : 'npm', p.name, p.version)) continue; // the seed row already says it
-    const key = `${p.ecosystem}:${p.name.toLowerCase()}@${p.version}`;
-    const slot = wanted.get(key) ?? { ...p, servers: [] };
-    slot.servers.push(s.name);
-    wanted.set(key, slot);
-  }
-  const pkgs = [...wanted.entries()].slice(0, MAX_PACKAGES);
-  if (!pkgs.length) return { status: 'none', checked: 0, findings: [] };
-  if (typeof fetchImpl !== 'function') return { status: 'unavailable', checked: 0, findings: [] };
+export const advisoryKey = (p) => `${p.ecosystem}:${p.name.toLowerCase()}@${p.version}`;
+
+export async function packageAdvisories(pulls, { fetchImpl = globalThis.fetch, timeoutMs = 3500 } = {}) {
+  const unique = new Map();
+  for (const p of pulls ?? []) if (p?.version && !unique.has(advisoryKey(p))) unique.set(advisoryKey(p), p);
+  const pkgs = [...unique.entries()].slice(0, MAX_PACKAGES);
+  if (!pkgs.length) return { status: 'none', checked: 0, advisories: new Map() };
+  if (typeof fetchImpl !== 'function') return { status: 'unavailable', checked: 0, advisories: new Map() };
 
   const todo = pkgs.filter(([k]) => !cache.has(k));
   if (todo.length) {
@@ -71,7 +63,7 @@ export async function mcpAdvisoryFindings(content, path = '', { fetchImpl = glob
     try {
       batch = await postJson(OSV_BATCH, { queries: todo.map(([, p]) => ({ package: { ecosystem: p.ecosystem === 'pypi' ? 'PyPI' : 'npm', name: p.name }, version: p.version })) }, fetchImpl, timeoutMs);
     } catch {
-      return { status: 'unavailable', checked: 0, findings: [] };
+      return { status: 'unavailable', checked: 0, advisories: new Map() };
     }
     todo.forEach(([k], i) => cache.set(k, (batch?.results?.[i]?.vulns ?? []).map((v) => v.id).filter(Boolean)));
   }
@@ -82,7 +74,7 @@ export async function mcpAdvisoryFindings(content, path = '', { fetchImpl = glob
     try { details.set(id, await getJson(OSV_VULN + encodeURIComponent(id), fetchImpl, timeoutMs)); } catch { /* the id alone still stands */ }
   }));
 
-  const findings = [];
+  const advisories = new Map();
   const RANK = { MEDIUM: 1, HIGH: 2, CRITICAL: 3 };
   for (const [k, p] of pkgs) {
     const vids = cache.get(k) ?? [];
@@ -91,17 +83,48 @@ export async function mcpAdvisoryFindings(content, path = '', { fetchImpl = glob
     const severity = vulns.length ? vulns.map(severityOf).reduce((w, s) => (RANK[s] > RANK[w] ? s : w), 'MEDIUM') : 'HIGH';
     const fixed = [...new Set(vulns.flatMap((v) => fixedOf(v, p.name)))].slice(0, 3);
     const cves = [...new Set(vulns.flatMap((v) => [v.id, ...(v.aliases ?? [])]).filter((x) => /^CVE-/i.test(x)))].slice(0, 3);
+    const summary = vulns.map((v) => String(v.summary ?? '').trim()).find(Boolean) ?? null;
+    advisories.set(k, { ecosystem: p.ecosystem, name: p.name, version: p.version, severity, fixed, cves, ids: vids, summary });
+  }
+  return { status: 'checked', checked: pkgs.length, advisories };
+}
+
+export function advisoryIds(a) {
+  return [...a.cves, ...a.ids.filter((v) => !a.cves.includes(v))].slice(0, 5);
+}
+
+export async function mcpAdvisoryFindings(content, path = '', opts = {}) {
+  const { servers } = gradeMcpDocument(content, path);
+  const wanted = new Map();
+  for (const s of servers ?? []) {
+    if (s.disabled) continue;
+    const p = launchPull(s.command, s.args);
+    if (!p?.version) continue;
+    if (knownVulnerable(p.ecosystem === 'pypi' ? 'python' : 'npm', p.name, p.version)) continue; // the seed row already says it
+    const key = advisoryKey(p);
+    const slot = wanted.get(key) ?? { ...p, servers: [] };
+    slot.servers.push(s.name);
+    wanted.set(key, slot);
+  }
+  const pkgs = [...wanted.entries()].slice(0, MAX_PACKAGES);
+  const { status, checked, advisories } = await packageAdvisories(pkgs.map(([, p]) => p), opts);
+  if (status !== 'checked') return { status, checked, findings: [] };
+
+  const findings = [];
+  for (const [k, p] of pkgs) {
+    const a = advisories.get(k);
+    if (!a) continue;
     for (const server of p.servers) {
       findings.push({
-        severity,
+        severity: a.severity,
         title: `MCP server "${server}" runs ${p.name}@${p.version}, which has known advisories`,
-        remediationText: `Upgrade "${p.name}"${fixed.length ? ` to ${fixed.join(' / ')} or later` : ' past the affected range'} and pin that release. Advisories: ${[...cves, ...vids.filter((v) => !cves.includes(v))].slice(0, 5).join(', ')}.`,
+        remediationText: `Upgrade "${p.name}"${a.fixed.length ? ` to ${a.fixed.join(' / ')} or later` : ' past the affected range'} and pin that release. Advisories: ${advisoryIds(a).join(', ')}.`,
         anchor: `${p.name}`,
         server,
       });
     }
   }
-  return { status: 'checked', checked: pkgs.length, findings };
+  return { status, checked, findings };
 }
 
 export function advisoriesDisabled(flags = {}) {

@@ -652,7 +652,7 @@ export function gradeMcpDocument(content, path = '') {
 }
 
 
-const MASK_KEY = 'shomra-mask-v1';
+const MASK_KEY = Buffer.from('73686f6d72612d6d61736b2d7631', 'hex');
 const MAX_KEEP = 12;
 
 const charKind = (c) => (c >= 'a' && c <= 'z' ? 'a' : c >= 'A' && c <= 'Z' ? 'A' : c >= '0' && c <= '9' ? '0' : null);

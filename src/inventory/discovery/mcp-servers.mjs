@@ -155,26 +155,32 @@ export function unreadMcpStores() {
   return unreadStores.slice();
 }
 
-export function discoverMcpServers(roots = [process.cwd()], files = null, opts = {}) {
+export function collectMcpServerSources(roots = [process.cwd()], files = null, opts = {}) {
   const walk = files || walkWorkspace(roots);
+  const machine = opts.machine !== false;
   const candidates = [
-    ...globalMcpCandidates(opts.home),
-    ...projectMcpCandidates(roots),
-    ...walk.mcp.map(({ file }) => ({ vendor: vendorFromPath(file), file })),
+    ...(machine ? globalMcpCandidates(opts.home).map((c) => ({ ...c, scope: 'machine' })) : []),
+    ...projectMcpCandidates(roots).map((c) => ({ ...c, scope: 'project' })),
+    ...walk.mcp.map(({ file }) => ({ vendor: vendorFromPath(file), file, scope: 'project' })),
   ];
   unreadStores = [];
-  const assets = [];
-  const seen = new Set();
   const seenFile = new Set();
   const sources = [];
-  for (const { vendor, file, store } of candidates) {
+  for (const { vendor, file, store, scope } of candidates) {
     const key0 = path.resolve(file).toLowerCase();
     if (seenFile.has(key0)) continue;
     seenFile.add(key0);
     const servers = readServers(file, store);
-    if (servers) sources.push({ vendor, file, servers });
+    if (servers) sources.push({ vendor, file, servers, scope });
   }
-  for (const s of readClaudeExtensions(claudeDataDir(opts.home))) sources.push({ vendor: 'claude', file: s.file, servers: [s] });
+  if (machine) for (const s of readClaudeExtensions(claudeDataDir(opts.home))) sources.push({ vendor: 'claude', file: s.file, servers: [s], scope: 'machine' });
+  return sources;
+}
+
+export function discoverMcpServers(roots = [process.cwd()], files = null, opts = {}) {
+  const sources = collectMcpServerSources(roots, files, opts);
+  const assets = [];
+  const seen = new Set();
 
   for (const { vendor, file, servers } of sources) {
     for (const raw of servers) {

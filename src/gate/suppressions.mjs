@@ -5,7 +5,7 @@ import { grade } from '../detect/guard-signals.mjs';
 import { readRegularText } from '../core/safe-read.mjs';
 import { REPO_CONFIG_DIRS, REPO_IGNORE_FILES } from './repo-policy.mjs';
 
-const IGNORE_MARK = /(?:\/\/|#|<!--|;)\s*(?:nofly|shomra)-ignore(-file|-next-line)?\b[:\s]?(.*)$/i;
+const IGNORE_MARK = /(?:\/\/|#|<!--|;)\s*nofly-ignore(-file|-next-line)?\b[:\s]?(.*)$/i;
 
 export function globToRe(glob) {
   const esc = String(glob).trim().replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*').replace(/\?/g, '.');
@@ -99,7 +99,7 @@ function readLinesBounded(fullPath) {
   }
 }
 
-const FILE_MARK = /\b(?:nofly|shomra)-ignore-file\b/i;
+const FILE_MARK = /\bnofly-ignore-file\b/i;
 const FILE_MARK_LINES = 5;
 
 const linesMark = (text) => {

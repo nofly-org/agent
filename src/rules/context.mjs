@@ -17,7 +17,7 @@ const RULES_SEV_RANK = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1, INFO: 0 };
 
 export function rulesContext(root) {
 
-  const managed = new Set(Object.values(RULES_TARGETS).flatMap((t) => [t.file, t.legacyFile].filter(Boolean)));
+  const managed = new Set(Object.values(RULES_TARGETS).map((t) => t.file));
   const considered = [];
   for (const a of walkArtifacts(root).slice(0, MAX_RULES_ARTIFACTS)) {
     if (managed.has(a.rel)) continue;
@@ -57,7 +57,7 @@ export function rulesContext(root) {
   for (const rel of ['.mcp.json', '.cursor/mcp.json', '.gemini/settings.json', '.windsurf/mcp_config.json']) {
     try {
       const cfg = JSON.parse(readRegularText(path.join(root, rel), MAX_ARTIFACT_BYTES));
-      if (cfg && cfg.mcpServers && (cfg.mcpServers.nofly || cfg.mcpServers.shomra)) { mcpRegistered = true; break; }
+      if (cfg && cfg.mcpServers && cfg.mcpServers.nofly) { mcpRegistered = true; break; }
     } catch {  }
   }
 

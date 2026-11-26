@@ -21,6 +21,7 @@ export const COMMANDS = {
   'scan-zip': (f, p) => import('../commands/scan-zip.mjs').then((m) => m.cmdScanZip(f, p)),
   'model-scan': (f, p) => import('../commands/model-scan.mjs').then((m) => m.cmdModelScan(f, p)),
   models: (f, p) => import('../commands/models.mjs').then((m) => m.cmdModels(f, p)),
+  mcps: (f, p) => import('../commands/mcps.mjs').then((m) => m.cmdMcps(f, p)),
   'memory-scan': (f, p) => import('../commands/memory-scan.mjs').then((m) => m.cmdMemoryScan(f, p)),
   'memory-restore': () => import('../guard/memory-restore.mjs').then((m) => m.cmdMemoryRestore()),
   redteam: (f) => import('../commands/redteam.mjs').then((m) => m.cmdRedteam(f)),

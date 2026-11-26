@@ -12,10 +12,6 @@ Zero dependencies - Node ≥ 18 built-ins only.
 
 ## Install
 
-Also available as a [Dev Container Feature](devcontainer-feature/) (the guard
-exists before the first keystroke in Codespaces / Gitpod / a local rebuild) and a
-[GitHub Action](action.yml).
-
 **There is no `curl … | sh` installer, deliberately.** NoFly's own Tier-0 guard
 blocks piping a downloaded script into a shell, and the rules block it writes
 tells coding agents never to do it. Shipping that one-liner would be the product
@@ -98,6 +94,12 @@ nofly mcp install                     # let the agent gate its own content BEFOR
 nofly scan                            # discover AI tooling on this machine
 nofly status                          # config + firewall health
 nofly help                            # full command list
+nofly new           # Scaffold a secure-by-default artifact  skill|command|subagent agent-card|mcp|rules [name]
+nofly new agent     #Scaffold a whole agent project that starts compliant [name] [--framework vercel-ai]
+nofly mcp add       #Vet an MCP server, then add it to a config <name> <command…>|--url <url> [--config <f>] [--force]
+nofly mcp list      #List installed MCP servers - every agent config on this machine + this folder [--no-machine] [--json]  ·  --config <f> for one file
+nofly mcp guard     #Route local (stdio) MCP servers through NoFly [--screen backend|local] [--config <f>] [--uninstall]
+nofly mcp serve     #Run NoFly AS an MCP server so agents call its checks (review_change/rules/check/scan_models/fix/explain)
 ```
 
 `check`, `fix` and `why` are the verbs a developer lives in - everything below is
@@ -155,25 +157,7 @@ policy not applied). `--strict` fails closed (exit 1) because org policy can't b
 verified. Every backend call is bounded by `NOFLY_API_TIMEOUT_MS` (default 30s),
 so a job never hangs.
 
-### GitHub Actions - the reusable action
-
-```yaml
-- uses: actions/checkout@v4
-- uses: shomra-org/agent@v0
-  with:
-    args: check           # --strict is appended unless fail-on-flag: 'false'
-    api-key: ${{ secrets.NOFLY_API_KEY }}   # optional - the gate is local-first
-    url: ${{ secrets.NOFLY_URL }}
-```
-
-Wire it as a **required status check** on a protected branch and it becomes the
-un-bypassable control on GitHub.com, which has no server-side hooks. On
-self-hosted Git and GitHub Enterprise, `nofly install-precommit --pre-receive`
-(below) refuses the push itself.
-
-The hand-written workflow below still works and shows what the action does.
-
-### GitHub Actions - by hand
+### GitHub Actions
 
 ```yaml
 name: NoFly AI-artifact gate
@@ -191,6 +175,11 @@ jobs:
           NOFLY_URL: ${{ secrets.NOFLY_URL }}
         run: npx @nofly/agent gate --all . --strict
 ```
+
+Wire it as a **required status check** on a protected branch and it becomes the
+un-bypassable control on GitHub.com, which has no server-side hooks. On
+self-hosted Git and GitHub Enterprise, `nofly install-precommit --pre-receive`
+(below) refuses the push itself.
 
 CI provider, repo, branch and commit are auto-detected and recorded, so security
 sees local-vs-CI gate activity in the dashboard.
@@ -298,8 +287,8 @@ a waiver on its own first, then the change it covers. Re-run the install command
 to upgrade a hook installed by an older version.
 
 Available on self-hosted Git (GitLab, Gitea, Bitbucket DC, plain bare repos) and
-GitHub Enterprise. GitHub.com does not run server-side hooks - use the action as
-a required status check instead.
+GitHub Enterprise. GitHub.com does not run server-side hooks - use the GitHub
+Actions gate above as a required status check instead.
 
 ### pre-commit (local, blocks risky artifacts before they land)
 

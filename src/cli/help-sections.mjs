@@ -12,7 +12,7 @@ const USAGE = () => `${bold('USAGE')}
 `;
 
 const MODES = () => `${bold('MODES')}  ${dim('- local-first: everything that can run on your machine does, with no account')}
-  ${cyan('Local')}     ${dim('(no key)')}  check · gate · doctor · ledger · protect · design · plan · corpus · rules · add · secrets · models · new · mcp
+  ${cyan('Local')}     ${dim('(no key)')}  check · gate · doctor · ledger · protect · design · plan · corpus · rules · add · secrets · models · mcps · new · mcp
                         ${dim('Fully on-machine. Nothing leaves your machine. Your lead-in - no signup.')}
   ${green('Enrolled')}  ${dim('(shm_live_)')} adds org policy, AI ${bold('fix')}/${bold('why')}, deep scans (zip/model/memory) & the dashboard
   ${green('CI')}        ${dim('(shm_ci_)')}   scoped, revocable pipeline key for ${bold('pr')} / ${bold('check')} in CI
@@ -77,12 +77,13 @@ const COMMANDS = () => `${bold('COMMANDS')}
   ${cyan('baseline')}      Accept current findings; only NEW ones fail ${dim('[dir]')}
   ${cyan('secrets')}       Scan working tree + git history for leaked keys ${dim('[dir] [--history] [--depth N]')}
   ${cyan('models')}        Find models the code loads + look up known vulns ${dim('[dir] [--strict] [--dry-run]')}
+  ${cyan('mcps')}          Find MCP servers (agent configs + code) + look up known vulns ${dim('[dir] [--strict] [--dry-run] [--offline] [--no-machine]')}
 
   ${dim('Build safely')}
   ${cyan('new')}           Scaffold a secure-by-default artifact  ${dim('skill|command|subagent|agent-card|mcp|rules [name]')}
   ${cyan('new agent')}     Scaffold a whole agent project that starts compliant ${dim('[name] [--framework vercel-ai]')}
   ${cyan('mcp add')}       Vet an MCP server, then add it to a config ${dim('<name> <command…>|--url <url> [--config <f>] [--force]')}
-  ${cyan('mcp list')}      List the MCP servers in a config       ${dim('[--config <f>] [--json]')}
+  ${cyan('mcp list')}      List installed MCP servers - every agent config on this machine + this folder ${dim('[--no-machine] [--json]  ·  --config <f> for one file')}
   ${cyan('mcp guard')}     Route local (stdio) MCP servers through NoFly ${dim('[--screen backend|local] [--config <f>] [--uninstall]')}
   ${cyan('mcp serve')}     Run NoFly AS an MCP server so agents call its checks ${dim('(review_change/rules/check/scan_models/fix/explain)')}
 
@@ -335,7 +336,7 @@ const ENV = () => `${bold('ENV')}
                               the workload's own identity token for an hour-long agent credential and needs no
                               stored key. entra asks the Azure managed identity (AKS workload identity, App
                               Service, Container Apps, VMs); okta reads NOFLY_TOKEN_FILE or NOFLY_ID_TOKEN
-  NOFLY_AUDIENCE             The audience the agent's Keyless Sign-In panel shows (shomra:org:…, or the
+  NOFLY_AUDIENCE             The audience the agent's Keyless Sign-In panel shows (the org audience, or the
                               Entra or Okta binding's own audience)
   NOFLY_ID_TOKEN             A token the environment already holds (GitLab id_tokens, an Entra or Okta token)
   NOFLY_TOKEN_FILE           Token path (Kubernetes default /var/run/secrets/nofly/token, or an Okta token file)

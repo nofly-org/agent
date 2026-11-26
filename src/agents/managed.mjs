@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readJsonFile, writeJsonFile } from '../core/json-file.mjs';
 import { SELF_PATH, hookCommand } from './hook-command.mjs';
-import { LEGACY_HOOK_NAME, managedFile } from './hook-files.mjs';
+import { managedFile } from './hook-files.mjs';
 import { AGENT_UNINSTALLERS_AT, RESULT_GUARD_MATCHERS, TOOL_GUARD_MATCHERS, copilotHooks, installCodexAt } from './installers.mjs';
 
 export { managedFile };
@@ -43,29 +43,19 @@ export const MANAGED_NOTES = {
   copilot: 'Copilot CLI loads policy hooks before all others and they cannot be turned off with disableAllHooks.',
 };
 
-function removeLegacyManaged(agent) {
-  if (agent !== 'claude' && agent !== 'copilot') return false;
-  const legacy = managedFile(agent, process.platform, process.env, LEGACY_HOOK_NAME);
-  if (!legacy || !fs.existsSync(legacy)) return false;
-  fs.rmSync(legacy, { force: true });
-  return true;
-}
-
 export function installManaged(agent) {
   const file = managedFile(agent);
   if (!file) return { file: null, changed: false, unsupported: true };
-  const legacy = removeLegacyManaged(agent);
-  if (agent === 'claude') return { file, changed: writeOwned(file, claudeManaged()) || legacy, note: MANAGED_NOTES.claude };
-  if (agent === 'copilot') return { file, changed: writeOwned(file, copilotHooks(false)) || legacy, note: MANAGED_NOTES.copilot };
+  if (agent === 'claude') return { file, changed: writeOwned(file, claudeManaged()), note: MANAGED_NOTES.claude };
+  if (agent === 'copilot') return { file, changed: writeOwned(file, copilotHooks(false)), note: MANAGED_NOTES.copilot };
   const result = installCodexAt(file, false);
   if (process.platform !== 'win32') fs.chmodSync(file, 0o644);
   return { ...result, note: MANAGED_NOTES.codex };
 }
 
 export function uninstallManaged(agent) {
-  const legacy = removeLegacyManaged(agent);
   const file = managedFile(agent);
-  if (!file || !fs.existsSync(file)) return { file, changed: legacy, removed: legacy ? 1 : 0 };
+  if (!file || !fs.existsSync(file)) return { file, changed: false, removed: 0 };
   if (agent === 'codex') return AGENT_UNINSTALLERS_AT.codex(file);
   fs.rmSync(file, { force: true });
   return { file, changed: true, removed: 1 };

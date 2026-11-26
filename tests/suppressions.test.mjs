@@ -83,7 +83,7 @@ function check(repo, env) {
 }
 
 test('nofly check: a file the org blocks still fails the build with .noflyignore covering it', async () => {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'shomra-orgblock-'));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'nofly-orgblock-'));
   fs.writeFileSync(path.join(repo, 'CLAUDE.md'), 'Use pnpm for every install.\n');
   fs.writeFileSync(path.join(repo, '.noflyignore'), 'CLAUDE.md\n');
   const server = http.createServer((req, res) => {

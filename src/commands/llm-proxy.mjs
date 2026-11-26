@@ -6,7 +6,6 @@ import { VERSION } from '../core/version.mjs';
 import { resolveAgentIdentityHandle } from './agent-identity.mjs';
 import { machineSessionCredential, storedMachineBinding } from '../core/machine-session.mjs';
 import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
-import { adoptLegacyHeaders } from '../core/legacy.mjs';
 import { currentUsername } from '../core/api-client.mjs';
 
 export const LLM_PROVIDERS = ['openai', 'anthropic', 'gemini', 'groq', 'mistral', 'xai', 'deepseek', 'openrouter', 'together', 'cohere', 'voyage', 'jina'];
@@ -22,6 +21,7 @@ const HOP_BY_HOP_RESPONSE_HEADERS = [...HOP_BY_HOP, 'content-length', 'content-e
 
 const namedByConnection = (value) => String(value ?? '').split(',').map((name) => name.trim().toLowerCase()).filter(Boolean);
 const AGENT_CREDENTIAL_PREFIX = 'shm_agt_';
+const AGENT_HEADER_RE = /^x-[a-z0-9]+-agent$/i;
 
 function newSessionId() {
   return `proxy-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -48,7 +48,7 @@ export function localClientOnly(headers = {}) {
 }
 
 export function forwardHeaders(incoming, { apiKey, actor, machineId, sessionId, project, agentId }) {
-  const headers = adoptLegacyHeaders({ ...incoming });
+  const headers = { ...incoming };
   for (const name of [...HOP_BY_HOP_REQUEST_HEADERS, ...namedByConnection(incoming.connection)]) delete headers[name];
 
   headers['x-nofly-key'] = apiKey;
@@ -58,7 +58,7 @@ export function forwardHeaders(incoming, { apiKey, actor, machineId, sessionId, 
   if (!headers['x-nofly-session']) headers['x-nofly-session'] = sessionId;
   if (project) headers['x-nofly-project'] = project;
   const presented = typeof headers['x-nofly-agent'] === 'string' ? headers['x-nofly-agent'].trim() : '';
-  delete headers['x-nofly-agent'];
+  for (const name of Object.keys(headers)) if (AGENT_HEADER_RE.test(name)) delete headers[name];
   const agent = agentId || (presented.startsWith(AGENT_CREDENTIAL_PREFIX) ? presented : null);
   if (agent) headers['x-nofly-agent'] = agent;
   return headers;

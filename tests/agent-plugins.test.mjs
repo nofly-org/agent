@@ -7,7 +7,7 @@ import { discoverAgentArtifacts } from '../src/inventory/agent-artifacts.mjs';
 import { installedPluginManifests, pluginRootOf } from '../src/inventory/artifacts/plugins.mjs';
 import { classify } from '../src/inventory/artifacts/classify.mjs';
 
-const tmp = fs.mkdtempSync(path.join(os.homedir(), '.shomra-plugins-test-'));
+const tmp = fs.mkdtempSync(path.join(os.homedir(), '.nofly-plugins-test-'));
 process.on('exit', () => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {  } });
 const write = (rel, body) => {
   const full = path.join(tmp, rel);

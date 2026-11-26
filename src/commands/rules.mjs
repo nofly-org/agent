@@ -9,7 +9,7 @@ import { detectEnv } from '../gate/environment.mjs';
 import { DEC_RANK } from '../gate/sast.mjs';
 import { rulesContext } from '../rules/context.mjs';
 import { generateRules, mergeRulesBlock, resolveRulesTargets, rulesBlock, rulesBlockDamage } from '../rules/generate.mjs';
-import { RULES_BEGIN, RULES_TARGETS, currentMarkers, hasRulesBlock } from '../rules/sections.mjs';
+import { RULES_BEGIN, RULES_TARGETS } from '../rules/sections.mjs';
 import { writeFileAtomic } from '../core/json-file.mjs';
 import { readFailure, readRegularText } from '../core/safe-read.mjs';
 
@@ -65,10 +65,10 @@ function planTarget(root, key, block) {
     if (error.code !== 'ENOENT') return { key, label: target.label, file: target.file, abs: absolutePath, next: null, worsens: false, state: 'unreadable', damage: readFailure(error) };
   }
 
-  const existing = currentMarkers(raw);
+  const existing = raw;
   const damage = rulesBlockDamage(existing);
   if (damage) return { key, label: target.label, file: target.file, abs: absolutePath, next: null, worsens: false, state: 'damaged', damage };
-  const next = mergeRulesBlock(existing, block, target) ?? (existing !== raw ? existing : null);
+  const next = mergeRulesBlock(existing, block, target) ?? null;
   const hadBlock = existing.includes(RULES_BEGIN);
   const worsens = next !== null && gateRank(next, target.file) > (existing ? gateRank(existing, target.file) : 0);
 
@@ -115,16 +115,6 @@ function printDriftReport(plan, drifted) {
   console.log(dim('\n  Run ') + bold('nofly rules --write') + dim(' and commit the result.\n'));
 }
 
-function dropLegacyOwnedFile(target) {
-  const legacy = RULES_TARGETS[target.key]?.legacyFile;
-  if (!legacy) return;
-  const file = path.join(path.dirname(target.abs), path.relative(path.dirname(RULES_TARGETS[target.key].file), legacy));
-  try {
-    if (hasRulesBlock(readRegularText(file))) fs.unlinkSync(file);
-  } catch {
-  }
-}
-
 function writeTarget(target, flags) {
   if (target.state === 'unreadable') {
     if (!flags.json) console.log(`  ${red('✗')} ${target.file} ${dim(`- could not be read (${target.damage}); nothing was changed.`)}`);
@@ -146,7 +136,6 @@ function writeTarget(target, flags) {
   }
   try {
     writeFileAtomic(target.abs, target.next);
-    dropLegacyOwnedFile(target);
     if (!flags.json) {
       console.log(`  ${green('✓')} ${target.state === 'stale' ? 'Updated' : 'Wrote'} ${bold(target.file)} ${dim(`· ${target.label}`)}`);
     }

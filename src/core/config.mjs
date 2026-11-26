@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { readFailure, readRegularText } from './safe-read.mjs';
-import { preferredPath, stateDir } from './legacy.mjs';
+import { stateDir } from './state-dir.mjs';
 
 const MAX_CONFIG_BYTES = 4 * 1024 * 1024;
 const isText = (value) => typeof value === 'string' && value.trim() !== '';
@@ -17,9 +17,9 @@ export const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 export function machineConfigFile(platform = process.platform, env = process.env) {
   if (platform === 'win32') {
     const data = env.ProgramData || env.PROGRAMDATA || 'C:\\ProgramData';
-    return preferredPath(path.win32.join(data, 'NoFly', 'config.json'), path.win32.join(data, 'Shomra', 'config.json'));
+    return path.win32.join(data, 'NoFly', 'config.json');
   }
-  return preferredPath('/etc/nofly/config.json', '/etc/shomra/config.json');
+  return '/etc/nofly/config.json';
 }
 
 export const MACHINE_CONFIG_FILE = machineConfigFile();

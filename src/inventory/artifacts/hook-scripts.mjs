@@ -15,7 +15,7 @@ const COMMAND_KEYS = new Set(['command', 'bash', 'sh', 'powershell', 'pwsh', 'wi
 const EXTS = 'sh|bash|zsh|ps1|psm1|bat|cmd|py|js|mjs|cjs|ts|rb|pl|php|lua';
 const REF_RE = new RegExp(`(?:^|["'\\s=;&|(\`])((?:\\$\\{?[A-Za-z_]\\w*\\}?|%[A-Za-z_]\\w*%|~|[A-Za-z]:)?[\\\\/]?(?:[\\w.@-]+[\\\\/])*[\\w.@-]+\\.(?:${EXTS}))(?=["'\\s;|&)\`]|$)`, 'g');
 const QUOTED_REF_RE = new RegExp(`(["'])((?:\\$\\{?[A-Za-z_]\\w*\\}?|%[A-Za-z_]\\w*%|~|[A-Za-z]:)?[^"'\\n]*[\\\\/][^"'\\n]*?\\.(?:${EXTS}))\\1`, 'g');
-const NOFLY_GUARD_RE = /(?:^|[\\/])(?:(?:nofly|shomra)(?:-agent)?\.m?js|@(?:nofly|shomra)[\\/]agent[\\/].*)$/i;
+const NOFLY_GUARD_RE = /(?:^|[\\/])(?:nofly(?:-agent)?\.m?js|@nofly[\\/]agent[\\/].*)$/i;
 const MAX_REFS = 40;
 
 export function hookScriptMode(env = process.env, cfg = null) {

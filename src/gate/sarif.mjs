@@ -36,7 +36,7 @@ export function toSarif(results, { base = locationBase() } = {}) {
     $schema: 'https://json.schemastore.org/sarif-2.1.0.json',
     version: '2.1.0',
     runs: [{
-      tool: { driver: { name: 'NoFly', informationUri: 'https://shomra.dev', version: VERSION, rules: [...rules.values()] } },
+      tool: { driver: { name: 'NoFly', informationUri: 'https://www.npmjs.com/package/@nofly/agent', version: VERSION, rules: [...rules.values()] } },
       originalUriBaseIds: { SRCROOT: { uri: pathToFileURL(base.endsWith('/') ? base : `${base}/`).href } },
       results: sarifResults,
     }],

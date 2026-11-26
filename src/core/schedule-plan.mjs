@@ -4,7 +4,6 @@ export const SCHEDULE_LABEL = 'io.nofly.report';
 export const TASK_NAME = 'NoFlyReport';
 export const SYSTEMD_UNIT = 'nofly-report';
 export const CRON_MARKER = '# nofly-report';
-export const LEGACY_SCHEDULE = { label: 'io.shomra.report', task: 'ShomraReport', unit: 'shomra-report', cron: '# shomra-report' };
 export const MIN_HOURS = 1;
 export const MAX_HOURS = 168;
 export const DEFAULT_HOURS = 6;
@@ -162,7 +161,7 @@ export function cronLine({ node, entry, args, hours }) {
   return `${cronSchedule(hours)} ${cmd} >/dev/null 2>&1 ${CRON_MARKER}`;
 }
 
-export const isCronEntry = (l) => [CRON_MARKER, LEGACY_SCHEDULE.cron].some((marker) => String(l).trimEnd().endsWith(marker));
+export const isCronEntry = (l) => String(l).trimEnd().endsWith(CRON_MARKER);
 
 export function mergeCrontab(existing, line) {
   const kept = String(existing ?? '').split(/\r?\n/).filter((l) => !isCronEntry(l));
