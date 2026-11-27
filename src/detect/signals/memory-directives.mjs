@@ -370,10 +370,12 @@ function popularTargets()              {
   return popular.targets;
 }
 
+const RUNTIME_NAMES = new Set(['python', 'python2', 'python3', 'nodejs', 'golang', 'rustup', 'docker', 'kotlin', 'dotnet', 'flutter']);
+
 function typosquatOf(token        )                {
   const t = token.toLowerCase();
   const targets = popularTargets();
-  if (t.length < 5 || targets.has(t) || isKnownPackage(t)) return null;
+  if (t.length < 5 || RUNTIME_NAMES.has(t) || targets.has(t) || isKnownPackage(t)) return null;
   for (const p of targets) {
     if (p.length < 5 || Math.abs(p.length - t.length) > 1) continue;
     if (osaDistance(t, p) === 1) return p;
