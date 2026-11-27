@@ -38,7 +38,7 @@ async function resolveConnectVerdict({ name, command, args, flags, settings, str
   if (!apiKey || !url) {
     if (strict) {
       await sendBlockedInitialize(
-        'NoFly is not configured on this machine (NOFLY_GUARD_STRICT). Run: nofly init --key shm_…',
+        'NoFly is not configured on this machine (NOFLY_GUARD_STRICT). Run: nofly init --key nfy_…',
         name,
       );
       process.exit(0);
@@ -388,7 +388,7 @@ export async function runMcpShim(flags, positional) {
     process.exit(0);
   }
   if (screening.mode === 'backend' && !(settings.apiKey && settings.url)) {
-    const why = 'screening mode "backend" needs this machine enrolled - run: nofly init --key shm_… --url <backend>';
+    const why = 'screening mode "backend" needs this machine enrolled - run: nofly init --key nfy_… --url <backend>';
     if (strict) {
       await sendBlockedInitialize(`NoFly refused to start "${name}": ${why}`, name);
       process.exit(0);

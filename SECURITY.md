@@ -12,7 +12,7 @@ Instead, use one of:
 
 - **GitHub private advisory** - the "Report a vulnerability" button under this
   repository's **Security** tab (preferred).
-- **Email** - hello@shomra.ai
+- **Email** - hello@nofly.ai
 
 Please include:
 

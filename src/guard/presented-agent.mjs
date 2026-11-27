@@ -2,6 +2,7 @@ import { resolveAgentIdentityHandle } from '../commands/agent-identity.mjs';
 import { storedAgentCredential } from '../core/config.mjs';
 import { workloadCredential } from '../core/workload-identity.mjs';
 import { machineSessionCredential, storedMachineBinding } from '../core/machine-session.mjs';
+import { isAgentCredential } from '../core/api-key.mjs';
 
 export async function presentedAgent(flags, { cfg, agent, url, signIn = workloadCredential, machineSession = machineSessionCredential } = {}) {
   const presented = resolveAgentIdentityHandle(flags);
@@ -22,9 +23,9 @@ export function agentHeader(agentId) {
 
 export function grantHeader(env = process.env) {
   const grant = String(env.NOFLY_GRANT ?? '').trim();
-  return /^(shm|dgx)_grt_[A-Za-z0-9_-]{8,200}$/.test(grant) ? { 'X-NoFly-Grant': grant } : {};
+  return /^(?:nfy|shm|dgx)_grt_[A-Za-z0-9_-]{8,200}$/.test(grant) ? { 'X-NoFly-Grant': grant } : {};
 }
 
 export function keyFor(apiKey, agentId) {
-  return apiKey || (typeof agentId === 'string' && agentId.startsWith('shm_agt_') ? agentId : undefined);
+  return apiKey || (typeof agentId === 'string' && isAgentCredential(agentId) ? agentId : undefined);
 }

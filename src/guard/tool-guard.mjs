@@ -41,6 +41,7 @@ import { readRegularText } from '../core/safe-read.mjs';
 import { gatewayEntryKey } from './gateway-entry.mjs';
 import { refreshRulePacksIfStale } from '../core/rule-packs.mjs';
 import { judgeCall, noteWrittenInjection } from './session-record.mjs';
+import { isAgentCredential } from '../core/api-key.mjs';
 
 const ALLOW_VERDICT = { verdict: 'ALLOW', top: null, findings: [] };
 
@@ -328,7 +329,7 @@ async function requestServerDecision({ url, apiKey, agentId, body, agent, strict
       }
       if (response.status === 401 || response.status === 403) {
         onRejected?.();
-        const agentCredential = String(apiKey ?? '').startsWith('shm_agt_') || String(agentId ?? '').startsWith('shm_agt_');
+        const agentCredential = isAgentCredential(apiKey) || isAgentCredential(agentId);
         reportUnauthenticated(agent, response.status, strict, { reason: await rejectionReason(response), agentCredential });
         return onUnreachable(`the backend rejected the credential (HTTP ${response.status})`, { breaker: false });
       }
@@ -442,7 +443,7 @@ export async function cmdToolGuard(flags) {
   const fromMachine = binding ? await machineSessionCredential({ cfg, url, binding, onError: (e) => process.stderr.write(`nofly: machine session failed - ${e?.message ?? e}\n`) }) : null;
   const agentId = presented ?? fromWorkload ?? fromMachine ?? storedAgentCredential(cfg, agent, url);
   const onRejected = fromWorkload ? () => clearCachedCredential() : undefined;
-  const apiKey = settings.apiKey || (agentId?.startsWith('shm_agt_') ? agentId : undefined);
+  const apiKey = settings.apiKey || (isAgentCredential(agentId) ? agentId : undefined);
 
   const normalized = normalizeGuardInput(agent, readHookPayload());
   const tool = String(normalized.tool_name ?? '').trim();
@@ -482,7 +483,7 @@ export async function cmdToolGuard(flags) {
   if (!apiKey) {
     recordSelftest({ stage: 'not-configured', tool });
     if (strict) {
-      emitGuardDeny(agent, 'NoFly is not configured on this machine (NOFLY_GUARD_STRICT). Run: nofly init --key shm_…');
+      emitGuardDeny(agent, 'NoFly is not configured on this machine (NOFLY_GUARD_STRICT). Run: nofly init --key nfy_…');
     }
     if (unscreenedSevere(normalized, tool, input)) askUnscreened(agent, 'NoFly is not configured on this machine', flaggedBy);
     settleFlagged(agent, flaggedBy, 'No NoFly server is configured on this machine to confirm it');

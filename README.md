@@ -1,163 +1,122 @@
 # @nofly/agent
 
-**Adversarial assurance for AI agents**, as a local-first CLI. It sits inside
-your coding agent and CI and blocks dangerous tool-calls, shell commands and
-data exfiltration *before they run* - on your machine, even offline. Enrolled,
-it also attacks your org’s own guardrails (`nofly admin redteam`) and turns
-each breach into a false-positive-gated control (`nofly harden`). It also vets AI
+**Adversarial assurance for AI agents**, as a local-first CLI. NoFly sits inside
+your coding agent and CI and blocks dangerous tool calls, shell commands and data
+exfiltration *before they run* - on your machine, even offline. It vets AI
 artifacts (MCP configs, Skills, slash commands, hooks, rules files) before they
-install. Start with a free on-machine scan - no signup.
+install, finds the MCP servers and models your machine and code use and checks
+them for known vulnerabilities, and, when enrolled, attacks your own guardrails to
+prove they hold.
 
-Zero dependencies - Node ≥ 18 built-ins only.
+[nofly.ai](https://www.nofly.ai) · [GitHub](https://github.com/nofly-org/agent) · Apache-2.0 · zero dependencies, Node ≥ 18
 
 ## Install
 
-**There is no `curl … | sh` installer, deliberately.** NoFly's own Tier-0 guard
-blocks piping a downloaded script into a shell, and the rules block it writes
-tells coding agents never to do it. Shipping that one-liner would be the product
-contradicting its own control in its own README.
-
 ```bash
-npm i -g @nofly/agent      # global `nofly`
-# or run without installing:
-npx @nofly/agent gate .mcp.json
+npm i -g @nofly/agent          # gives you the `nofly` command
+npx @nofly/agent check         # or run it without installing
 ```
 
-## Auth (optional)
-
-NoFly is **local-first** - there is no built-in backend and no telemetry. `gate`,
-`check`, `models`, `secrets`, and the runtime firewall all run on your machine
-with no key. The one lookup that goes out without a key is the name and version
-of each pinned MCP server package, checked against the public advisory database
-at osv.dev; set `NOFLY_OFFLINE=1` (or pass `--offline`) to keep even that on the
-machine. You only connect to a NoFly org to layer on your **org policy**,
-cloud/deep scans, AI fixes, and the Model Security Index.
-
-When enrolled, artifact content goes to your backend for org policy - with every
-secret value replaced on the machine by a same-shape stand-in first, so the
-backend still sees that a credential is there, of which kind, but never the
-credential itself.
-
-- **Dev machine:** `nofly init --key shm_live_… --url https://nofly.your-co.com` (writes `~/.nofly/config.json`).
-- **CI / headless:** set env vars instead - no `init` needed:
-  - `NOFLY_API_KEY` - your org key
-  - `NOFLY_URL` - your backend URL
-
-Without either, every backend-only feature degrades cleanly to the on-machine result.
-
-## Agent identity
-
-Give each agent its own identity so every call is held to its own least-privilege
-policy, owner and purpose.
-
-- **Dev machine** - one command, nothing to copy:
-  ```bash
-  nofly agent-identity register --name "Dana's Claude Code" --type coding-agent \
-    --purpose "Writes and reviews code in the payments repos" --owner dana@acme.com --for claude
-  ```
-  The `shm_agt_` credential is saved to `~/.nofly/config.json` (owner-only) and the
-  runtime firewall presents it from the next call - no `export`, no restart.
-  `--no-save` prints it once instead; `NOFLY_AGENT` always overrides it.
-- **CI / Kubernetes** - the agent holds no secret. The workload registers *itself*
-  with its own identity token (the pipeline's CI key only authorizes the
-  registration), and running it on every build returns the same agent:
-  ```yaml
-  permissions:
-    id-token: write
-  steps:
-    - run: npx @nofly/agent agent-identity register --name release-bot --type ci --purpose "Publishes the API release"
-      env:
-        NOFLY_API_KEY: ${{ secrets.NOFLY_API_KEY }}
-        NOFLY_URL: https://your-nofly-backend
-  ```
-  GitHub Actions and GitLab (`id_tokens: NOFLY_ID_TOKEN`) are detected
-  automatically; elsewhere pass `--workload kubernetes|entra|okta`. Later steps
-  sign in through `NOFLY_WORKLOAD` / `NOFLY_AUDIENCE` (written to `$GITHUB_ENV`
-  for you). A stored credential from CI needs `--static`.
-
-`nofly status` shows which identity this machine presents and where it comes from.
+There is no `curl … | sh` installer, deliberately: NoFly's own guard blocks piping
+a downloaded script into a shell.
 
 ## Quickstart
 
 ```bash
-nofly check                           # "is my repo safe?" - gate every AI artifact at once
-nofly check --staged                  # only what's git-staged (pre-commit / editor-on-save)
+# Is my repo safe?
+nofly check                           # gate every AI artifact in the repo at once
+nofly check --staged                  # only what's git-staged (pre-commit / on save)
 nofly check --fix                     # gate, then remediate what isn't clean, in place
+nofly gate .mcp.json                  # vet ONE artifact before you install it
 nofly fix .mcp.json --apply           # AI-fix one artifact and write it back
-nofly why .mcp.json                   # why each finding matters + is-it-a-false-positive
-nofly install-precommit               # block risky staged AI artifacts on git commit
-nofly install-hook --agent claude     # wire the runtime firewall into Claude Code
+nofly why .mcp.json                   # why each finding matters + is it a false positive
+
+# What AI is on this machine and in this code?
+nofly scan                            # discover AI tooling on this machine
+nofly mcp list                        # every MCP server your agents have installed
+nofly mcps                            # MCP servers in agent configs + code, with known vulns
+nofly models                          # models the code loads, with known vulns
+nofly secrets --history               # leaked keys in the tree and git history
+nofly doctor                          # posture of this machine's AI setup
+
+# Vet before anything lands
+nofly add mcp @modelcontextprotocol/server-github   # vet an MCP server, skill, model or package
+nofly mcp add github npx -y @modelcontextprotocol/server-github   # vet it, then add it to .mcp.json
+
+# Runtime firewall
+nofly protect                         # wire the firewall into every coding agent you use
+nofly install-hook --agent claude     # ...or into one agent
 nofly install-hook --uninstall        # take it out again (your own hooks are kept)
 nofly selftest --agent all            # prove the firewall is really in path on THIS machine
 nofly rules --write                   # teach the agent what gets blocked, so it never writes it
 nofly mcp install                     # let the agent gate its own content BEFORE writing it
-nofly scan                            # discover AI tooling on this machine
+nofly mcp guard                       # route local MCP servers through NoFly
+
+# CI and repo hygiene
+nofly install-precommit               # block risky staged AI artifacts on git commit
+nofly pr --init                       # PR check with inline annotations (GitHub Actions)
+nofly baseline                        # accept today's findings; only NEW ones fail
+
+# Threat-model before you build
+nofly design docs/rfc.md              # does a design open a path from untrusted input to harm?
+nofly plan plan.md                    # the same, on the agent's own plan
+nofly corpus ./docs                   # screen RAG documents before they are indexed
+nofly new agent triage-bot            # scaffold an agent project that starts compliant
+
 nofly status                          # config + firewall health
-nofly help                            # full command list
-nofly new           # Scaffold a secure-by-default artifact  skill|command|subagent agent-card|mcp|rules [name]
-nofly new agent     #Scaffold a whole agent project that starts compliant [name] [--framework vercel-ai]
-nofly mcp add       #Vet an MCP server, then add it to a config <name> <command…>|--url <url> [--config <f>] [--force]
-nofly mcp list      #List installed MCP servers - every agent config on this machine + this folder [--no-machine] [--json]  ·  --config <f> for one file
-nofly mcp guard     #Route local (stdio) MCP servers through NoFly [--screen backend|local] [--config <f>] [--uninstall]
-nofly mcp serve     #Run NoFly AS an MCP server so agents call its checks (review_change/rules/check/scan_models/fix/explain)
+nofly help                            # every command and option
 ```
 
-`check`, `fix` and `why` are the verbs a developer lives in - everything below is
-CI, governance, or one-time setup. Findings carry a **file:line**, so `check --json`
-drives precise editor squiggles and `why`/`fix` point at the exact offending line.
+Every command takes `--json`, and findings carry a **file:line**, so the output
+drives editor squiggles and CI annotations directly.
 
-- **`check`** is the developer front door: it finds every AI artifact in the tree
-  (MCP configs, Skills, slash commands, hooks, rules files) and gates them in one
-  shot, **local-first** - a real on-machine verdict with no backend or key, org
-  policy layered on when enrolled. It's `gate --all` with dev ergonomics
-  (`--staged` / `--changed` scoping, `--fix`, clean `--json` for an IDE extension).
-- **`fix`** generates a minimal fix for what the gate flags and (with `--apply`)
-  writes it back to your working tree - the fix is produced on the platform with
-  your org's AI key, so no provider key sits on the dev machine. Nothing is
-  committed or pushed. Without AI on the server it prints deterministic guidance.
+## Local-first
 
-### The install-time verbs (still here)
+`check`, `gate`, `mcps`, `models`, `secrets` and the runtime firewall all run on
+your machine with no account and no telemetry. The one lookup that goes out
+without a key is the name and version of each pinned MCP server package, checked
+against the public advisory database at [osv.dev](https://osv.dev); pass
+`--offline` (or set `NOFLY_OFFLINE=1`) to keep even that on the machine.
+
+Connect to a NoFly org to add your **org policy**, AI fixes, deep scans, the MCP
+and Model Security Index and the dashboard:
 
 ```bash
-nofly gate my-skill/SKILL.md          # vet ONE artifact (auto-classified from the path)
-nofly gate --all .                    # vet every AI artifact in the repo (the CI form)
+nofly init --key nfy_live_… --url https://nofly.your-co.com   # dev machine
 ```
 
-### Starting a new agent project
+In CI, set `NOFLY_API_KEY` (a scoped `nfy_ci_` key) and `NOFLY_URL` instead.
+Without them, every backend feature falls back to the on-machine result. Secret
+values are replaced on the machine by a same-shape stand-in before anything is
+sent, so the backend sees that a credential is there, never the credential.
 
-```bash
-nofly new agent triage-bot            # a project that starts compliant
-```
+## Runtime firewall
 
-Guard enforcing on every model call, an egress allowlist in code rather than in
-the prompt, untrusted input kept out of the system prompt, secrets referenced
-from the environment, and the gate wired into CI - from commit zero. Remediating
-a project into this shape later means changing decisions that have already been
-built on.
+`nofly install-hook` wires NoFly into the hooks each coding agent actually loads -
+Claude Code, Codex CLI, GitHub Copilot CLI, Gemini CLI, Cursor, Windsurf, Cline,
+Aider and more. Catastrophic calls (`curl | sh`, reverse shells, live secrets,
+prompt injection, guard tampering) are blocked on the machine with zero network;
+only policy-relevant calls go to your backend, behind a short timeout and a
+circuit breaker, so a slow backend never freezes the agent. It fails open by
+default; `NOFLY_GUARD_STRICT=1` fails closed.
 
-## `gate` in CI
+`sudo nofly install-hook --managed` writes the hooks where a developer cannot
+remove them (Claude Code managed settings, `/etc/codex/hooks.json`, Copilot CLI
+`policy.d`), and `nofly admin mdm-script --guard` adds that to a Jamf, Intune or
+Kandji rollout.
 
-`gate`/`gate --all` are **local-first**: real static analysis (dangerous shell,
-prompt injection, secrets, exfil sinks, over-permissioned tool grants,
-install-lure prose) runs on-machine, so you get a genuine verdict even if the
-backend is unreachable. When enrolled + reachable, your **org policy** is layered
-on top.
+## MCP servers and models
 
-**Exit codes** (one convention across every command):
+`nofly mcps [dir]` finds MCP servers in every agent config on the machine (Claude,
+Cursor, VS Code, Windsurf, Gemini, Codex and more), in the project's configs, and
+in source code - `command`/`args` launch specs and remote MCP URLs passed to an
+MCP transport, in TypeScript, JavaScript and Python. Each is checked against
+NoFly's built-in list of known-vulnerable MCP packages, OSV advisories for pinned
+versions, and your MCP Security Index when enrolled. `nofly models` does the same
+for the models your code loads. Both exit `1` on a known-vulnerable entry and `2`
+on items to review under `--strict`.
 
-| Code | Meaning |
-|------|---------|
-| `0` | clean / pass |
-| `1` | hard fail - BLOCK, vulnerable model, secret found, FAIL verdict, below `--min`, regression (also `--strict` + backend outage) |
-| `2` | soft fail - FLAG under `--strict` (REVIEW when strict) |
-| `3` | usage / config error - not configured, bad flags, unknown command |
-
-**Backend outage:** by default it falls back to the on-machine verdict (org
-policy not applied). `--strict` fails closed (exit 1) because org policy can't be
-verified. Every backend call is bounded by `NOFLY_API_TIMEOUT_MS` (default 30s),
-so a job never hangs.
-
-### GitHub Actions
+## CI
 
 ```yaml
 name: NoFly AI-artifact gate
@@ -169,552 +128,42 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - name: Vet AI artifacts
+      - run: npx @nofly/agent check --strict
         env:
-          NOFLY_API_KEY: ${{ secrets.NOFLY_API_KEY }}
+          NOFLY_API_KEY: ${{ secrets.NOFLY_API_KEY }}   # optional - the gate is local-first
           NOFLY_URL: ${{ secrets.NOFLY_URL }}
-        run: npx @nofly/agent gate --all . --strict
 ```
 
-Wire it as a **required status check** on a protected branch and it becomes the
-un-bypassable control on GitHub.com, which has no server-side hooks. On
-self-hosted Git and GitHub Enterprise, `nofly install-precommit --pre-receive`
-(below) refuses the push itself.
+Make it a **required status check** and it becomes the control GitHub.com has no
+server-side hook for. `nofly pr --init` writes a workflow that posts a Check Run
+with inline annotations on the changed lines; `--sarif` emits SARIF 2.1.0 for
+GitHub and GitLab code scanning. On self-hosted Git and GitHub Enterprise,
+`nofly install-precommit --pre-receive` refuses the push on the server itself.
 
-CI provider, repo, branch and commit are auto-detected and recorded, so security
-sees local-vs-CI gate activity in the dashboard.
-
-### GitHub PR reviewer - inline annotations (`nofly pr`)
-
-`nofly pr` is a richer PR-native path: on a `pull_request` it gates only the AI
-artifacts **changed vs the base branch** and posts a **GitHub Check Run with
-inline annotations** on the offending lines - no GitHub App or extra backend
-required, just the workflow's `GITHUB_TOKEN`. Scaffold it in one shot:
+## Agent identity
 
 ```bash
-npx @nofly/agent pr --init      # writes .github/workflows/nofly.yml (--force to overwrite)
+nofly agent-identity register --name "Dana's Claude Code" --type coding-agent \
+  --purpose "Writes and reviews code in the payments repos" --owner dana@acme.com --for claude
 ```
 
-The generated workflow:
+Each agent gets its own `nfy_agt_` credential and least-privilege policy; the
+firewall presents it from the next call. In GitHub Actions, GitLab, Kubernetes,
+Entra or Okta the workload registers itself with its own identity token, so no
+secret is stored. `nofly status` shows which identity this machine presents.
 
-```yaml
-name: NoFly AI Security
-on: pull_request
-permissions:
-  contents: read
-  checks: write            # required to post the check-run
-jobs:
-  nofly:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }   # need the base ref to diff changed artifacts
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - run: npx @nofly/agent pr
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NOFLY_API_KEY: ${{ secrets.NOFLY_API_KEY }}   # optional - applies org policy
-          NOFLY_URL: ${{ secrets.NOFLY_URL }}           # optional - your backend
-```
+## Exit codes
 
-The check-run **conclusion** mirrors the gate: `failure` on any BLOCK, `neutral`
-on FLAG (or `failure` with `--strict`), `success` when clean. `--dry-run`/`--json`
-print the computed check-run without posting. Without `NOFLY_API_KEY` it still
-runs local-first; with a key, your **org policy** (below) drives the verdict.
+| Code | Meaning |
+|------|---------|
+| `0` | clean |
+| `1` | hard fail - a BLOCK, a known-vulnerable MCP server or model, a secret |
+| `2` | soft fail - a FLAG under `--strict` |
+| `3` | usage or config error |
 
-### SARIF - native code-scanning annotations
+Environment variables, every option and per-command details: `nofly help` and
+`nofly <command> --help`.
 
-`gate`/`gate --all`/`check` accept `--sarif` to emit SARIF 2.1.0, which GitHub
-(and GitLab) render as inline code-scanning annotations without a custom parser:
+## License
 
-```yaml
-      - run: npx @nofly/agent check . --sarif > nofly.sarif
-      - uses: github/codeql-action/upload-sarif@v3
-        with: { sarif_file: nofly.sarif }
-```
-
-`nofly pr` accepts it too: bare `--sarif` writes SARIF to stdout,
-`--sarif=nofly.sarif` writes a file alongside the normal check-run output.
-
-### Org policy + triage on top of CI
-
-When enrolled, the same **org policy** that governs the dashboard decides the CI
-verdict (worst-wins across your org + project rules), so a build blocks on the
-policies you defined - not just a fixed severity threshold. Two things follow:
-
-- **Findings you've triaged away don't re-block the build.** If a security owner
-  has **accepted the risk** or **ignored** a finding in the platform, the gate
-  records the policy hit for transparency but no longer counts it toward
-  BLOCK/FLAG. Matching is per file+line and survives across scan sources, and an
-  accepted-risk that has **expired** re-blocks automatically.
-- **Mandatory guardrails are exempt** - a finding that trips a policy marked
-  *mandatory* still blocks even if someone accepted the risk. Use a policy
-  exception for those.
-
-### GitLab CI
-
-```yaml
-nofly-gate:
-  image: node:20
-  script:
-    - npx @nofly/agent gate --all . --strict
-  variables:
-    NOFLY_API_KEY: $NOFLY_API_KEY
-    NOFLY_URL: $NOFLY_URL
-```
-
-### pre-receive (server-side, cannot be skipped)
-
-```bash
-nofly install-precommit --pre-receive /srv/git/your-repo.git
-```
-
-A pre-commit hook is a courtesy: it lives on the developer's machine, it is one
-`--no-verify` away, and a machine that never ran `install-precommit` has no gate
-at all. A pre-receive hook runs on the **server**, on every push, for every
-developer. Same check; the difference between a reminder and a control.
-
-It **fails closed** - the opposite of the client hook. Blocking a local commit
-because a binary is missing is hostile; waving a push through for the same reason
-makes deleting the binary the bypass.
-
-It reads each pushed commit straight from git (`nofly check --rev <new>
---base-rev <old>`), with no checkout, so a pushed `.gitattributes` cannot change
-what it sees. It judges what the push changes, and waivers (`.noflyignore`,
-baseline, ignore marks, policy) count only as they stood before the push - push
-a waiver on its own first, then the change it covers. Re-run the install command
-to upgrade a hook installed by an older version.
-
-Available on self-hosted Git (GitLab, Gitea, Bitbucket DC, plain bare repos) and
-GitHub Enterprise. GitHub.com does not run server-side hooks - use the GitHub
-Actions gate above as a required status check instead.
-
-### pre-commit (local, blocks risky artifacts before they land)
-
-`.git/hooks/pre-commit` (or a [pre-commit](https://pre-commit.com) `local` hook):
-
-```bash
-#!/usr/bin/env bash
-# Gate only the AI artifacts that changed in this commit.
-git diff --cached --name-only --diff-filter=ACM \
-  | grep -Ei '(\.mcp\.json|SKILL\.md|CLAUDE\.md|AGENTS\.md|\.cursorrules|/\.claude/(commands|agents)/.*\.md|/\.claude/settings(\.local)?\.json)$' \
-  | while read -r f; do
-      npx @nofly/agent gate "$f" || exit 1
-    done
-```
-
-Add `--json` anywhere to get machine-readable output for custom reporting.
-
-## Runtime firewall
-
-`nofly install-hook [--agent claude|cursor|windsurf|gemini|codex|copilot|cline|aider|all]`
-wires NoFly into a coding agent's own hooks. `nofly install-hook --uninstall`
-(add `--global` for your user settings) takes it out again: only NoFly's entries
-are removed, your own hooks and settings are left as they were, and a settings
-file NoFly cannot parse (comments, trailing commas) is reported and never
-rewritten. It is **tiered**: catastrophic tool
-calls (`curl|sh`, reverse shells, base64 RCE, live secrets, injection) are
-blocked on-machine with zero network; only policy-relevant calls escalate to the
-backend, behind a short timeout + circuit breaker - so a slow or down backend
-never freezes the agent. Fail-open by default; `NOFLY_GUARD_STRICT=1` fails
-closed on the server tier.
-
-Each agent gets its hooks in the format it actually loads:
-
-| Agent | Where | Notes |
-| :- | :- | :- |
-| Claude Code | `~/.claude/settings.json`, or `.claude/settings.json` in a repo | Covers `Bash`, `PowerShell`, `Monitor`, file writes, skills and MCP calls. |
-| Codex CLI | `~/.codex/hooks.json`, or `.codex/hooks.json`, under its `"hooks"` key | Codex runs a new user or project hook only after you trust it in the review it shows at its next start. |
-| GitHub Copilot CLI | `~/.copilot/hooks/nofly.json` (or `$COPILOT_HOME/hooks/`), or `.github/hooks/nofly.json` | Version 1 format, with separate bash and PowerShell commands. |
-| Cline | `PreToolUse` and `PostToolUse` scripts in `~/Documents/Cline/Hooks` (or `~/.cline/hooks`), or `.clinerules/hooks` | Cline cannot pause a call for approval, so a call NoFly would ask about is refused with the reason. |
-| Gemini CLI, Cursor, Windsurf | their own settings or hooks file | |
-
-Running the install again repairs an older install written in a shape the agent
-ignored, and a hook left pointing at a Node or NoFly install that was removed.
-
-**Managed install, for organizations.** `sudo nofly install-hook --managed`
-(or an elevated Administrator on Windows) writes the hooks where a developer
-cannot remove or switch them off: Claude Code's managed settings
-(`managed-settings.d/50-nofly.json`, read by Claude Code 2.1.83 or later), `/etc/codex/hooks.json` (Codex runs these
-without a trust review), and Copilot CLI's `policy.d`. Add `--guard` to
-`nofly admin mdm-script` to include it in the Jamf, Intune or Kandji bootstrap,
-which installs NoFly in a root-owned location so nobody can quietly replace
-what the hooks run. If you also deliver Claude Code settings from the admin
-console or an MDM profile, set `managedSourcesBehavior: "merge"` there, or Claude
-Code skips the managed settings folder; check with `/status`. Set
-`NOFLY_MANAGED_ROOT` to write the same files under a staging folder, for
-example when building a golden image.
-A symlinked settings file stays a symlink, and a file installed by root for
-another user keeps that user as its owner.
-
-When the guard blocks a tool result, Claude Code (2.1.121 or later), Copilot CLI,
-Gemini CLI and Cline get the result replaced or withheld, so the model never
-reads it; Codex replaces MCP results. Where an agent cannot replace a result, it
-stays visible with a note telling the model to treat it as untrusted data.
-
-A call the on-machine rules flag as high risk (a reverse tunnel, a netcat shell,
-data posted to the network) is never run silently just because no server
-answered. With no backend configured, or when the backend is unreachable or
-rejects the credential, the agent **asks you** and names what matched. Set
-`NOFLY_GUARD_LOCAL_FLAG=allow` to let flagged calls through or `=deny` to refuse
-them. A `.noflyignore` committed in a repo only quiets paths that really resolve
-inside that repo, so it can never silence a write to `~/.bashrc` or a symlinked
-path outside it.
-
-A command that names a script runs what the script says, so the hook reads it:
-the package.json script behind `npm test` / `npm run x` / `yarn x` / `pnpm x`
-(with npm's pre and post hooks), the recipe behind `make target`, or the file
-behind `./setup.sh` / `bash x.sh`. What it read goes to the server as
-`run_targets` and is screened like a command you typed; a dangerous line in it
-sends the call to the server, or asks you when the server cannot answer.
-
-Installs always escalate. A package, image, Helm chart, editor extension or model
-the agent is about to fetch, and a dependency it writes into a manifest
-(`package.json`, `requirements.txt`, a Dockerfile, a compose file), is sent to the
-backend, which checks the name against the public registry and the advisory feeds
-whether or not your org wrote a rule about it. Before, a machine with no agent
-identity decided these alone unless the org had a rule of that type, so an
-invented package name was never looked up.
-
-Three channels are screened:
-
-| Channel | Hook | What it stops |
-|---|---|---|
-| **Tool call** | PreToolUse / `beforeShellExecution` | the shell command, artifact write or MCP call, before it runs |
-| **Tool result** | PostToolUse / `afterMCPExecution` | injection, exfil sinks and hidden payloads in what a fetch/read brings *back* |
-| **Prompt** | `UserPromptSubmit` (Claude Code, Codex) / `beforeSubmitPrompt` (Cursor) / `BeforeAgent` (Gemini CLI) | what **you** paste, before it leaves the machine |
-| **Plan** | `PreToolUse` on `ExitPlanMode` (Claude Code) | nothing - it *informs*. See [`nofly plan`](#nofly-plan--threat-model-what-the-agent-is-about-to-build) |
-
-**Skills are checked when they are invoked (Claude Code).** The `Skill` tool is
-in the tool-call matcher, so when the agent loads a skill the hook resolves it to
-its `SKILL.md` - project `.claude/skills/<name>/`, `~/.claude/skills/<name>/`, or
-an installed plugin's `skills/` for `plugin:name` - and sends it, with the names
-of the files it bundles, to the same gate `nofly gate` uses. A BLOCK refuses the
-call, so a skill your org denied in the Artifact Registry does not run. Verdicts
-are cached on the machine by content for 10 minutes, so an unchanged skill is
-checked once. A skill that cannot be found on disk is not blocked; with
-`NOFLY_GUARD_STRICT=1` a skill the gate could not be reached to check is refused.
-Re-run `nofly install-hook` to add `Skill` to an existing install's matcher.
-
-Every call the Claude Code hook escalates also carries `active_artifacts`: the
-`CLAUDE.md` / `.claude/rules` files, skills, subagents and commands of the project
-and of `~/.claude` (rules first, at most 20), each hashed exactly as the Artifact
-Registry hashes content, so a session running with an artifact your org denied is
-refused even when the call itself never names it. The list is computed once per
-session and recomputed only when one of those files or folders changes.
-
-### Proving it is actually in path - `nofly selftest`
-
-An installed hook is not a covered one. The matcher in a settings file decides
-whether the hook runs at all, and a tool it does not name is never screened - not
-locally, not by the server. That gap is invisible from a server: a machine whose
-hook never fires and a machine whose agents are idle report exactly the same
-thing, which is nothing.
-
-```bash
-nofly selftest --agent all            # static + live, exits non-zero on any hole
-nofly selftest --json                 # the same reading, machine-readable
-nofly selftest --strict               # also non-zero on a warning
-```
-
-It does two things no simulation can:
-
-1. **Reads each installed agent's own settings** and reports every tool name that
-   vendor uses for shell, writes, edits, patches and MCP calls that the matcher
-   does **not** cover - with the command that widens it. A hook pointing at a
-   binary that is not on the machine is reported too: the agent logs a spawn
-   error nobody reads and runs the call.
-2. **Drives the real installed hook** with inert canaries in each vendor's own
-   wire shape - a shell install, a Dockerfile write, a `package.json` edit, a
-   Codex `apply_patch`, an MCP call - spawned exactly the way the vendor spawns
-   it, with the payload on stdin. Nothing is ever executed; the canaries name a
-   package that does not exist and write inside a throwaway directory.
-
-Each canary is then read against the org's live rules: escalated and answered,
-or decided locally *because the org has no rule of that type* (which is the
-correct answer for a call the backend does not check itself, and is reported as
-one), or **porous** - the call reached no screen at all. The install canaries
-always expect the backend, because it checks every package itself. When the machine is enrolled the result is reported to the org, so
-fleet coverage is a measured number rather than an install count.
-
-The prompt channel is the one a person controls, and the only one where the leak
-is a paste rather than a tool call. A live credential in a prompt is refused;
-pasted text that reads as an instruction to an agent is passed through but
-flagged **to the model** as untrusted data rather than blocked - you meant to
-send it, the risk is that you did not read it. Backtick-quoted payloads are
-down-ranked, so asking *why does `<pattern>` get flagged* is never blocked.
-`NOFLY_PROMPT_GUARD_OFF=1` disables just this channel. Only the two vendors with
-a documented pre-submit hook that can stop a submission are wired; the rest get
-nothing rather than a guessed event name that would silently never fire.
-
-## Prevention: get in front of the model
-
-Everything above intercepts *after* the model has written something. These run
-before it.
-
-```bash
-nofly design docs/rfc.md  # threat-model a system that does not exist yet
-nofly add model owner/m   # vet anything before it lands on the machine
-nofly rules --write       # teach the agent what gets blocked here
-nofly rules --check       # CI: fail when the block goes stale
-nofly mcp install         # let the agent gate its own content before writing it
-```
-
-### `nofly design` - threat-model the ticket, not the repo
-
-Every other command needs an artifact. This one reads a **description** - an RFC,
-a design doc, a Jira/Linear ticket, a PR body - and answers the only question
-worth asking before anyone writes code: does the thing being described hand an
-attacker a path from untrusted input to a consequence?
-
-```bash
-nofly design docs/rfc-042.md
-nofly design docs/ --strict                       # every design doc, fail on any closed path
-gh issue view 42 --json body -q .body | nofly design -
-nofly design docs/rfc-042.md --checklist | gh issue comment 42 -F -
-```
-
-It uses the platform's own model: capabilities split into **sources** (untrusted
-input, sensitive data, filesystem) and **sinks** (network egress, execution,
-destructive action). A closed source→sink pair is an attack path. That model does
-not care whether the capabilities came from a scan or from a sentence - here they
-come from a sentence, and each one cites the line that evidenced it so you can
-disagree with the machine's reading.
-
-`--checklist` emits the conditions as a markdown task list, which is the form
-anyone actually acts on: paste it into the ticket as acceptance criteria.
-
-> **It reads prose, so it sees only what was written down.** There is deliberately
-> no clean verdict. `NOT_DESCRIBED` means the document did not describe
-> capabilities in a way this matched - it is **not** a statement that the system
-> has none. A threat model that reads as a clean bill of health is worse than
-> none, because it is consumed exactly when the design is still cheap to change.
-
-Exit codes: `1` when untrusted input reaches execution or a destructive action
-(the shape where the attacker picks the action), `2` for any other closed path
-under `--strict`.
-
-### `nofly plan` - threat-model what the agent is about to build
-
-`design` reads a document a human remembered to write. Coding agents produce a
-**plan** before every non-trivial task, constantly and automatically, and nothing
-looks at it. Same analysis, a hundred times the frequency, zero human effort.
-
-The loop: agent proposes a plan → NoFly threat-models it → the controls land in
-the agent's context **before it writes line one**. The agent builds the guarded
-version first, instead of building the unguarded one and having the firewall
-refuse it three tool calls later.
-
-Three ways in, deliberately redundant, strongest first:
-
-1. **`nofly_review_plan`** - an MCP tool, so any MCP-capable agent can call it
-   mid-task with no vendor hook. Register it with `nofly mcp install`.
-2. **The rules block asks the agent to call it.** Once the MCP server is
-   registered, `nofly rules --write` adds a *Before you implement a plan*
-   section - so `mcp install` and `rules --write` compose into a closed loop.
-3. **A Claude Code `PreToolUse` hook on `ExitPlanMode`**, wired by
-   `install-hook`. Zero-effort, but that tool name is not in the published hook
-   docs, so it is the optional path and never the only one.
-
-```bash
-nofly plan plan.md            # or: … | nofly plan -
-```
-
-**A plan is a proposal, so the default is to inform, never refuse.** Denying a
-plan spends a turn and tells the model only that it was wrong, not how - the
-controls are the useful payload. Only untrusted-input-reaches-a-hard-sink
-escalates to *ask*, and only under `NOFLY_GUARD_STRICT=1`.
-`NOFLY_PLAN_GUARD_OFF=1` disables just this channel.
-
-### `nofly corpus` - screen the index, not the retrieval
-
-The result firewall screens what a retrieval brings *back*. Nothing screened what
-went **in** - so a poisoned document sits in the vector store indefinitely,
-clean-until-retrieved, and is judged for the first time at the worst possible
-moment: as one chunk, stripped of its document, inside a request a user is
-waiting on.
-
-Index time wins on all three counts. The whole document is present, so a payload
-split across paragraphs is visible. The cost is paid once per document instead of
-once per retrieval. And a document that fails is simply never embedded - a
-control rather than a detection.
-
-```bash
-nofly corpus ./kb --manifest .nofly/corpus.json
-```
-
-```
-  ✗ QUARANTINE escalation.md
-    HIGH     Injected instruction: "ignore all previous" (line 243 · chunk 19)
-  ✗ QUARANTINE hidden.md
-    CRITICAL Invisible / bidirectional characters
-  ⚠ 2 files could not be read - they are NOT covered by the result above:
-      2 × binary format - no text extractor
-```
-
-Findings carry the **chunk index**, not just the line, because retrieval returns
-chunks and the chunk is what actually reaches the model. The manifest is the
-point of the command: feed it to your ingestion job so a quarantined document is
-never embedded.
-
-> **Absence accounting is load-bearing.** Real corpora are mostly PDF, DOCX and
-> PPTX - formats this cannot read. A screen that silently skips them and prints
-> "clean" is a lie about the majority of the corpus, so every unreadable file is
-> counted and reported next to the verdict, and `--strict` fails on them:
-> *we could not check it* is not *it is fine*.
-
-Fenced code blocks are down-ranked - a docs corpus is full of examples, and an
-example is not a live instruction. A directive in prose is the real threat and
-survives the down-rank.
-
-### `nofly add` - vet at acquisition, not after
-
-`mcp add` gated one channel. An agent acquires from four, and the other three had
-no gate at all: a skill copied out of a gist, a model pulled from the Hub, a
-package installed because an agent suggested the name.
-
-```bash
-nofly add mcp files npx -y @modelcontextprotocol/server-filesystem /tmp
-nofly add skill ./downloaded-skill      # manifest AND the scripts it bundles
-nofly add model openai-community/gpt2   # against the Model Index, before any weights download
-nofly add package langchian --type pypi # → BLOCK: 2 edits from langchain
-```
-
-One verdict vocabulary (ALLOW / FLAG / BLOCK), one exit-code contract, `--force`
-to override a BLOCK deliberately rather than by accident. After something lands
-the question changes from *should we take this?* to *is it safe to remove?*,
-which is a much worse question to be asked.
-
-**Unknown is never clean.** An unreachable Model Index, an unscanned model, and a
-package the AI catalog does not recognise all return **FLAG**, not ALLOW -
-"we could not check" and "it is fine" are different answers.
-
-**`nofly rules`** compiles what NoFly actually enforces - plus what *this repo*
-already trips, plus your org's policy when enrolled - into the agent's own
-context files:
-
-| Agent | File |
-|---|---|
-| Claude Code | `CLAUDE.md` |
-| Codex CLI (and the cross-vendor default) | `AGENTS.md` |
-| Cursor | `.cursor/rules/nofly.mdc` |
-| GitHub Copilot | `.github/copilot-instructions.md` |
-| Gemini CLI | `GEMINI.md` |
-| Windsurf | `.windsurfrules` |
-| Cline | `.clinerules/nofly.md` |
-
-It writes inside a `<!-- BEGIN NOFLY MANAGED BLOCK -->` marker pair and **never
-touches a line outside it**, so your own rules are safe and re-running is a
-no-op. The block is derived, not boilerplate: sections switch on according to
-what the repo holds (MCP configs, skills, model loads, agent-calling code), and
-an **"Already present in this repo"** section names the findings a local gate
-pass actually found, with paths. Commit the result and keep it honest with
-`nofly rules --check`, which exits 1 when the block is missing or stale.
-
-The generated block is itself an AI rules file, so `nofly rules` gates its own
-output and refuses to write anything its own checker would block.
-
-**`nofly mcp install`** registers NoFly *as* an MCP server with your agents, so
-the model can call it in its own loop - most usefully `nofly_review_change`,
-which takes proposed file content plus its intended path and returns a verdict
-**without writing anything to disk**. A BLOCK there costs nothing; the same
-content on disk costs a blocked tool call and a wasted turn. `nofly_rules`,
-`nofly_check`, `nofly_explain`, `nofly_fix` and `nofly_scan_models` are
-exposed too. `nofly mcp serve` runs the server directly (stdio JSON-RPC) if you
-prefer to wire it by hand.
-
-**`nofly mcp guard`** goes the other way: it rewrites your agents' MCP configs so
-every local (stdio) server launches behind a NoFly shim. The shim sits between
-the agent and the server and judges each tool call before it reaches the server
-and each result before it reaches the model. `--uninstall` puts the original
-launch lines back.
-
-```bash
-nofly mcp guard                     # wrap every stdio server; screening follows enrolment
-nofly mcp guard --screen backend    # each call/result goes to NoFly: tool policy, taint, steering, org policies
-nofly mcp guard --screen local      # on-machine rules only - no tool arguments or results leave the machine
-```
-
-The mode is read in this order: `--screen` on the wrapped launch line,
-`NOFLY_MCP_SCREEN`, `mcpScreen` in `~/.nofly/config.json`, then the default:
-`backend` when the machine is enrolled, `local` when it is not. An unknown value
-is refused rather than guessed. `local` is a weaker tier you choose on purpose -
-no tool policy, taint or steering. In `backend` mode an unreachable backend falls
-back to the local rules; set `NOFLY_GUARD_STRICT=1` to refuse instead.
-
-## Adopting NoFly on an existing repo
-
-A brand-new gate on a repo with history will flag things. Three layers make
-adoption friction-free - all of them re-grade the artifact, so a fully
-suppressed file drops to ALLOW and never fails the build. The one exception is
-a BLOCK the backend returned from your **org policy**: repo files can silence
-findings but never lift an org decision, so that artifact stays BLOCK and is
-reported as *ignored locally, still blocked by org policy*. Accept the risk or
-add an exception in the platform instead:
-
-- **`nofly baseline`** records every current finding, and the lines it was
-  seen on, in `.nofly/baseline.json` - commit it so the whole team shares it.
-  From then on only findings introduced *after* the baseline fail, including a
-  new copy of one it accepted, even in the same file; moving an accepted line
-  does not matter. Re-run it to refresh after cleanups. Skip it per-run with
-  `--no-baseline`.
-- **`.noflyignore`** - a repo file of `path/glob` lines (skip the file) or
-  `path/glob :: title-substring` lines (skip one finding class in those files).
-  The runtime firewall honors it too, so test fixtures and detection source
-  aren't withheld. Silence a single finding inline with `// nofly-ignore` (or
-  `# nofly-ignore`) on the finding's line or the line above, or opt a whole
-  file out with `nofly-ignore-file` in its first lines (works in JSON as a
-  `"_nofly": "nofly-ignore-file"` key). A mark covers only its own line: the
-  same problem on another line of the file is still reported. `--no-suppress`
-  ignores all of this.
-- **In `nofly pr` these waivers come from the base branch**, never from the
-  pull request itself: a `.noflyignore`, baseline, policy or ignore mark the
-  pull request adds takes effect once it is merged, so nobody can approve their
-  own findings by committing a waiver beside them. With no base branch in the
-  checkout, `pr` checks every artifact and trusts no waiver.
-- **`.nofly/policy.yml`** - policy-as-code, reviewed in PRs like any code:
-
-  ```yaml
-  block: high              # min severity that BLOCKS (critical|high|medium|low|none)
-  flag: medium             # min severity that FLAGS
-  allow:                   # finding-title substrings to always downgrade away
-    - "IPv4 address"
-  ```
-
-  For a local verdict the repo policy fully re-grades; when the backend
-  returned an org decision it can only make it *stricter* (worst-wins) - repo
-  config never loosens org enforcement. `--no-policy` skips it.
-
-## Environment variables
-
-| Var | Purpose |
-|-----|---------|
-| `NOFLY_API_KEY` | Org API key (overrides config) |
-| `NOFLY_URL` | Backend URL (overrides config) |
-| `NOFLY_API_TIMEOUT_MS` | Per-request backend timeout (default 30000) |
-| `NOFLY_AGENT` | Agent credential (`shm_agt_…`) presented to `llm-proxy` + firewall; overrides the one `agent-identity register` saved. A bare handle still works but is only a claim anyone can type. Unset, `llm-proxy` forwards a client's own `x-nofly-agent` only when it is a `shm_agt_` credential |
-| `NOFLY_GATE_CONCURRENCY` | Parallel backend calls in batch gate / model lookups (default 8, 1-32) |
-| `NOFLY_GH_TOKEN` | GitHub token for `nofly pr` (falls back to `GITHUB_TOKEN`) |
-| `NOFLY_ENVIRONMENT` | Declare where this runs: `LOCAL` \| `CI` \| `REMOTE`. Set `REMOTE` on a cloud agent runtime whose markers NoFly does not yet detect (Codex cloud, Jules, Cursor background agents, Devin…), so its sessions are not counted as developer machines. ⚠ It may only ever RAISE — it can never relabel a detected cloud container as a laptop. |
-| `NOFLY_GUARD_STRICT` | `1` = firewall fails closed on the server tier |
-| `NOFLY_GUARD_LOCAL_FLAG` | What a call the on-machine rules flag does when no server verdict arrives: `ask` (default), `allow`, or `deny`. Defaults to `allow` when `NOFLY_GUARD_FAILOPEN_SEVERE=1` |
-| `NOFLY_GUARD_FAILOPEN_SEVERE` | `1` = let destructive calls through unscreened when no server verdict arrives (default: ask) |
-| `NOFLY_GUARD_LOCAL` | `0` = disable the on-machine Tier-0 guard |
-| `NOFLY_GUARD_IGNORE` | Comma-separated file globs the runtime guard treats as known-safe (adds to `.noflyignore`) |
-| `NOFLY_GUARD_ALWAYS_ESCALATE` | `1` = send every call to the server (full telemetry, higher overhead) |
-| `NOFLY_GUARD_TIMEOUT_MS` | Firewall per-call server timeout (default 2000) |
-| `NOFLY_GUARD_BREAKER_MS` | Skip the server this long after repeated failures (default 30000; `0` disables) |
-| `NOFLY_GUARD_BREAKER_FAILURES` | Failures in a row before the server is skipped (default 3). One slow or failed screen no longer switches the server off for every later call, and `NOFLY_GUARD_STRICT` never skips it. |
-| `NOFLY_LLM_PROXY_BASE` | Proxy base URL `install-hook` writes for Aider (default `http://127.0.0.1:4141/openai/v1`) |
-| `NOFLY_MODEL_GUARD` | `0` = disable the model-load screen in the PreToolUse hook |
-| `NOFLY_PROMPT_GUARD_OFF` | `1` = disable the prompt channel only (tool-call and tool-result guards stay on) |
-| `NOFLY_PLAN_GUARD_OFF` | `1` = disable the plan channel only |
-| `NOFLY_MODEL_CACHE` | `0` = disable the on-machine model-index verdict cache |
-| `NOFLY_MODEL_CACHE_TTL_MS` | Model-cache freshness window (default 7 days) |
-| `NOFLY_ALLOW_USER_NODE` | `1` = let a machine-wide schedule or `install-hook --managed` run a Node or NoFly install a normal user can change (same as `--allow-user-writable`) |
-| `NODE_USE_ENV_PROXY` | `1` = send the CLI's requests through `HTTPS_PROXY` / `HTTP_PROXY`, honouring `NO_PROXY` (Node releases whose `node --help` lists `--use-env-proxy`). Without it Node ignores those variables, and a failed request says so |
-| `NODE_EXTRA_CA_CERTS` | Path to a company CA bundle, for a proxy that inspects HTTPS |
-| `NODE_DISABLE_COMPILE_CACHE` | `1` = do not keep compiled code in `~/.nofly/compile-cache` (on by default on Node 22.8+, it makes every hook start faster) |
-
-Run `nofly help` for the full command reference, or `nofly <command> --help` for one command.
+Apache-2.0 - see [LICENSE](LICENSE).

@@ -7,6 +7,7 @@ import { resolveAgentIdentityHandle } from './agent-identity.mjs';
 import { machineSessionCredential, storedMachineBinding } from '../core/machine-session.mjs';
 import { describeFetchError, keyedFetch } from '../core/keyed-fetch.mjs';
 import { currentUsername } from '../core/api-client.mjs';
+import { isAgentCredential } from '../core/api-key.mjs';
 
 export const LLM_PROVIDERS = ['openai', 'anthropic', 'gemini', 'groq', 'mistral', 'xai', 'deepseek', 'openrouter', 'together', 'cohere', 'voyage', 'jina'];
 
@@ -20,7 +21,6 @@ const HOP_BY_HOP_REQUEST_HEADERS = [...HOP_BY_HOP, 'host', 'content-length', 'ac
 const HOP_BY_HOP_RESPONSE_HEADERS = [...HOP_BY_HOP, 'content-length', 'content-encoding'];
 
 const namedByConnection = (value) => String(value ?? '').split(',').map((name) => name.trim().toLowerCase()).filter(Boolean);
-const AGENT_CREDENTIAL_PREFIX = 'shm_agt_';
 const AGENT_HEADER_RE = /^x-[a-z0-9]+-agent$/i;
 
 function newSessionId() {
@@ -59,7 +59,7 @@ export function forwardHeaders(incoming, { apiKey, actor, machineId, sessionId, 
   if (project) headers['x-nofly-project'] = project;
   const presented = typeof headers['x-nofly-agent'] === 'string' ? headers['x-nofly-agent'].trim() : '';
   for (const name of Object.keys(headers)) if (AGENT_HEADER_RE.test(name)) delete headers[name];
-  const agent = agentId || (presented.startsWith(AGENT_CREDENTIAL_PREFIX) ? presented : null);
+  const agent = agentId || (isAgentCredential(presented) ? presented : null);
   if (agent) headers['x-nofly-agent'] = agent;
   return headers;
 }

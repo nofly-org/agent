@@ -5,6 +5,7 @@ import { getMachineId, loadConfig, resolveSettings, saveAgentCredential } from '
 import { EXIT_USAGE, exitNotConfigured } from '../core/exit-codes.mjs';
 import { bold, cyan, dim, green, red, yellow } from '../core/terminal.mjs';
 import { WORKLOAD_SOURCES, platformToken, workloadCachePath, workloadKey, workloadSource, writeCachedCredential } from '../core/workload-identity.mjs';
+import { isAgentCredential } from '../core/api-key.mjs';
 
 const ORG_AUDIENCE_SOURCES = new Set(['github', 'gitlab', 'kubernetes']);
 const PROVIDER_LABEL = { github: 'GitHub Actions', gitlab: 'GitLab CI', kubernetes: 'Kubernetes', entra: 'Microsoft Entra', okta: 'Okta' };
@@ -245,14 +246,14 @@ export function resolveAgentIdentityHandle(flags) {
 export function identityStatus(cfg, url, env = process.env) {
   const explicit = String(env.NOFLY_AGENT ?? '').trim();
   if (explicit) {
-    return explicit.startsWith('shm_agt_')
+    return isAgentCredential(explicit)
       ? `credential ${explicit.slice(0, 14)}… from NOFLY_AGENT`
       : `handle "${explicit.slice(0, 40)}" from NOFLY_AGENT - a name anyone can type; register it to get a credential`;
   }
   const source = workloadSource(env);
   if (source) return `keyless via ${PROVIDER_LABEL[source] ?? source} (NOFLY_WORKLOAD) - no stored agent credential`;
   const all = cfg?.agentCredentials && typeof cfg.agentCredentials === 'object' ? cfg.agentCredentials : {};
-  const saved = Object.entries(all).filter(([, e]) => typeof e?.credential === 'string' && e.credential.startsWith('shm_agt_') && (!url || !e.url || e.url === url));
+  const saved = Object.entries(all).filter(([, e]) => typeof e?.credential === 'string' && isAgentCredential(e.credential) && (!url || !e.url || e.url === url));
   if (saved.length) return `saved credential for ${saved.map(([k, e]) => `${k} (${e.slug ?? e.credential.slice(0, 14)})`).join(', ')}`;
   const bound = Object.entries(all).filter(([, e]) => e?.machineBound === true && typeof e.slug === 'string' && (!url || !e.url || e.url === url));
   if (bound.length) return `bound to this machine for ${bound.map(([k, e]) => `${k} (${e.slug})`).join(', ')} - hour-long sessions, no stored credential`;

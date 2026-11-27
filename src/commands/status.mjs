@@ -30,7 +30,7 @@ export async function cmdStatus() {
   } else {
     const offline = /^(1|true|yes)$/i.test(String(process.env.NOFLY_OFFLINE ?? ''));
     console.log(`  ${dim('Mode     ')} ${cyan('● Local')} ${dim(offline ? '- on-machine analysis only; nothing leaves this machine' : '- on-machine analysis; only pinned MCP package names are looked up on osv.dev (NOFLY_OFFLINE=1 stops that)')}`);
-    console.log(`  ${dim('         ')} ${dim('Run')} ${bold('nofly init --key shm_…')} ${dim('to add org policy, AI fixes, deep scans & the dashboard.')}`);
+    console.log(`  ${dim('         ')} ${dim('Run')} ${bold('nofly init --key nfy_…')} ${dim('to add org policy, AI fixes, deep scans & the dashboard.')}`);
   }
   console.log(`  ${dim('Backend  ')} ${url || dim('none (local mode - set with nofly init --url)')}`);
   console.log(`  ${dim('API key  ')} ${apiKey ? green(apiKey.slice(0, 14) + '…') : dim('none (local mode)')}`);

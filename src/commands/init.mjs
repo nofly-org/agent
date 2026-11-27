@@ -14,15 +14,15 @@ export async function cmdInit(flags) {
   const key = String(flags.key || process.env.NOFLY_API_KEY || '').trim();
   const rawUrl = flags.url || process.env.NOFLY_URL || cfg.url || (flags.machine ? '' : loadMachineConfig()?.url) || '';
   if (!key) {
-    console.error(red('✗') + ' Missing API key. Run: ' + bold('nofly init --key shm_live_… --url <your backend>'));
+    console.error(red('✗') + ' Missing API key. Run: ' + bold('nofly init --key nfy_live_… --url <your backend>'));
     process.exit(EXIT_USAGE);
   }
-  if (!/^(?:shm|dgx)_[A-Za-z0-9_-]+$/.test(key)) {
-    console.error(red('✗') + ' That does not look like a NoFly API key (they start with shm_). Copy it from the platform → Settings → API Keys.');
+  if (!/^(?:nfy|shm|dgx)_[A-Za-z0-9_-]+$/.test(key)) {
+    console.error(red('✗') + ' That does not look like a NoFly API key (they start with nfy_). Copy it from the platform → Settings → API Keys.');
     process.exit(EXIT_USAGE);
   }
   if (!rawUrl) {
-    console.error(red('✗') + ' Missing backend URL. Run: ' + bold('nofly init --key shm_live_… --url <your backend>'));
+    console.error(red('✗') + ' Missing backend URL. Run: ' + bold('nofly init --key nfy_live_… --url <your backend>'));
     process.exit(EXIT_USAGE);
   }
   const parsed = parseBackendUrl(rawUrl);

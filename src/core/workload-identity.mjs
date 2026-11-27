@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG_DIR } from './config.mjs';
 import { keyedFetch } from './keyed-fetch.mjs';
+import { isAgentCredential } from './api-key.mjs';
 
 export const EXCHANGE_PATH = '/public/agents/federated-credential';
 export const WORKLOAD_SOURCES = ['github', 'gitlab', 'kubernetes', 'entra', 'okta'];
@@ -60,7 +61,7 @@ export function readCachedCredential(file, { url, source, audience, workload, no
   try {
     const c = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (c?.url !== url || c?.source !== source || c?.audience !== audience || c?.workload !== workload) return null;
-    if (typeof c.credential !== 'string' || !c.credential.startsWith('shm_agt_')) return null;
+    if (typeof c.credential !== 'string' || !isAgentCredential(c.credential)) return null;
     return Date.parse(c.expiresAt) - now > RENEW_BEFORE_MS ? c.credential : null;
   } catch {
     return null;
@@ -166,7 +167,7 @@ export async function exchangeWorkloadToken(url, token) {
     body: JSON.stringify({ token }),
   });
   const body = await res.json().catch(() => null);
-  if (!res.ok || typeof body?.credential !== 'string' || !body.credential.startsWith('shm_agt_')) {
+  if (!res.ok || typeof body?.credential !== 'string' || !isAgentCredential(body.credential)) {
     throw new Error(body?.message ?? `the exchange answered HTTP ${res.status}`);
   }
   return body;

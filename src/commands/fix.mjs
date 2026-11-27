@@ -20,7 +20,7 @@ export async function cmdFix(flags, positional) {
   const { apiKey, url } = resolveSettings(cfg);
   if (!apiKey) {
     console.error('\n' + red('✗') + ' ' + bold('nofly fix') + ' needs enrollment - the fix is generated on the platform with your org AI key.');
-    console.error('  ' + dim('Run ') + bold('nofly init --key shm_live_…') + dim(', or apply the guidance from ') + bold('nofly check') + dim(' by hand.\n'));
+    console.error('  ' + dim('Run ') + bold('nofly init --key nfy_live_…') + dim(', or apply the guidance from ') + bold('nofly check') + dim(' by hand.\n'));
     process.exit(EXIT_USAGE);
   }
   let target = path.resolve(String(file));

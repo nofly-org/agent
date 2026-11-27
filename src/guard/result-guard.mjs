@@ -159,7 +159,7 @@ export async function cmdResultGuard(flags) {
   }
 
   if (!apiKey) {
-    if (strict) refuse('NoFly is not configured on this machine (NOFLY_GUARD_STRICT). Run: nofly init --key shm_…');
+    if (strict) refuse('NoFly is not configured on this machine (NOFLY_GUARD_STRICT). Run: nofly init --key nfy_…');
     exitWithoutVerdict(agent, screen);
   }
   if (!strict && breakerOpen()) exitWithoutVerdict(agent, screen);

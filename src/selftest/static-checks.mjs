@@ -224,7 +224,7 @@ export function environmentChecks({ url, apiKey, strict, breakerOpen, subjectTyp
     id: 'server',
     ok: !!url && !!apiKey,
     label: 'Server and credentials',
-    detail: url && apiKey ? `${url} · key ${String(apiKey).slice(0, 10)}…` : 'not configured - run `nofly init --key shm_… --url <backend>`; only the local tier runs',
+    detail: url && apiKey ? `${url} · key ${String(apiKey).slice(0, 10)}…` : 'not configured - run `nofly init --key nfy_… --url <backend>`; only the local tier runs',
   });
   rows.push({
     id: 'breaker',

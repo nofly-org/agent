@@ -1,10 +1,10 @@
 {
   "name": "@nofly/agent",
-  "version": "0.3.42",
-  "description": "NoFly - adversarial assurance for AI agents, as a local-first CLI. Blocks dangerous tool-calls before they run, attacks your own guardrails to prove they hold, and gates AI artifacts in your editor and CI.",
+  "version": "0.3.43",
+  "description": "NoFly - adversarial assurance for AI agents, as a local-first CLI. Blocks dangerous tool-calls before they run, attacks your own guardrails to prove they hold, and gates AI artifacts in your editor and CI. Open source: https://github.com/nofly-org/agent",
   "type": "module",
   "bin": {
-    "nofly": "./nofly.mjs"
+    "nofly": "nofly.mjs"
   },
   "engines": {
     "node": ">=18"
@@ -30,9 +30,22 @@
     "sarif",
     "llm",
     "agent-security",
-    "devsecops"
+    "devsecops",
+    "mcp-security",
+    "ai-agents",
+    "claude-code",
+    "cursor",
+    "runtime-firewall"
   ],
-  "author": "NoFly",
+  "homepage": "https://www.nofly.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nofly-org/agent.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nofly-org/agent/issues"
+  },
+  "author": "NoFly (https://www.nofly.ai)",
   "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"

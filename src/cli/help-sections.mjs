@@ -14,9 +14,9 @@ const USAGE = () => `${bold('USAGE')}
 const MODES = () => `${bold('MODES')}  ${dim('- local-first: everything that can run on your machine does, with no account')}
   ${cyan('Local')}     ${dim('(no key)')}  check · gate · doctor · ledger · protect · design · plan · corpus · rules · add · secrets · models · mcps · new · mcp
                         ${dim('Fully on-machine. Nothing leaves your machine. Your lead-in - no signup.')}
-  ${green('Enrolled')}  ${dim('(shm_live_)')} adds org policy, AI ${bold('fix')}/${bold('why')}, deep scans (zip/model/memory) & the dashboard
-  ${green('CI')}        ${dim('(shm_ci_)')}   scoped, revocable pipeline key for ${bold('pr')} / ${bold('check')} in CI
-  ${dim('Enroll with')} ${bold('nofly init --key shm_…')}${dim('; generate keys in the platform → Settings → API Keys.')}
+  ${green('Enrolled')}  ${dim('(nfy_live_)')} adds org policy, AI ${bold('fix')}/${bold('why')}, deep scans (zip/model/memory) & the dashboard
+  ${green('CI')}        ${dim('(nfy_ci_)')}   scoped, revocable pipeline key for ${bold('pr')} / ${bold('check')} in CI
+  ${dim('Enroll with')} ${bold('nofly init --key nfy_…')}${dim('; generate keys in the platform → Settings → API Keys.')}
 `;
 
 const COMMANDS = () => `${bold('COMMANDS')}
@@ -36,7 +36,7 @@ const COMMANDS = () => `${bold('COMMANDS')}
                 ${dim('non-zero when a gate holds, so a pipeline can block the release.')}
 
   ${dim('Setup - run once per machine / repo')}
-  ${cyan('init')}          Configure + enroll this machine       ${dim('--key shm_live_… [--url <backend>]  ·  --machine for a root-only machine-wide config')}
+  ${cyan('init')}          Configure + enroll this machine       ${dim('--key nfy_live_… [--url <backend>]  ·  --machine for a root-only machine-wide config')}
   ${cyan('schedule')}      Re-report on a timer (launchd / Task Scheduler / systemd / cron) ${dim('install [--every 6h] [--all-users] · remove · status')}
                 ${dim('A machine-wide schedule refuses a Node or NoFly a normal user can change (--allow-user-writable accepts it).')}
   ${cyan('protect')}       Wire the runtime firewall for every coding agent ${dim('[--project] [--force]')}
@@ -246,7 +246,7 @@ const AGENT_IDENTITY = () => `${bold('AGENT IDENTITY')}
   the agent to this enrolled machine. No long-lived credential is stored: the runtime
   firewall and the MCP shim ask for an hour-long session as they need one, and
   suspending the agent or unbinding the machine ends it. ${bold('--static')} saves a
-  long-lived shm_agt_ credential instead, ${bold('--for claude')} keeps one per coding agent,
+  long-lived nfy_agt_ credential instead, ${bold('--for claude')} keeps one per coding agent,
   ${bold('--no-save')} prints a credential instead, and ${bold('NOFLY_AGENT')} still overrides it. Without ${bold('--role <saved role>')} the agent starts
   Pending and every call is flagged until someone activates it in the dashboard.
 
@@ -327,9 +327,9 @@ const ENV = () => `${bold('ENV')}
   NOFLY_API_KEY              API key (overrides config)
   NOFLY_URL                  Backend URL (overrides config)
   NOFLY_API_TIMEOUT_MS=30000 Per-request backend timeout for scan/gate/report (never hangs)
-  NOFLY_AGENT                Agent credential (shm_agt_…) presented as x-nofly-agent (llm-proxy + firewall);
+  NOFLY_AGENT                Agent credential (nfy_agt_…) presented as x-nofly-agent (llm-proxy + firewall);
                               overrides the one \`agent-identity register\` saved
-  NOFLY_GRANT                A single-use grant (shm_grt_…) for the next screened call, sent as x-nofly-grant
+  NOFLY_GRANT                A single-use grant (nfy_grt_…) for the next screened call, sent as x-nofly-grant
   NOFLY_USER                 The person the agent acts for (email). Defaults to git user.email off CI; a claim
   NOFLY_USER_TOKEN           That person's sign-in token, so the claim is verified rather than taken on its word
   NOFLY_WORKLOAD            Keyless sign-in: github | gitlab | kubernetes | entra | okta. The firewall trades

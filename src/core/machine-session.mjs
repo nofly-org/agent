@@ -3,6 +3,7 @@ import path from 'node:path';
 import { CONFIG_DIR, getMachineId } from './config.mjs';
 import { keyedFetch } from './keyed-fetch.mjs';
 import { writeCachedCredential } from './workload-identity.mjs';
+import { isAgentCredential } from './api-key.mjs';
 
 export const MACHINE_SESSION_PATH = '/agents/machine-session';
 const RENEW_BEFORE_MS = 5 * 60_000;
@@ -35,7 +36,7 @@ function readSessions(file) {
 
 export function cachedMachineSession(file, { url, slug, now = Date.now() }) {
   const e = readSessions(file)[`${url}|${slug}`];
-  if (!e || typeof e.credential !== 'string' || !e.credential.startsWith('shm_agt_')) return null;
+  if (!e || typeof e.credential !== 'string' || !isAgentCredential(e.credential)) return null;
   return Date.parse(e.expiresAt) - now > RENEW_BEFORE_MS ? e.credential : null;
 }
 
@@ -53,7 +54,7 @@ export async function machineSessionCredential({ cfg, url, binding, file = machi
       signal: ctrl.signal,
     });
     const body = res.ok ? await res.json().catch(() => null) : null;
-    if (typeof body?.credential !== 'string' || !body.credential.startsWith('shm_agt_')) {
+    if (typeof body?.credential !== 'string' || !isAgentCredential(body.credential)) {
       onError(new Error(`the backend issued no session for "${binding.slug}" (HTTP ${res.status})`));
       return null;
     }

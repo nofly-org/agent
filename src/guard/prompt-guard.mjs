@@ -156,7 +156,7 @@ export async function cmdPromptGuard(flags) {
   const apiKey = keyFor(settings.apiKey, agentId);
   if (!apiKey) {
     if (injection.length) emitPromptContext(agent, promptInjectionNote(injection));
-    if (strict) emitPromptDeny(agent, 'NoFly is not configured on this machine (NOFLY_GUARD_STRICT). Run: nofly init --key shm_…');
+    if (strict) emitPromptDeny(agent, 'NoFly is not configured on this machine (NOFLY_GUARD_STRICT). Run: nofly init --key nfy_…');
     process.exit(0);
   }
   if (!strict && breakerOpen()) exitWithInjectionNote(agent, injection);

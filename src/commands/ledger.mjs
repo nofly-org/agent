@@ -148,7 +148,7 @@ export function cmdLedger(flags = {}) {
   console.log('');
   console.log(`  ${dim('Publish it:')} nofly ledger --json > ledger.json`);
   console.log(`  ${dim('Check it:  ')} npx controlledger-verify ledger.json`);
-  if (!enrolled) console.log(`  ${dim('Prove it:  ')} nofly init --key shm_…  ${dim('- to attack these controls and fill the last two axes')}`);
+  if (!enrolled) console.log(`  ${dim('Prove it:  ')} nofly init --key nfy_…  ${dim('- to attack these controls and fill the last two axes')}`);
   console.log('');
   return 0;
 }

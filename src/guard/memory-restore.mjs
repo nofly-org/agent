@@ -139,7 +139,7 @@ export async function cmdMemoryRestore() {
   const { loadConfig, resolveSettings } = await import('../core/config.mjs');
   const settings = resolveSettings(loadConfig());
   if (!settings.apiKey) {
-    console.error('NoFly is not configured on this machine. Run: nofly init --key shm_…');
+    console.error('NoFly is not configured on this machine. Run: nofly init --key nfy_…');
     process.exit(1);
   }
   const result = await applyPendingRestores({ url: settings.url, apiKey: settings.apiKey });

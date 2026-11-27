@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { readFailure, readRegularText } from './safe-read.mjs';
 import { stateDir } from './state-dir.mjs';
+import { isAgentCredential } from './api-key.mjs';
 
 const MAX_CONFIG_BYTES = 4 * 1024 * 1024;
 const isText = (value) => typeof value === 'string' && value.trim() !== '';
@@ -196,7 +197,7 @@ export function storedAgentCredential(cfg, vendor, url) {
   if (!all || typeof all !== 'object' || Array.isArray(all)) return null;
   for (const key of [vendor, 'default']) {
     const e = key ? all[key] : null;
-    if (!e || typeof e.credential !== 'string' || !e.credential.startsWith('shm_agt_')) continue;
+    if (!e || typeof e.credential !== 'string' || !isAgentCredential(e.credential)) continue;
     if (url && e.url && e.url !== url) continue;
     return e.credential;
   }
