@@ -156,7 +156,6 @@ export async function refreshRulePacksIfStale({ url, apiKey, now = Date.now(), w
   let timer;
   const timeout = new Promise((resolve) => {
     timer = setTimeout(() => resolve({ ok: false, error: `no answer within ${waitMs}ms` }), waitMs);
-    timer.unref?.();
   });
   try {
     return await Promise.race([syncRulePacks({ url, apiKey, fetchEnvelope, timeoutMs: waitMs }), timeout]);

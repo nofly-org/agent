@@ -43,12 +43,14 @@ export function growthProbeInputs(source        , extraUnits           = [])    
 
 export function millis(re        , input        )         {
   const started = process.hrtime.bigint();
+  const elapsed = () => Number(process.hrtime.bigint() - started) / 1e6;
   re.lastIndex = 0;
   try {
     re.test(input);
   } catch {
+    return elapsed();
   }
-  return Number(process.hrtime.bigint() - started) / 1e6;
+  return elapsed();
 }
 
 function minMillis(re        , input        , samples = 3)         {

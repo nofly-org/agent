@@ -77,6 +77,12 @@ export const SERVER_SIDE_MEMORY                                     = [
   { vendor: 'Cursor', note: 'Memories were removed in Cursor 2.1; exported memories become .cursor/rules files.' },
 ];
 
+                                    
+                 
+                                           
+              
+                
+ 
 
 export const MACHINE_MEMORY_ROOTS                      = [
   { vendor: 'Claude Code', base: 'home', dir: '.claude/projects/*/memory', depth: 1 },
